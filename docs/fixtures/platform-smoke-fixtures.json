@@ -1,0 +1,215 @@
+{
+  "schema_version": 1,
+  "description": "Synthetic placeholder-only examples; no network or account data.",
+  "fixtures": [
+    {
+      "category_id": "bilibili",
+      "platforms": [
+        "bilibili"
+      ],
+      "samples": [
+        {
+          "id": "bilibili-synthetic",
+          "platform": "bilibili",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "youtube",
+      "platforms": [
+        "youtube"
+      ],
+      "samples": [
+        {
+          "id": "youtube-synthetic",
+          "platform": "youtube",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "weixin",
+      "platforms": [
+        "weixin"
+      ],
+      "samples": [
+        {
+          "id": "weixin-synthetic",
+          "platform": "weixin",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "xiaoyuzhou",
+      "platforms": [
+        "xiaoyuzhou"
+      ],
+      "samples": [
+        {
+          "id": "xiaoyuzhou-synthetic",
+          "platform": "xiaoyuzhou",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "douyin_tiktok",
+      "platforms": [
+        "douyin",
+        "tiktok"
+      ],
+      "samples": [
+        {
+          "id": "douyin-synthetic",
+          "platform": "douyin",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        },
+        {
+          "id": "tiktok-synthetic",
+          "platform": "tiktok",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "xiaohongshu",
+      "platforms": [
+        "xiaohongshu"
+      ],
+      "samples": [
+        {
+          "id": "xiaohongshu-synthetic",
+          "platform": "xiaohongshu",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "xiaoe",
+      "platforms": [
+        "xiaoe"
+      ],
+      "samples": [
+        {
+          "id": "xiaoe-synthetic",
+          "platform": "xiaoe",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "generic_media",
+      "platforms": [
+        "generic_media"
+      ],
+      "samples": [
+        {
+          "id": "generic_media-synthetic",
+          "platform": "generic_media",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "x",
+      "platforms": [
+        "x"
+      ],
+      "samples": [
+        {
+          "id": "x-synthetic",
+          "platform": "x",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "web_article",
+      "platforms": [
+        "web_article"
+      ],
+      "samples": [
+        {
+          "id": "web_article-synthetic",
+          "platform": "web_article",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    },
+    {
+      "category_id": "feishu",
+      "platforms": [
+        "feishu"
+      ],
+      "samples": [
+        {
+          "id": "feishu-synthetic",
+          "platform": "feishu",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "requires_network": false,
+          "requires_auth": false
+        }
+      ]
+    }
+  ]
+}

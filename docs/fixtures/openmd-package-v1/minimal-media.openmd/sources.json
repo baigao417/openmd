@@ -1,0 +1,34 @@
+{
+  "package_schema_version": "1.0-draft",
+  "primary_source_id": "src_001",
+  "sources": [
+    {
+      "source_id": "src_001",
+      "source_type": "audio",
+      "platform": "xiaoyuzhou",
+      "input_ref": "https://www.xiaoyuzhoufm.com/episode/fixture_episode",
+      "capture_method": "opencli.xiaoyuzhou.transcript",
+      "permission_scope": "user_accessible",
+      "captured_at": "2026-06-18T00:00:00Z",
+      "adapter": {
+        "name": "opencli.xiaoyuzhou.transcript",
+        "version": null
+      },
+      "source_map": [
+        {
+          "target": "transcript.md#seg_0001",
+          "source_ref": {
+            "source_id": "src_001",
+            "url": "https://www.xiaoyuzhoufm.com/episode/fixture_episode",
+            "page": null,
+            "timestamp": "00:00:00-00:00:12.300",
+            "bbox": null,
+            "message_id": null
+          },
+          "confidence": 1.0,
+          "notes": []
+        }
+      ]
+    }
+  ]
+}

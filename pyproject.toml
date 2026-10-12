@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openmd"
+version = "0.0.1"
+description = "Markdown-first content ingestion CLI with explicit backend gates and resumable artifacts."
+authors = [{name = "baigao417"}]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+youtube = ["youtube-transcript-api>=1.0"]
+asr = ["faster-whisper>=1.1.0"]
+web = ["trafilatura>=2,<3"]
+pdf = ["markitdown[pdf]>=0.1.6"]
+ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+document = ["markitdown[pdf,docx,pptx,xlsx]>=0.1.6", "rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+
+[project.scripts]
+openmd = "openmd.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

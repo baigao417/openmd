@@ -1,0 +1,89 @@
+{
+  "catalog": [
+    {
+      "chapter": "第一章",
+      "no": "1",
+      "title": "图文课",
+      "resource_type": 1,
+      "resource_id": "a_text_001",
+      "url": "https://demo.h5.xet.citv.cn/v1/course/text/a_text_001",
+      "status": "未学"
+    },
+    {
+      "chapter": "第二章",
+      "no": "1",
+      "title": "音频课",
+      "resource_type": 3,
+      "resource_id": "a_audio_001",
+      "url": "https://demo.h5.xet.citv.cn/v1/course/audio/a_audio_001",
+      "status": "未学"
+    },
+    {
+      "chapter": "第三章",
+      "no": "1",
+      "title": "视频课",
+      "resource_type": 4,
+      "resource_id": "v_video_001",
+      "url": "https://demo.h5.xet.citv.cn/v1/course/video/v_video_001",
+      "status": "未学"
+    },
+    {
+      "chapter": "第四章",
+      "no": "1",
+      "title": "直播回放",
+      "resource_type": 2,
+      "resource_id": "l_live_001",
+      "url": "https://demo.h5.xet.citv.cn/v2/course/alive/l_live_001",
+      "status": "未学"
+    },
+    {
+      "chapter": "第五章",
+      "no": "1",
+      "title": "专栏容器",
+      "resource_type": 6,
+      "resource_id": "c_column_001",
+      "url": "https://demo.h5.xet.citv.cn/p/course/ecourse/c_column_001",
+      "status": "available"
+    },
+    {
+      "chapter": "第六章",
+      "no": "1",
+      "title": "未知资源",
+      "resource_type": 99,
+      "resource_id": "u_unknown_001",
+      "url": "https://demo.h5.xet.citv.cn/p/course/unknown/u_unknown_001",
+      "status": "available"
+    },
+    {
+      "chapter": "第七章",
+      "no": "1",
+      "title": "缺少链接",
+      "resource_type": 4,
+      "resource_id": "v_missing_url_001",
+      "status": "available"
+    }
+  ],
+  "content": {
+    "data": [
+      {
+        "title": "图文正文",
+        "content": "这是来自小鹅通的原始正文。",
+        "content_length": 13,
+        "image_count": 2,
+        "content_selector": ".rich-text-wrap",
+        "ignored_envelope_field": "must not reach Markdown"
+      }
+    ],
+    "ignored_envelope_field": "must not reach Markdown"
+  },
+  "errors": {
+    "empty": {
+      "name": "EmptyResultError",
+      "message": "No catalog rows extracted"
+    },
+    "auth": {
+      "errorCode": "SessionExpired",
+      "message": "The browser session is no longer authorized"
+    }
+  }
+}

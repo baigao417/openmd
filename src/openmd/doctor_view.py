@@ -1,0 +1,68 @@
+"""Human-readable `openmd doctor`: what works now, what to install for more.
+
+The JSON payload stays the machine contract (`--json`, or any non-TTY stdout);
+this view only answers a new user's question in plain words.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import shutil
+from typing import Any
+
+
+def _has(module: str) -> bool:
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _browser_registered() -> bool | None:
+    if os.name != "nt":
+        return None
+    from openmd.browser_setup import host_files
+
+    return host_files()[0].is_file()
+
+
+def _opencli_row() -> tuple[bool | None, str, str]:
+    from openmd.runtime.managed_tools import status
+
+    state = status()
+    label = "B 站字幕、公众号、X 等需要浏览器读取的平台"
+    if state["opencli"] in {"user", "managed"}:
+        return True, label + "（还需 Openmd 浏览器插件：openmd browser-setup）", ""
+    how = "首次处理这类链接时自动准备（约 20MB）" if state["bundled_node"] and state["auto_install"] else "pip install --upgrade openmd"
+    return False, label, how + "；并运行 openmd browser-setup 装好浏览器插件"
+
+
+def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str]]:
+    """Return (ready, ability, how-to-enable) rows; ready=None means not applicable."""
+    diagnostics = payload.get("profile_diagnostics") or {}
+    asr_ready = bool((diagnostics.get("asr_runtime") or {}).get("probe", {}).get("ready"))
+    documents = ((diagnostics.get("optional_profiles") or {}).get("documents") or {})
+    rows: list[tuple[bool | None, str, str]] = [
+        (_has("trafilatura") and _has("youtube_transcript_api"), "网页文章、YouTube 有字幕的视频", "pip install --upgrade openmd"),
+        _opencli_row(),
+        (shutil.which("ffmpeg") is not None, "音视频处理（本机转录前置）", "winget install Gyan.FFmpeg"),
+        (asr_ready, "无字幕视频 / 播客本机转录", 'pip install "openmd[asr]"，再按 docs/tool-integration.md 准备模型'),
+        (bool(documents.get("ocr_dependency_available") or documents.get("markitdown_available")), "图片、PDF、Office 转文字", 'pip install "openmd[document]"'),
+        (_browser_registered(), "浏览器插件一键保存", "openmd browser-setup"),
+    ]
+    for tool in ((diagnostics.get("tools") or {}).get("tools") or []):
+        rows.append((bool(tool.get("resolved")), f"可选工具 {tool.get('tool')}", "见 docs/tool-integration.md"))
+    return rows
+
+
+def render(payload: dict[str, Any]) -> str:
+    rows = [row for row in capability_rows(payload) if row[0] is not None]
+    lines = ["Openmd 体检", ""]
+    for ready, ability, how in rows:
+        lines.append(f"  {'✓' if ready else '·'} {ability}" + ("" if ready else f"\n      → {how}"))
+    missing = sum(1 for ready, *_ in rows if not ready)
+    lines += ["", "日常使用：openmd \"链接\"     脚本 / Agent：openmd \"链接\" -o <目录>"]
+    if missing:
+        lines.append(f"{missing} 项可选能力未就绪；不装也能用，遇到对应内容时会提示。机器可读结果：openmd doctor --json")
+    return "\n".join(lines)

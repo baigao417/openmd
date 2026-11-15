@@ -1,0 +1,43 @@
+# Third-Party Notices
+
+Openmd is MIT-licensed (see `LICENSE`). It builds on the open-source work below.
+Their licenses apply to their code; Openmd's license does not relicense them,
+model weights, external services, or content you retrieve.
+
+## Included in this repository
+
+### OpenCLI Browser Bridge (Apache-2.0)
+
+- Upstream: https://github.com/jackwener/opencli, Browser Bridge extension 1.0.27 (release v2.0.3).
+- Location: `src/openmd/browser_extension/vendor/opencli-bridge/background.js`, loaded by the Openmd
+  browser extension so users install a single extension.
+- **Modified by Openmd**: fixed bridge profile id, bridge version reporting, background windows
+  minimized, tab-group names; the idle page is Openmd's own. Every change is listed in
+  `vendor/opencli-bridge/VENDOR.md` and reproduced by `scripts/vendor_opencli_bridge.py`.
+- License text: `LICENSES/opencli-Apache-2.0.txt` (also next to the vendored file).
+
+### Bilibili-Harvest WBI signing core (MIT)
+
+`src/openmd/backends/bilibili_wbi.py` adapts the request-signing core represented by
+Bilibili-Harvest's `bili_wbi.py`, including the protocol permutation table.
+`Copyright (c) 2023 Lanbin07`; license text in `LICENSES/Bilibili-Harvest-MIT.txt`. The rest of the
+upstream repository is not included. A backend name containing `bilibili-harvest` is a
+compatibility identifier, not a claim that the upstream pipeline is integrated.
+
+## Installed at runtime (not redistributed here)
+
+| Component | License | How it arrives |
+|---|---|---|
+| opencli (`@jackwener/opencli` 2.0.3) | Apache-2.0 | Downloaded from npm on first need into `~/.openmd/tools/opencli` |
+| Node.js via `nodejs-wheel-binaries` | MIT | `pip` dependency |
+| trafilatura | Apache-2.0 | `pip` dependency |
+| youtube-transcript-api, beautifulsoup4, markdownify | MIT | `pip` dependencies |
+| faster-whisper, MarkItDown, RapidOCR, Pillow, PyMuPDF … | see each project | optional extras (`openmd[asr]`, `openmd[document]` …) |
+
+FFmpeg, yt-dlp and other command-line tools are used only if you install them; their own licenses
+apply.
+
+## Content
+
+Committed fixtures and mock content are synthetic. No ownership or redistribution right is claimed
+over platform data or anything Openmd retrieves for you.

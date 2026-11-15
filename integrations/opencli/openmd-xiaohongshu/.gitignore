@@ -1,0 +1,4 @@
+node_modules/
+package-lock.json
+creator-notes.js
+note-assets.js

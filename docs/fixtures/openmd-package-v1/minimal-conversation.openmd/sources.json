@@ -1,0 +1,34 @@
+{
+  "package_schema_version": "1.0-draft",
+  "primary_source_id": "src_001",
+  "sources": [
+    {
+      "source_id": "src_001",
+      "source_type": "conversation",
+      "platform": "wechat",
+      "input_ref": "user_export:fixture_group_chat",
+      "capture_method": "local.wx.export",
+      "permission_scope": "user_export",
+      "captured_at": "2026-06-18T00:00:00Z",
+      "adapter": {
+        "name": "local.wx.export",
+        "version": null
+      },
+      "source_map": [
+        {
+          "target": "messages.json#/messages/0",
+          "source_ref": {
+            "source_id": "src_001",
+            "url": null,
+            "page": null,
+            "timestamp": "2026-06-18T00:00:00Z",
+            "bbox": null,
+            "message_id": "msg_0001"
+          },
+          "confidence": 1.0,
+          "notes": []
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema": "openmd.tool-card/v1",
+  "installation": {
+    "mode": "isolated_existing",
+    "sha256": "8bf10dfa15d7d303d1fb08a4fb83fcbdf7bbb0e50cc17bba07f37b448fc12b52",
+    "verification": "SHA256 of the installed entry file; dependency tree is isolated, not attested"
+  },
+  "evidence": [
+    {
+      "date": "2026-11-07",
+      "ledger": "docs/benchmarks/routes/trials-backup.jsonl",
+      "scope": "one real sample; does not establish platform-wide completeness"
+    }
+  ],
+  "id": "defuddle",
+  "kind": "command",
+  "version": "0.19.6",
+  "license": "MIT",
+  "homepage": "https://github.com/kepano/defuddle",
+  "launcher": {
+    "node_entry": "defuddle/dist/cli.js",
+    "node_api": {
+      "module": "defuddle/dist/node.js",
+      "export": "Defuddle",
+      "options": {"removeExactSelectors": false}
+    },
+    "which": [
+      "defuddle"
+    ]
+  },
+  "capabilities": [
+    {
+      "status_policy": "verified_if_valid_else_failed",
+      "requires_login": false,
+      "cost_class": "none",
+      "id": "defuddle.web.content",
+      "sources": [
+        "web_article",
+        "weixin"
+      ],
+      "capability": "content",
+      "argv": [
+        "parse",
+        "{url}",
+        "--markdown",
+        "--json",
+        "-o",
+        "{workdir}/content.json"
+      ],
+      "reader": {
+        "type": "json_file",
+        "path": "content.json",
+        "fields": {
+          "text": ["contentMarkdown", "content"],
+          "title": "title",
+          "author": "author",
+          "published_at": "published"
+        }
+      },
+      "gates": [
+        "network"
+      ],
+      "source_level": "third_party_extractor",
+      "timeout_s": 120,
+      "validation": {
+        "min_chars": 40
+      }
+    }
+  ]
+}

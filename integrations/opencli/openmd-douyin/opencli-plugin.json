@@ -1,0 +1,6 @@
+{
+  "name": "openmd-douyin",
+  "version": "0.1.0",
+  "description": "Project-owned read-only Douyin creator discovery for Openmd.",
+  "opencli": ">=1.8.6"
+}

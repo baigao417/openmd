@@ -1,0 +1,34 @@
+{
+  "package_schema_version": "1.0-draft",
+  "primary_source_id": "src_001",
+  "sources": [
+    {
+      "source_id": "src_001",
+      "source_type": "document",
+      "platform": "local_file",
+      "input_ref": "fixture.pdf",
+      "capture_method": "document.ocr.fixture",
+      "permission_scope": "local_file",
+      "captured_at": "2026-06-18T00:00:00Z",
+      "adapter": {
+        "name": "document.ocr.fixture",
+        "version": null
+      },
+      "source_map": [
+        {
+          "target": "chunks.json#/chunks/0",
+          "source_ref": {
+            "source_id": "src_001",
+            "url": null,
+            "page": 1,
+            "timestamp": null,
+            "bbox": [0, 0, 100, 40],
+            "message_id": null
+          },
+          "confidence": 0.9,
+          "notes": ["synthetic fixture bbox"]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "Openmd",
+  "version": "1.3.0",
+  "description": "一键把当前网页、视频或播客保存成干净的 Markdown 原文 / 逐字稿（由本机 openmd 处理）；内置 OpenCLI 浏览器桥接，借用你已登录的浏览器读取 B 站、公众号等。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0voJuuFdrQiqZFKlcfFdjc9xcD8zMtD8JH4fmNAuO2Fl6swv1qINbzy6QiUX2SGMyEZTg/r6tFLiCHGuFHZ1b3LFW1ytCzQS/OuwTs3tRG4y07AQk+9ZWAtMVy02+Njo4lSuORh/ODwQb1o5JkgH1DJbdGwNyfWFgA3KljYEYBh4GvJScDfqFt25l079hyF2y/zTHVmq7EhFj+mO9SFRZp8K2tpaUCdtS9TGA40RLw77P209kJSsa0Ii0/CMgXawb/305FMmWif438vUoKiGbte9HQBy51ouwpQxeTi3zsszpV/KSFFejPDMpr0RfF/YrInSnEo9tMcxQRb/ltlJgQIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "保存到 Openmd",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "nativeMessaging",
+    "activeTab",
+    "contextMenus",
+    "notifications",
+    "storage",
+    "scripting",
+    "debugger",
+    "tabs",
+    "cookies",
+    "alarms",
+    "tabGroups",
+    "downloads"
+  ],
+  "options_page": "options.html",
+  "host_permissions": [
+    "<all_urls>"
+  ]
+}

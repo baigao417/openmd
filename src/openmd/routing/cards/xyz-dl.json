@@ -1,0 +1,60 @@
+{
+  "schema": "openmd.tool-card/v1",
+  "installation": {
+    "mode": "isolated_existing",
+    "sha256": "d5676a016f220f4a6a7c2944ccfb77dd92cf33863500f5ac18b986f34c97aa02",
+    "verification": "SHA256 of the installed entry file; dependency tree is isolated, not attested"
+  },
+  "evidence": [
+    {
+      "date": "2026-11-07",
+      "ledger": "docs/benchmarks/routes/trials-backup.jsonl",
+      "scope": "one real sample; does not establish platform-wide completeness"
+    }
+  ],
+  "id": "xyz-dl",
+  "kind": "python_script",
+  "version": "sha256:d5676a016f220f4a6a7c2944ccfb77dd92cf33863500f5ac18b986f34c97aa02",
+  "license": "AGPL-3.0",
+  "homepage": "",
+  "launcher": {
+    "script": "main.py"
+  },
+  "capabilities": [
+    {
+      "status_policy": "verified_if_valid_else_failed",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "id": "xyz-dl.xiaoyuzhou.media-asr",
+      "sources": [
+        "xiaoyuzhou"
+      ],
+      "capability": "media",
+      "url_hosts": [
+        "www.xiaoyuzhoufm.com",
+        "xiaoyuzhoufm.com"
+      ],
+      "url_path_pattern": "^/episode/[a-f0-9]{24}/?$",
+      "argv": [
+        "{url}",
+        "--output",
+        "{workdir}",
+        "--no-metadata"
+      ],
+      "reader": {
+        "type": "media_dir"
+      },
+      "then": "asr.auto",
+      "gates": [
+        "network",
+        "media_download",
+        "asr"
+      ],
+      "source_level": "media_asr",
+      "timeout_s": 300,
+      "validation": {
+        "min_chars": 1
+      }
+    }
+  ]
+}

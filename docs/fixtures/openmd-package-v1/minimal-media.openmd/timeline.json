@@ -1,0 +1,21 @@
+{
+  "items": [
+    {
+      "id": "t_0001",
+      "start": 0.0,
+      "end": 12.3,
+      "text": "Opening segment.",
+      "source_map": [
+        {
+          "target": "transcript.md#seg_0001",
+          "source_ref": {
+            "source_id": "src_001",
+            "timestamp": "00:00:00-00:00:12.300"
+          },
+          "confidence": 1.0,
+          "notes": []
+        }
+      ]
+    }
+  ]
+}

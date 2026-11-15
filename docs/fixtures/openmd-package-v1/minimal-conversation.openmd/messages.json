@@ -1,0 +1,38 @@
+{
+  "messages": [
+    {
+      "id": "msg_0001",
+      "timestamp": "2026-06-18T00:00:00Z",
+      "speaker": "Alice",
+      "text": "Hello from a minimal conversation fixture.",
+      "attachments": [],
+      "links": [],
+      "source_map": [
+        {
+          "target": "index.md#conversation",
+          "source_ref": {
+            "source_id": "src_001",
+            "message_id": "msg_0001",
+            "timestamp": "2026-06-18T00:00:00Z"
+          },
+          "confidence": 1.0,
+          "notes": []
+        }
+      ]
+    },
+    {
+      "id": "msg_0002",
+      "timestamp": "2026-06-18T00:01:00Z",
+      "speaker": "Bob",
+      "text": "Link reference: https://example.com",
+      "attachments": [],
+      "links": [
+        {
+          "url": "https://example.com",
+          "text": "https://example.com"
+        }
+      ],
+      "source_map": []
+    }
+  ]
+}

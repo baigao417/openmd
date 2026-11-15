@@ -1,0 +1,22 @@
+{
+  "openmd_version": "1.0-draft",
+  "package_schema_version": "1.0-draft",
+  "package_id": "wechat_fixture_group_chat",
+  "content_id": "fixture_group_chat",
+  "dedupe_key": "wechat:group:fixture_group_chat:2026-06-18",
+  "title": "Fixture Group Chat",
+  "profile": "conversation",
+  "modalities": ["text", "link"],
+  "status": "verified",
+  "source_level": "manual_export",
+  "created_at": "2026-06-18T00:00:00Z",
+  "updated_at": "2026-06-18T00:00:00Z",
+  "language": "zh-CN",
+  "source_platform": "wechat",
+  "backend": {
+    "name": "local.wx.export",
+    "route": "local",
+    "version": null
+  },
+  "warnings": []
+}

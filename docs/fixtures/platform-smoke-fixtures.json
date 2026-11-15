@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "name": "openmd-v0-platform-smoke-fixtures",
+  "purpose": "Low-risk fixture manifest for Openmd V0 platform smoke checks. Real network extraction is opt-in; unattended CI may validate this manifest without fetching URLs.",
+  "fixtures": [
+    {
+      "category_id": "bilibili",
+      "label": "Bilibili",
+      "platforms": ["bilibili"],
+      "samples": [
+        {
+          "id": "bilibili-single-public-video",
+          "input_type": "single",
+          "platform": "bilibili",
+          "url": "https://www.bilibili.com/video/BV1KLGE6FEoJ/",
+          "sample_kind": "public_url",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "verified",
+          "ci_policy": "skip_unless_network_enabled",
+          "notes": "Sanitized from a user-provided Bilibili sample by dropping tracking query parameters. Prefer native subtitle/provider chain, with OpenCLI subtitle fallback when browser backends are explicitly enabled."
+        }
+      ]
+    },
+    {
+      "category_id": "youtube",
+      "label": "YouTube",
+      "platforms": ["youtube"],
+      "samples": [
+        {
+          "id": "youtube-single-public-video",
+          "input_type": "single",
+          "platform": "youtube",
+          "url": "https://www.youtube.com/watch?v=mJMwKQSovjo",
+          "sample_kind": "public_url",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "verified",
+          "ci_policy": "skip_unless_network_enabled",
+          "notes": "Public single-video transcript sample from backend-selection research. Do not download media by default."
+        }
+      ]
+    },
+    {
+      "category_id": "weixin",
+      "label": "微信公众号",
+      "platforms": ["weixin"],
+      "samples": [
+        {
+          "id": "weixin-single-public-article",
+          "input_type": "single",
+          "platform": "weixin",
+          "url": "https://mp.weixin.qq.com/s/jql2L3TiI-8kVeRy3BRy_Q",
+          "sample_kind": "public_url",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "verified",
+          "ci_policy": "skip_unless_network_enabled",
+          "notes": "Single public article sample. Markdown output should keep remote image links by default and avoid raw HTML persistence."
+        }
+      ]
+    },
+    {
+      "category_id": "xiaoyuzhou",
+      "label": "小宇宙",
+      "platforms": ["xiaoyuzhou"],
+      "samples": [
+        {
+          "id": "xiaoyuzhou-single-episode-auth-placeholder",
+          "input_type": "single",
+          "platform": "xiaoyuzhou",
+          "url": "https://www.xiaoyuzhoufm.com/episode/6a1cdbc1ac7bdb080c33d96d",
+          "sample_kind": "auth_placeholder",
+          "requires_network": true,
+          "requires_auth": true,
+          "expected_outcome": "expected_auth_failure",
+          "ci_policy": "skip_unless_user_provided_local_auth",
+          "notes": "Use only with user-approved local credentials or an explicitly enabled transcript provider. Do not persist refresh tokens, request headers, or raw transcript dumps."
+        }
+      ]
+    },
+    {
+      "category_id": "douyin_tiktok",
+      "label": "抖音 / TikTok",
+      "platforms": ["douyin", "tiktok"],
+      "samples": [
+        {
+          "id": "douyin-public-shortlink",
+          "input_type": "single",
+          "platform": "douyin",
+          "url": "https://v.douyin.com/60MDLsGxFyw/",
+          "sample_kind": "public_url",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "partial",
+          "ci_policy": "skip_unless_network_enabled",
+          "notes": "Public short-link sample. Treat redirects and platform blocks as structured partial/failure signals; do not perform account actions."
+        },
+        {
+          "id": "tiktok-user-provided-placeholder",
+          "input_type": "single",
+          "platform": "tiktok",
+          "url": null,
+          "sample_kind": "user_input_placeholder",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "partial",
+          "ci_policy": "skip_missing_user_sample",
+          "notes": "TikTok was intentionally left without a concrete V0 smoke URL. Add a public or user-approved URL before real smoke."
+        }
+      ]
+    },
+    {
+      "category_id": "xiaohongshu",
+      "label": "小红书",
+      "platforms": ["xiaohongshu"],
+      "samples": [
+        {
+          "id": "xiaohongshu-public-note-sanitized",
+          "input_type": "single",
+          "platform": "xiaohongshu",
+          "url": "https://www.xiaohongshu.com/discovery/item/6a0fc2060000000035039084",
+          "sample_kind": "auth_placeholder",
+          "requires_network": true,
+          "requires_auth": true,
+          "expected_outcome": "expected_auth_failure",
+          "ci_policy": "skip_unless_user_provided_local_auth",
+          "notes": "Sanitized user sample; do not store xsec_token or share tracking parameters. Browser/session backends must remain opt-in."
+        }
+      ]
+    },
+    {
+      "category_id": "xiaoe",
+      "label": "小鹅通",
+      "platforms": ["xiaoe"],
+      "samples": [
+        {
+          "id": "xiaoe-course-permission-placeholder",
+          "input_type": "single",
+          "platform": "xiaoe",
+          "url": "https://appttezzxyn5858.h5.xiaoeknow.com/p/course/video/v_69ca2005e4b0694c5ba49e49",
+          "sample_kind": "auth_placeholder",
+          "requires_network": true,
+          "requires_auth": true,
+          "expected_outcome": "expected_auth_failure",
+          "ci_policy": "skip_unless_user_provided_local_auth",
+          "notes": "Sanitized from a user-provided course URL by dropping product/course query parameters. Do only bounded read-only transcript/content/catalog smoke; never bypass course permissions."
+        }
+      ]
+    },
+    {
+      "category_id": "generic_media",
+      "label": "通用网页视频 / generic media fallback",
+      "platforms": ["generic_media"],
+      "samples": [
+        {
+          "id": "generic-media-public-mp4",
+          "input_type": "single",
+          "platform": "generic_media",
+          "url": "https://www.w3schools.com/html/mov_bbb.mp4",
+          "sample_kind": "public_url",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "partial",
+          "ci_policy": "skip_unless_network_enabled",
+          "notes": "Detector/media fallback fixture only. Real ASR or media download must remain explicitly gated."
+        }
+      ]
+    },
+    {
+      "category_id": "x",
+      "label": "X",
+      "platforms": ["x"],
+      "samples": [
+        {
+          "id": "x-public-post-auth-placeholder",
+          "input_type": "single",
+          "platform": "x",
+          "url": "https://x.com/369Serena/status/2061306852990931229",
+          "sample_kind": "auth_placeholder",
+          "requires_network": true,
+          "requires_auth": true,
+          "expected_outcome": "expected_auth_failure",
+          "ci_policy": "skip_unless_user_provided_local_auth",
+          "notes": "Sanitized user-provided X post URL. Read-only timeline/thread extraction only; browser/session paths must be explicit and must not export cookies."
+        }
+      ]
+    },
+    {
+      "category_id": "web_article",
+      "label": "网页文章泛抓",
+      "platforms": ["web_article"],
+      "samples": [
+        {
+          "id": "web-article-public-example",
+          "input_type": "single",
+          "platform": "web_article",
+          "url": "https://example.com/",
+          "sample_kind": "public_url",
+          "requires_network": true,
+          "requires_auth": false,
+          "expected_outcome": "partial",
+          "ci_policy": "skip_unless_network_enabled",
+          "notes": "Stable public URL for parser smoke shape only; richer user-approved article URLs can be added later."
+        }
+      ]
+    },
+    {
+      "category_id": "feishu",
+      "label": "飞书文档",
+      "platforms": ["feishu"],
+      "samples": [
+        {
+          "id": "feishu-docx-auth-placeholder",
+          "input_type": "single",
+          "platform": "feishu",
+          "url": "https://my.feishu.cn/docx/ZsckdxGbEoQlz2x6xkkccLNcnqf",
+          "sample_kind": "auth_placeholder",
+          "requires_network": true,
+          "requires_auth": true,
+          "expected_outcome": "expected_auth_failure",
+          "ci_policy": "skip_unless_user_provided_local_auth",
+          "notes": "User-provided Feishu document URL. Prefer direct lark-cli read-only Markdown/doc fetch with local auth; do not store exported private document content in fixtures."
+        }
+      ]
+    }
+  ]
+}

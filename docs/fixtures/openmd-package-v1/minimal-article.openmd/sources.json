@@ -1,0 +1,34 @@
+{
+  "package_schema_version": "1.0-draft",
+  "primary_source_id": "src_001",
+  "sources": [
+    {
+      "source_id": "src_001",
+      "source_type": "article",
+      "platform": "weixin",
+      "input_ref": "https://mp.weixin.qq.com/s/fixture",
+      "capture_method": "opencli.weixin.download",
+      "permission_scope": "user_accessible",
+      "captured_at": "2026-06-18T00:00:00Z",
+      "adapter": {
+        "name": "opencli.weixin.download",
+        "version": null
+      },
+      "source_map": [
+        {
+          "target": "index.md#content",
+          "source_ref": {
+            "source_id": "src_001",
+            "url": "https://mp.weixin.qq.com/s/fixture",
+            "page": null,
+            "timestamp": null,
+            "bbox": null,
+            "message_id": null
+          },
+          "confidence": 1.0,
+          "notes": []
+        }
+      ]
+    }
+  ]
+}

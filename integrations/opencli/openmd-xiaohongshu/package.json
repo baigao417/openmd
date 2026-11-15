@@ -1,0 +1,14 @@
+{
+  "name": "opencli-plugin-openmd-xiaohongshu",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Project-owned read-only Xiaohongshu creator discovery for Openmd.",
+  "scripts": {
+    "build": "esbuild creator-notes.ts --outfile=creator-notes.js --format=esm --platform=node && esbuild note-assets.ts --outfile=note-assets.js --format=esm --platform=node",
+    "test": "node --test creator-notes.test.ts note-assets.test.ts"
+  },
+  "peerDependencies": {
+    "@jackwener/opencli": ">=1.8.6"
+  }
+}

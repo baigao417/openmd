@@ -1,5 +1,6 @@
 """Offline regressions for readable output; source words and order stay intact."""
 
+import re
 import unittest
 
 from openmd.core.models import ContentItem, MarkdownDocument, TranscriptResult
@@ -130,13 +131,68 @@ class CaptionGroupingTests(unittest.TestCase):
         self.assertEqual(format_transcript(text, source_type="video", platform="bilibili"),
                          "**00:00:00**\n\nfirst second\n\n**00:00:30**\n\nthird")
 
-    def test_mixed_or_article_text_passes_through(self):
-        for text, source_type in (("[00:00:00] caption\nUnknown source line", "video"),
-                                  (self.table([("0:00", "A", "article")]), "article")):
-            self.assertEqual(format_transcript(text, source_type=source_type, platform="youtube"), text)
+    def test_video_continuation_and_article_table_have_distinct_rendering(self):
+        text = "[00:00:00] caption\nUnknown source line"
+        self.assertEqual(format_transcript(text, source_type="video", platform="youtube"),
+                         "**00:00:00**\n\ncaption Unknown source line")
+        article = self.table([("0:00", "A", "article")])
+        self.assertEqual(format_transcript(article, source_type="article", platform="youtube"), article)
 
     def test_raw_video_body_remains_exact(self):
         text = self.table([("0:00", "A", "first"), ("1:00", "A", "second")]) + "  \n\n"
         document = MarkdownDocument({"platform": "youtube", "source_type": "video"}, "Video", text)
         self.assertIn("\n\n" + text + "\n", render_document(document, raw=True))
         self.assertNotIn("| timestamp |", render_document(document))
+
+    def test_untimed_continuation_and_leading_heading_are_recognized(self):
+        text = "# Episode title\n[00:00:00] First caption\ncontinues here\n[00:00:40] Second caption"
+        rendered = format_transcript(text, source_type="audio", platform="xiaoyuzhou")
+        self.assertTrue(rendered.startswith("# Episode title\n\n**00:00:00**"))
+        self.assertIn("First caption continues here", rendered)
+        self.assertIn("\n\n**00:00:40**\n\nSecond caption", rendered)
+
+    def test_seconds_based_index_table_is_grouped(self):
+        text = (
+            "| index | start | end | text |\n| --- | --- | --- | --- |\n"
+            "| 1 | 0.00s | 4.00s | first line |\n| 2 | 4.00s | 8.00s | second line |"
+        )
+        rendered = format_transcript(text, source_type="video", platform="youtube")
+        self.assertEqual(rendered, "**00:00:00**\n\nfirst line second line")
+
+    def test_unknown_long_unbroken_transcript_gets_one_paragraph_per_line(self):
+        lines = [f"synthetic source line {index}" for index in range(20)]
+        text = "\n".join(lines)
+        rendered = format_transcript(text, source_type="audio", platform="xiaoyuzhou")
+        self.assertEqual(rendered, "\n\n".join(lines))
+
+    def test_long_podcast_captions_are_not_split_by_six_second_gaps(self):
+        rows = [(f"0:{seconds:02}", "", "A long synthetic caption with more than forty characters.")
+                for seconds in (0, 10, 20, 30)]
+        rendered = format_transcript("\n".join(f"[{time}] {text}" for time, _, text in rows),
+                                     source_type="audio", platform="xiaoyuzhou")
+        self.assertEqual(rendered.count("**"), 2)
+        self.assertEqual(rendered.count("A long synthetic caption"), 4)
+
+    def test_formatting_preserves_source_characters_and_order(self):
+        cases = (
+            "# Synthetic title\n[00:00:00] First synthetic line\ncontinued source text\n[00:00:20] Final source line",
+            "| index | start | end | text |\n| --- | --- | --- | --- |\n"
+            "| 1 | 0.00s | 3.00s | first table phrase |\n| 2 | 3.00s | 6.00s | final table phrase |",
+        )
+        for text in cases:
+            with self.subTest(text=text[:24]):
+                rendered = format_transcript(text, source_type="audio", platform="fixture")
+                if "| index |" in text:
+                    source_parts = [line.split("|")[-2].strip() for line in text.splitlines()[2:]]
+                else:
+                    source_parts = []
+                    for line in text.splitlines():
+                        if line.startswith("# "):
+                            source_parts.append(line[2:])
+                        else:
+                            source_parts.append(re.sub(r"^\[[^\]]+\]\s*", "", line))
+                source_words = re.sub(r"\s+", "", "".join(source_parts))
+                output = re.sub(r"\*\*[^*]+\*\*", "", rendered)
+                output = re.sub(r"^#\s*", "", output, flags=re.M)
+                output = re.sub(r"\s+", "", output)
+                self.assertEqual(output, source_words)

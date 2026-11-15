@@ -1,117 +1,151 @@
+<div align="center">
+
 # Openmd
 
-`Openmd` 是一个多平台内容摄取工具：把平台 URL、作者主页、合集、课程目录、playlist、网页文章或通用可访问视频转成统一 Markdown。
+**Save any link as clean Markdown — the original text or full transcript, not a summary.**
 
-它不是漂亮笔记生成器，也不是完整 Agent 工作站。它只是 Markdown-first 工作流中的内容摄取节点，目标是 **高效、可靠地取得原始正文 / 逐字稿**。
+[![PyPI](https://img.shields.io/pypi/v/openmd-cli?color=3b5bdb)](https://pypi.org/project/openmd-cli/)
+[![Python](https://img.shields.io/pypi/pyversions/openmd-cli)](https://pypi.org/project/openmd-cli/)
+[![CI](https://github.com/baigao417/openmd/actions/workflows/ci.yml/badge.svg)](https://github.com/baigao417/openmd/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/baigao417/openmd/blob/main/LICENSE)
 
-```text
-platform url / author / playlist / catalog / web page / generic media
-  -> router
-  -> backend capability registry
-  -> platform adapter
-  -> native text / transcript / media fallback / ASR
-  -> normalized raw Markdown
-  -> local archive / truth-source review / downstream agent workflow
+English · [简体中文](https://github.com/baigao417/openmd/blob/main/README.zh-CN.md)
+
+</div>
+
+Openmd turns web articles, WeChat posts, Bilibili and YouTube videos, podcasts and more into one consistent Markdown format that both people and AI agents can read. It keeps the source's own words: no summarizing, no rewriting, no added punctuation. When something can't be fetched completely, it says what is missing instead of saving a broken page.
+
+```bash
+pip install openmd-cli
+openmd "https://www.youtube.com/watch?v=jNQXAC9IVRw"
 ```
 
-## 30 秒上手
+## Highlights
 
-```powershell
-pip install openmd-cli            # 或 pipx install openmd-cli；需要 Python 3.10+
-openmd "https://sspai.com/post/73145"        # 粘贴链接 → 回车选保存位置 → 得到 标题.md
-openmd "https://..." -o D:\notes             # 脚本 / AI Agent：给了目录就直接跑完
-openmd doctor                                # 看看现在能处理哪些内容、缺什么怎么装
+- **One command, many sources.** Articles, WeChat Official Account posts, X posts, Bilibili and YouTube subtitles, Xiaoyuzhou podcast transcripts, PDFs and Office files.
+- **Original text first.** Captions and transcripts are grouped into readable, timestamped paragraphs; the words themselves are never changed.
+- **Honest results.** Error pages, login walls and "verify you are human" screens are rejected, not saved. Partial results are labeled as partial.
+- **Works after `pip install`.** No Node.js or extra tools to install by hand; the browser reader prepares itself the first time it is needed.
+- **Uses your browser when it has to.** One browser extension lets Openmd read pages through the Chrome or Edge profile you are already logged in to, in a minimized background window.
+- **Local by default.** Everything runs on your machine. Cloud services are never turned on unless you ask for them.
+- **Built for agents too.** `openmd "<url>" -o <dir> --json` runs without prompts and returns a machine-readable receipt.
+
+## Install
+
+Requires Python 3.10 or newer. Windows, macOS and Linux.
+
+```bash
+pip install openmd-cli          # or: pipx install openmd-cli / uv tool install openmd-cli
+openmd doctor                   # shows what works now and how to add the rest
 ```
 
-| 内容 | 装完即可用 | 需要额外安装 |
-|---|---|---|
-| 网页文章、YouTube 有字幕的视频 | ✓ | — |
-| B 站字幕、公众号、X 等需要浏览器读取的平台 | 首次自动准备浏览器读取组件（约 20MB，一次） | Openmd 浏览器插件（`openmd browser-setup`），借用你已登录的浏览器在后台读取，窗口自动最小化 |
-| 无字幕视频、播客（本机转录） | | `pip install "openmd-cli[asr]"` + 模型，见 [工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md) |
-| 图片、PDF、Office | | `pip install "openmd-cli[document]"` |
-| 浏览器一键保存 | | `openmd browser-setup`（目前仅 Windows，见下文） |
+The package is called `openmd-cli`; the command and the Python module are both `openmd`.
 
-所需运行环境随 `pip install openmd-cli` 一起装好，不需要另装 Node.js 或其他工具。不想自动下载可设 `OPENMD_AUTO_INSTALL_TOOLS=0`，npm 慢可设 `OPENMD_NPM_REGISTRY` 指向镜像；想看到后台读取窗口（排查问题时）可设 `OPENMD_SHOW_BROWSER=1`。第三方组件与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
+## Usage
 
-取不到时 Openmd 不会存一份垃圾文件：它会说明原因，并打印一行 `提 issue 请附上：…`，复制到 [链接提取失败](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml) 即可。想参与开发见 [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md)。
-
-## 输入链接后保存
-
-在终端执行 `openmd` 后粘贴链接，或直接执行 `openmd "https://example.com/article"`。粘贴后直接开始提取，不做任何确认：公开读取、浏览器读取（可能使用现有登录会话）、必要时下载媒体和本机转录按路线需要自动开启；云服务从不自动开启。非交互运行（脚本 / Agent）只要给出保存目录（`-o` / `--save-to`）就按同一档自动开启；显式传入能力开关时只开这些，`--yes` 仅为兼容保留。提取成功后选择保存目录，回车沿用上次成功保存的位置，输入 `n` 取消。默认直接保存 `标题.md`，同名时才加后缀；运行日志放在 `~/.openmd/runs/`，不混入所选文件夹。终端显示“已取得正文”和“已保存”，`--verbose` 显示工具路线，`--json` 输出机器回执。
-
-带视频的帖子（目前 X）：默认只查视频时长，在正文后注明“本帖含视频（约 N 分钟），未转文字”；`--video text` 临时下载视频、本机转写并把逐字稿接在正文后（下载文件用完即删）；`--video file` 另把视频文件存进同名 assets 文件夹并在 Markdown 里嵌入。视频这一步失败不影响正文保存，只在文件里写明原因。
-
-默认 Markdown 按说话人、章节、停顿或约 30 秒合并字幕段落，保留原字词和错误，不补写标点或总结。`--raw` 保留原字幕逐行/表格排版。YouTube/B 站标题作者缺失时，在公开网络许可内补取元数据，失败仍保存正文并说明缺失；取得正文不等于已核对全文准确性与完整性。
-
-```powershell
-openmd
-openmd go "https://example.com/article"
-openmd "https://example.com/video" --raw
-# 自动化：给了目录即可；只想开公开网络时显式写 --enable-network-backends 收窄
-openmd "https://example.com/article" -o "D:\notes" --json
-openmd doctor --profile media
-openmd doctor --profile tools
-openmd probe --enable-network-backends --enable-browser-backends # 本机 out/probe-config.json 配样本，模板见 docs/examples/probe-config.example.json；--platform bilibili 只测一个平台，报告在 out/probe/<date>/，不下载媒体或跑 ASR
-openmd routes --format markdown
+```bash
+openmd                                   # paste a link, press Enter, choose a folder
+openmd "https://sspai.com/post/73145"    # process this link, then ask where to save
+openmd "https://..." -o ~/notes          # save straight into a folder, no questions
+openmd "https://..." -o ~/notes --json   # same, with a JSON receipt for scripts and agents
+openmd batch links.txt --out ~/notes     # one link per line
 ```
 
-`openmd --help` 只列日常命令（`go`、`batch`），`openmd go --help` 只列 `--raw / --save-to / --video / --json / --verbose`；其余子命令和参数照常可用，只是不在帮助里显示（`openmd <命令> -h` 查看）。
+Each link becomes `Title.md` in the folder you choose. Run logs go to `~/.openmd/runs/`, never into your notes.
 
-### 浏览器插件（Chrome / Edge）
+## What it can read
 
-1. 终端运行一次 `openmd browser-setup`（只写当前用户注册表和 `~/.openmd/browser/`；`--uninstall` 撤销）。
-2. 打开 `chrome://extensions`，开启“开发者模式”，“加载已解压的扩展程序”，选 `browser-setup` 打印并自动打开的文件夹（`~/.openmd/browser/extension`，升级 openmd 后重跑一次 `browser-setup` 即同步）。插件 ID 固定为 `lceckiadcfloncbklcojdiimbpollngh`。
-3. 点工具栏的 Openmd（仓鼠）图标：直接保存当前页到默认位置，图标出现 ✓ 即完成；失败才弹系统通知说明原因。
-   - 多选标签页：按住 Ctrl / Shift 点选多个标签，再点图标，一次全部保存。
-   - 保存一片链接：在课程目录、合集列表等页面拖选一段内容，右键“用 Openmd 保存选中的链接”。
-   - 右键“用 Openmd 保存此页 / 此链接”同样可用。
-   - X 帖子带视频：直接点图标只注明有视频；在 X 页面（或帖子链接、视频上）右键“用 Openmd 保存（含视频文字版）”附上逐字稿，“（含视频文字版和视频文件）”再留下视频。
-4. 设置页（右键图标 → 选项）：添加多个保存位置（名字 + 文件夹，可用“选择…”弹出文件夹对话框），选默认位置；“点击图标时”可切换为“先选择保存位置”；“帖子里带视频时”可改成默认附上逐字稿。
+| Content | Ready after install | Also needs |
+|---|:---:|---|
+| Web articles | ✓ | — |
+| YouTube videos with captions | ✓ | — |
+| Xiaoyuzhou podcast transcripts | ✓ | — (a ~20 MB reader component is set up automatically on first use) |
+| WeChat articles, X posts, Bilibili subtitles | ✓ | The Openmd browser extension; Bilibili AI subtitles also need you to be logged in |
+| Videos and podcasts without subtitles | | `pip install "openmd-cli[asr]"` and a local speech model ([guide](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)) |
+| PDF, Word, PowerPoint, Excel, images | | `pip install "openmd-cli[document]"` |
+| Douyin, Xiaohongshu | experimental | Browser extension and login; these sites often block automated reads |
 
-借用浏览器读取（B 站、公众号、X 等）时，Chrome 可能在顶部显示“Openmd 已开始调试此浏览器”：这是 Chrome 对使用调试接口的插件统一显示的提示，插件自身无法隐藏；读取只在 Openmd 的后台窗口里进行。
+Run `openmd doctor` to see what is ready on your machine. If a link fails, Openmd prints the reason and one line to paste into a [bug report](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml).
 
-插件通过 Chrome Native Messaging 调用本机 `openmd`，不开本地端口；只有上面这个插件 ID 能连。所有保存进入后台队列，一次只跑一个（避免本机转录同时占满显卡），后台不弹任何窗口。关机时没跑完的任务，开机后插件一联系本机就自动重新排队（最多重试一次）。重启电脑后无需任何操作。任务记录在 `~/.openmd/browser-jobs/`。
+## What the output looks like
 
-ASR 步骤自动选择已有 CUDA worker；主 CLI 保留自己的环境。本地模型目录或缓存不存在时明确报错，不自动从 HF 下载。工具位置、ASR Python 和模型根目录统一放在本机配置（`OPENMD_CONFIG` 指定 JSON，源码 checkout 默认 `out/local-config.json`，安装版默认 `~/.openmd/local.json`）；只存安装位置，不存凭证。配置示例与安装边界见 [工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)，实际路由由打包 JSON 生成：[当前路由](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md)。架构图和各平台工具一览：[Openmd 全景](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html)（浏览器打开）。
-
-## 输出格式
-
-```md
+```markdown
 ---
-title: ...
-author: ...
-url: ...
-published: "2026-11-07"
-platform: bilibili
+title: "How we built the reading lamp"
+author: "Example Studio"
+url: "https://www.bilibili.com/video/BV..."
+published: "2026-05-24"
+platform: "bilibili"
 ---
 
-# 标题
+# How we built the reading lamp
 
-**00:00:01**
+**00:00:00**
 
-合并成段的原始逐字稿……
+Today I want to show you the lamp we spent three months on and why the first two versions failed
+
+**00:00:31**
+
+The first prototype was too bright at night so we added a second light source under the shade
 
 *来源：自动字幕；识别错误保持原样。*
 ```
 
-### 状态口径
+- YAML front matter that note apps (Obsidian, Logseq) and scripts can read.
+- Transcripts are split into paragraphs of roughly 30 seconds, about 450 characters, or a natural pause, each starting with its timestamp, so people can skim and agents can cite a moment.
+- The last line states where the text came from (original text, platform captions, auto captions, speech recognition …) and whether it is complete. The label is currently in Chinese.
 
-- `verified`：已成功产出可用正文 / 逐字稿，包括原生正文、官方/作者字幕、自动字幕、第三方 transcript、ASR 转写、飞书原生 Markdown 导出。
-- `partial`：产出文本但明显不完整，例如只抓到预览、部分章节缺失、视频只转写一段、collection 部分失败。
-- `failed`：没有产出可用文字稿 / 正文。
+## Browser extension
 
-`source_level` 表示来源等级，不等同于 `status`。这些字段保留在运行记录和显式 package 中，不在普通 Markdown 中重复展开。
+Some sites only show their content to a logged-in browser. The Openmd extension (Chrome and Edge; Windows for now) lets Openmd read those pages through your own browser profile.
 
-## 文档
+1. Run `openmd browser-setup`. It registers the local connection and opens the extension folder.
+2. Open `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**, click **Load unpacked**, and choose that folder.
+3. Click the Openmd icon on any page to save it. Select several tabs to save them all, or right-click a selection to save every link in it.
 
-- [子系统地图](https://github.com/baigao417/openmd/blob/main/docs/subsystems/README.md)：每个模块的职责、入口和验证命令
-- [接入新平台](https://github.com/baigao417/openmd/blob/main/docs/adding-a-platform.md)：大多数平台只需加一张工具卡
-- [工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)、[当前路由](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md)、[全景图](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html)
+While a page is being read, Chrome may show a bar saying that Openmd started debugging the browser. Chrome shows this for every extension that uses its debugging interface, and extensions cannot hide it. The reading itself happens in a separate, minimized window.
 
-## 参与开发
+## Configuration
 
-Windows / macOS / Linux 都可以开发：`python scripts/dev_setup.py` 一条命令装好环境。流程、issue 与 PR 要求见 [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md)，硬规则见 [code-standards](https://github.com/baigao417/openmd/blob/main/docs/code-standards.md)。
+| Environment variable | Effect |
+|---|---|
+| `OPENMD_AUTO_INSTALL_TOOLS=0` | Never download the browser reader component automatically |
+| `OPENMD_NPM_REGISTRY` | npm mirror used for that one-time download |
+| `OPENMD_SHOW_BROWSER=1` | Keep the background browser window visible, for troubleshooting |
+| `OPENMD_DATA_DIR` | Where Openmd keeps its settings, logs and tools (default `~/.openmd`) |
 
-## 许可证
+More: [tool integration](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md), [current routes](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md), [architecture map](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html).
 
-[MIT](https://github.com/baigao417/openmd/blob/main/LICENSE)。第三方组件见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
+## FAQ
+
+**Does Openmd summarize or clean up the text?**
+No. It only changes whitespace and paragraph breaks. Summaries, translation and polishing are left to whatever tool you use next.
+
+**Where does my data go?**
+Nowhere. Openmd runs locally, reads pages with your own network and browser, and writes files to the folder you choose. It never stores cookies or passwords.
+
+**Why is the package called `openmd-cli`?**
+The name `openmd` on PyPI belongs to an unrelated project. Once installed, the command is still `openmd`.
+
+**A link didn't work.**
+Run it again with `--verbose` to see which reader was tried, then open a [link failure report](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml) with the line Openmd printed. Failing links are the most useful contribution there is.
+
+## Contributing
+
+Bug reports with a real link, new platform integrations and fixes are all welcome. Most new platforms need only a small JSON "tool card" — see [adding a platform](https://github.com/baigao417/openmd/blob/main/docs/adding-a-platform.md). Development works the same on Windows, macOS and Linux:
+
+```bash
+git clone https://github.com/baigao417/openmd && cd openmd
+python scripts/dev_setup.py     # creates .venv, installs dev dependencies, checks ffmpeg / Node
+python -m pytest
+```
+
+Every fix comes with a test that failed before it, and every "it works" claim comes with a real link that was actually run. Read [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md) and the [code standards](https://github.com/baigao417/openmd/blob/main/docs/code-standards.md) before opening a pull request.
+
+## Acknowledgements
+
+Openmd stands on the work of [opencli](https://github.com/jackwener/opencli) (browser reading, built in), [trafilatura](https://github.com/adbar/trafilatura), [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api), Bilibili-Harvest (Lanbin07), [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and [MarkItDown](https://github.com/microsoft/markitdown). Details and licenses: [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md).
+
+## License
+
+[MIT](https://github.com/baigao417/openmd/blob/main/LICENSE). Respect the copyright of what you save; Openmd is meant for personal archiving and research.

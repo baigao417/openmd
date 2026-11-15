@@ -14,8 +14,15 @@ _TABLE_ROW = re.compile(
 )
 _TABLE_HEADER = re.compile(r"^\s*\|\s*timestamp\s*\|\s*speaker\s*\|\s*text\s*\|\s*$", re.I)
 _TABLE_SEPARATOR = re.compile(r"^\s*\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*:?-+:?\s*\|\s*$")
+# Caption tables with second offsets, e.g. "| 3 | 16.64s | 20.37s | text |".
+_SECONDS_HEADER = re.compile(r"^\s*\|\s*index\s*\|\s*start\s*\|\s*end\s*\|\s*text\s*\|\s*$", re.I)
+_SECONDS_SEPARATOR = re.compile(r"^\s*\|(?:\s*:?-+:?\s*\|){4}\s*$")
+_SECONDS_ROW = re.compile(
+    r"^\s*\|\s*\d+\s*\|\s*(?P<start>\d+(?:\.\d+)?)s\s*\|\s*\d+(?:\.\d+)?s\s*\|(?P<text>.*)\|\s*$"
+)
 _MARKDOWN_SPECIAL = re.compile(r"([\\`*_{}\[\]<>#!|])")
 _SENTENCE_END = re.compile(r"[.!?。！？][\"'’”）)]*$")
+_UNKNOWN_LAYOUT_MIN_LINES = 20
 
 
 def markdown_label(value: object) -> str:
@@ -39,6 +46,12 @@ class _Caption:
         return total
 
 
+def _clock(seconds: float) -> str:
+    total = int(seconds)
+    hours, rest = divmod(total, 3600)
+    return f"{hours:02d}:{rest // 60:02d}:{rest % 60:02d}"
+
+
 def _table_captions(text: str) -> list[_Caption] | None:
     lines = [line for line in text.splitlines() if line.strip()]
     if len(lines) < 3 or not _TABLE_HEADER.fullmatch(lines[0]) or not _TABLE_SEPARATOR.fullmatch(lines[1]):
@@ -55,32 +68,69 @@ def _table_captions(text: str) -> list[_Caption] | None:
     return captions
 
 
-def _line_captions(text: str) -> list[_Caption] | None:
+def _seconds_table_captions(text: str) -> list[_Caption] | None:
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 3 or not _SECONDS_HEADER.fullmatch(lines[0]) or not _SECONDS_SEPARATOR.fullmatch(lines[1]):
+        return None
     captions = []
+    for line in lines[2:]:
+        match = _SECONDS_ROW.fullmatch(line)
+        if match is None:
+            return None
+        content = match.group("text").strip()
+        if content:
+            captions.append(_Caption(_clock(float(match.group("start"))), content))
+    return captions or None
+
+
+def _line_captions(text: str) -> list[_Caption] | None:
+    """Parse timestamped lines, appending untimed lines to the prior caption."""
+    captions: list[_Caption] = []
     for line in text.splitlines():
         if not line.strip():
             continue
         match = _CAPTION.fullmatch(line)
-        if match is None:
+        if match is not None:
+            captions.append(_Caption(match.group("time"), match.group("text")))
+        elif captions:
+            last = captions[-1]
+            captions[-1] = _Caption(last.timestamp, f"{last.text} {line.strip()}", last.speaker, last.chapter)
+        else:
             return None
-        captions.append(_Caption(match.group("time"), match.group("text")))
     return captions or None
+
+
+def _one_paragraph_per_line(text: str) -> str:
+    return "\n\n".join(line for line in text.splitlines() if line.strip())
 
 
 def format_transcript(text: str, *, source_type: str | None, platform: str | None = None) -> str:
     """Group recognized captions only; articles and mixed/unknown formats pass through.
 
     No text is summarized, corrected, sorted, deduplicated or repunctuated.
-    Only exact transcript table/line formats are recognized. A partly matching
-    document is returned intact rather than dropping unfamiliar source lines.
+    Recognized layouts include timestamped lines and caption tables. Unknown
+    long transcripts get paragraph breaks between source lines; other text passes through.
     """
     if source_type not in {"video", "audio"}:
         return text
+    lines = text.splitlines()
+    lead = 0
+    while lead < len(lines) and (not lines[lead].strip() or lines[lead].lstrip().startswith("# ")):
+        lead += 1
+    preface = "\n".join(line for line in lines[:lead] if line.strip())
+    if preface:
+        body = format_transcript("\n".join(lines[lead:]), source_type=source_type, platform=platform)
+        return f"{preface}\n\n{body}" if body.strip() else text
     captions = _table_captions(text)
     table = captions is not None
     if captions is None:
+        captions = _seconds_table_captions(text)
+    if captions is None:
         captions = _line_captions(text)
     if captions is None:
+        lines = [line for line in text.splitlines() if line.strip()]
+        if len(lines) >= _UNKNOWN_LAYOUT_MIN_LINES and "\n\n" not in text.strip():
+            return _one_paragraph_per_line(text)
         return text
 
     blocks: list[str] = []
@@ -115,7 +165,8 @@ def format_transcript(text: str, *, source_type: str | None, platform: str | Non
                     or (group_chars >= 1200 and bool(_SENTENCE_END.search(group[-1].text.rstrip())))
                 )
             else:
-                boundary = duration >= 30 or gap >= 6 or group_chars >= 450
+                short = len(group[-1].text) < 40
+                boundary = group_chars >= 450 or duration >= (30 if short else 90) or (short and gap >= 6)
             if gap < 0:
                 # Retain source order, even if upstream times move backwards.
                 boundary = True

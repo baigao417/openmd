@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -27,10 +29,11 @@ from openmd.backends.xiaoe import (
     build_opencli_xiaoe_catalog_args,
     build_opencli_xiaoe_content_args,
     build_opencli_xiaoe_transcript_args,
+    is_predominantly_english,
     parse_xiaoe_content_result,
     parse_xiaoe_catalog_items,
 )
-from openmd.core.models import ContentItem
+from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.manifest import discovery_manifest_row
 
 
@@ -258,6 +261,129 @@ class XiaoeCatalogDiscoveryProviderTests(unittest.TestCase):
 
 
 class XiaoeTranscriptProviderTests(unittest.TestCase):
+    def _retained_audio_dir(self) -> Path:
+        directory = Path(tempfile.mkdtemp(prefix="xiaoe-to-md-", dir=tempfile.gettempdir()))
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        (directory / "normalized.mp3").write_bytes(b"audio")
+        return directory
+
+    def test_tingwu_upload_failure_retries_once_from_retained_audio(self) -> None:
+        retained = self._retained_audio_dir()
+        calls: list[list[str]] = []
+
+        def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
+            calls.append(args)
+            if len(calls) == 1:
+                return 1, "", (
+                    "failed at transcribe-tingwu: Tingwu server reported upload/transcription "
+                    f"failure, status=2; local audio retained (temp dir: {retained})"
+                )
+            output_dir = Path(args[args.index("--out") + 1])
+            (output_dir / "lesson.md").write_text("# Lesson\n\n[00:01] text\n", encoding="utf-8")
+            return 0, "{}", ""
+
+        provider = OpenCliXiaoeTranscriptProvider(runner=fake_runner, timeout=17)
+        result = provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_TRANSCRIPT_BACKEND))
+
+        self.assertEqual(result.status, "verified")
+        self.assertEqual(result.title, "Lesson")
+        self.assertEqual(result.text, "[00:01] text")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1][calls[1].index("--audio-file") + 1], str(retained / "normalized.mp3"))
+        self.assertEqual(result.metadata["tingwu_upload_retries"], 1)
+        self.assertFalse(retained.exists())
+
+    def test_failed_tingwu_retry_stops_and_keeps_audio(self) -> None:
+        retained = self._retained_audio_dir()
+        calls: list[list[str]] = []
+        error = (
+            "Tingwu server reported upload/transcription failure, status=2; "
+            f"local audio retained (temp dir: {retained})"
+        )
+
+        def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
+            calls.append(args)
+            return 1, "", error
+
+        provider = OpenCliXiaoeTranscriptProvider(runner=fake_runner, timeout=17)
+        result = provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_TRANSCRIPT_BACKEND))
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(len(calls), 2)
+        self.assertTrue((retained / "normalized.mp3").exists())
+
+    def _english_run(self, temp_dir: Path, *, allow_local_asr: bool, local_asr=None):
+        english = "# Talk\n\n" + "[00:01] this course is taught entirely in english words " * 10
+
+        def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
+            output_dir = Path(args[args.index("--out") + 1])
+            (output_dir / "talk.md").write_text(english, encoding="utf-8")
+            return 0, json.dumps({"ok": True, "data": [{"tempDir": str(temp_dir)}]}), ""
+
+        provider = OpenCliXiaoeTranscriptProvider(runner=fake_runner, allow_local_asr=allow_local_asr, local_asr=local_asr)
+        return provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_TRANSCRIPT_BACKEND))
+
+    def test_english_audio_moves_to_local_asr_when_enabled(self) -> None:
+        temp_dir = self._retained_audio_dir()
+
+        class FakeLocal:
+            def transcribe(self, path: Path) -> TranscriptResult:
+                self.path = path
+                return TranscriptResult(text="[00:00:01] local text\n", status="verified", source_level="asr", backend="asr.faster_whisper")
+
+        local = FakeLocal()
+        result = self._english_run(temp_dir, allow_local_asr=True, local_asr=local)
+
+        self.assertEqual(result.status, "verified")
+        self.assertEqual(result.source_level, "media_asr")
+        self.assertEqual(result.text, "[00:00:01] local text\n")
+        self.assertEqual(local.path, temp_dir / "normalized.mp3")
+        self.assertEqual(result.metadata["transcript_provider"], "asr.faster_whisper")
+        self.assertFalse(temp_dir.exists())
+
+    def test_english_audio_without_gate_keeps_tingwu_and_warns(self) -> None:
+        temp_dir = self._retained_audio_dir()
+        result = self._english_run(temp_dir, allow_local_asr=False)
+
+        self.assertIn("entirely in english", result.text)
+        self.assertEqual(result.metadata["detected_language"], "en")
+        self.assertTrue(any("--enable-asr" in note for note in result.source_notes))
+        self.assertFalse(temp_dir.exists())
+
+    def test_failed_local_asr_falls_back_to_tingwu_text(self) -> None:
+        temp_dir = self._retained_audio_dir()
+
+        class FailingLocal:
+            def transcribe(self, path: Path) -> TranscriptResult:
+                return TranscriptResult(text="", status="failed", source_level="partial_extraction", backend="asr.faster_whisper")
+
+        result = self._english_run(temp_dir, allow_local_asr=True, local_asr=FailingLocal())
+
+        self.assertIn("entirely in english", result.text)
+        self.assertTrue(any("local ASR failed" in note for note in result.source_notes))
+
+    def test_language_detection_keeps_mixed_chinese_on_tingwu(self) -> None:
+        self.assertFalse(is_predominantly_english("这是一节中文课程，偶尔出现 AI、API 和 OpenCLI。" * 30))
+        self.assertFalse(is_predominantly_english("short english"))
+        self.assertTrue(is_predominantly_english("this course is taught in english " * 20))
+
+    def test_other_failures_and_foreign_directories_do_not_retry(self) -> None:
+        for error in (
+            "login required",
+            "Tingwu server reported upload/transcription failure, status=2; "
+            "local audio retained (temp dir: C:/Windows)",
+        ):
+            calls: list[list[str]] = []
+
+            def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
+                calls.append(args)
+                return 1, "", error
+
+            provider = OpenCliXiaoeTranscriptProvider(runner=fake_runner, timeout=17)
+            result = provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_TRANSCRIPT_BACKEND))
+            self.assertEqual(result.status, "failed")
+            self.assertEqual(len(calls), 1)
+
     def test_transcript_command_reads_temp_markdown_and_cleans_output_dir(self) -> None:
         calls: list[tuple[list[str], int]] = []
         output_dirs: list[Path] = []
@@ -279,7 +405,7 @@ class XiaoeTranscriptProviderTests(unittest.TestCase):
 
         self.assertTrue(result.has_usable_text)
         self.assertEqual(result.status, "verified")
-        self.assertEqual(result.source_level, "third_party_extractor")
+        self.assertEqual(result.source_level, "media_asr")
         self.assertEqual(result.backend, OPENCLI_XIAOE_TRANSCRIPT_BACKEND)
         self.assertEqual(result.title, "Xiaoe lesson")
         self.assertIn("[00:00:01] transcript text", result.text)
@@ -288,7 +414,8 @@ class XiaoeTranscriptProviderTests(unittest.TestCase):
         self.assertEqual(calls[0][1], 17)
         self.assertEqual(calls[0][0][:4], ["opencli", "xiaoe", "transcript", _xiaoe_item().url])
         self.assertIn("--keep-artifacts", calls[0][0])
-        self.assertEqual(calls[0][0][calls[0][0].index("--keep-artifacts") + 1], "false")
+        self.assertEqual(calls[0][0][calls[0][0].index("--provider") + 1], "tingwu")
+        self.assertEqual(calls[0][0][calls[0][0].index("--keep-artifacts") + 1], "true")
         self.assertNotIn("batch-transcript", calls[0][0])
         self.assertNotIn("download", calls[0][0])
         self.assertEqual(
@@ -296,7 +423,7 @@ class XiaoeTranscriptProviderTests(unittest.TestCase):
             build_opencli_xiaoe_transcript_args(_xiaoe_item().url, output_dir=str(output_dirs[0])),
         )
         self.assertIn(
-            "No batch-transcript, full-course crawl, media download, ASR, or permission bypass was attempted.",
+            "OpenCLI downloaded this item's media and transcribed it with Tingwu; no batch-transcript, full-course crawl, or permission bypass was attempted.",
             result.source_notes,
         )
 
@@ -343,6 +470,23 @@ class XiaoeTranscriptProviderTests(unittest.TestCase):
 
 
 class XiaoeContentFallbackTests(unittest.TestCase):
+    def test_browser_error_content_is_not_a_verified_article(self) -> None:
+        body = "This site can’t provide a secure connection\nexample.com sent an invalid response.\nERR_SSL_PROTOCOL_ERROR\nReload"
+        provider = OpenCliXiaoeContentProvider(
+            runner=lambda *args, **kwargs: (
+                0,
+                json.dumps({"title": "example.com", "content": body, "content_length": len(body)}),
+                "",
+            )
+        )
+
+        result = provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_CONTENT_BACKEND))
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error_code, "browser_error_page")
+        self.assertEqual(result.text, "")
+        self.assertFalse(result.has_usable_text)
+
     def test_content_fallback_command_shape_and_success_result(self) -> None:
         calls: list[tuple[list[str], int]] = []
 

@@ -41,6 +41,32 @@ def test_empty_batch_is_zero_discovered_blocked(tmp_path):
     assert 'empty_scope' in summary['limitations']
 
 
+def test_long_xiaoe_ingest_keeps_one_receipt_identity(tmp_path):
+    url = 'https://demo.h5.xet.pomoho.com/content_page/' + 'a' * 250
+    code, payload, _ = invoke(tmp_path, ['ingest', url, '--backend', 'mock'])
+    assert code == 0
+    assert payload['counts']['discovered'] == 1
+    assert payload['counts']['verified'] == 1
+    assert payload['counts']['unattempted'] == 0
+    rows = [json.loads(line) for line in (tmp_path / 'runlog.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert rows[0]['input_url'] == url
+
+
+def test_long_urls_with_same_prefix_remain_distinct_receipt_items(tmp_path):
+    prefix = 'https://example.com/' + 'a' * 250
+    urls = [prefix + '/first?token=secret', prefix + '/second?token=secret']
+    inputs = tmp_path / 'urls.txt'
+    inputs.write_text('\n'.join(urls), encoding='utf-8')
+    code, payload, _ = invoke(tmp_path, ['batch', str(inputs), '--backend', 'mock'])
+    assert code == 0
+    assert payload['counts']['discovered'] == 2
+    assert payload['counts']['verified'] == 2
+    assert payload['counts']['unattempted'] == 0
+    rows = [json.loads(line) for line in (tmp_path / 'runlog.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert len({row['input_url'] for row in rows}) == 2
+    assert all('secret' not in row['input_url'] for row in rows)
+
+
 def test_guardrail_accounts_for_remaining_batch_inputs(tmp_path, monkeypatch):
     inputs = tmp_path / 'inputs.txt'
     inputs.write_text('\n'.join(f'https://example.com/{i}' for i in range(3)))

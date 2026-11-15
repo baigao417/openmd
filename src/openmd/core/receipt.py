@@ -117,6 +117,7 @@ class CompactReceiptRun:
         failure_class: str | None = None,
         recovery_type: str | None = None,
         artifact_ref: str | None = None,
+        route_trace: dict[str, Any] | None = None,
     ) -> None:
         if status not in self.TERMINAL_STATUSES:
             raise ValueError(f"invalid terminal status: {status}")
@@ -137,6 +138,8 @@ class CompactReceiptRun:
             "failure_class": failure_class,
             "recovery_type": recovery_type,
         }
+        if route_trace:
+            record["route_trace"] = {key: route_trace[key] for key in ("card_id", "route_version", "overlay_applied") if key in route_trace}
         # Error text may contain signed URLs, headers, or source content; never persist it.
         del error_summary
         with self.items_path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -270,7 +273,7 @@ class CompactReceiptRun:
     @classmethod
     def _status_for(cls, counts: dict[str, int], *, discovery_complete: bool, manifest_only: bool) -> str:
         if counts["discovered"] == 0:
-            return "blocked"
+            return "discovery_only" if manifest_only and discovery_complete else "blocked"
         if manifest_only and discovery_complete:
             return "discovery_only"
         if counts["failed"] or counts["retryable_failure"]:

@@ -29,6 +29,8 @@ from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.interpreters import run_interruptibly
 
 
 LARK_CLI_DOCS_FETCH_BACKEND = "lark-cli.docs.fetch"
@@ -297,7 +299,7 @@ class LarkCliDriveExportMarkdownProvider:
         if not inspect_result.token:
             return _failed(self.name, "invalid_input", "Could not resolve a Feishu doc/docx token for export.")
 
-        with tempfile.TemporaryDirectory(prefix="openmd-feishu-") as tmpdir:
+        with owned_temporary_directory(prefix="openmd-feishu-") as tmpdir:
             exit_code, stdout, stderr = _run_command_with_optional_cwd(
                 self._runner,
                 build_lark_drive_export_markdown_args(
@@ -504,7 +506,7 @@ def _run_command(
         actual_args[0] = _resolve_lark_cli_executable()
 
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             actual_args,
             capture_output=True,
             text=True,

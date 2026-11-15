@@ -17,6 +17,40 @@ from openmd.backends.x import (
 from openmd.core.models import ContentItem
 
 
+def test_table_thread_title_uses_requested_post_and_preserves_body(tmp_path):
+    import json
+    from openmd.core.filename import filename_base_for_item
+    from openmd.core.output import write_item_result
+    from openmd.core.renderer import render_markdown_document
+
+    text = (
+        "| id | author | text | url |\n| --- | --- | --- | --- |\n"
+        "| 999 | reply | A reply | https://x.com/reply/status/999 |\n"
+        "| 123 | @writer | 第一行\\|原文<br>下一行 | https://x.com/writer/status/123 |\n"
+    )
+    item = ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article")
+    result = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, text, "")).extract(
+        BackendExtractRequest(item=item, backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,))
+    )
+    assert result.title == "@writer：第一行|原文 下一行"
+    assert result.author == "@writer"
+    assert result.text == text
+    document = render_markdown_document(item, result)
+    assert document.frontmatter["title"] == result.title
+    written = write_item_result(item, result, tmp_path)
+    assert written.stem == filename_base_for_item(result.title, item_id=item.id, url=item.url)
+    saved_title = next(line.removeprefix("title: ") for line in written.read_text(encoding="utf-8").splitlines() if line.startswith("title: "))
+    assert json.loads(saved_title) == result.title
+
+
+def test_thread_without_title_has_stable_post_fallback():
+    item = ContentItem(platform="x", input_type="single", url="https://x.com/i/status/123", source_type="article")
+    result = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, "Plain text", "")).extract(
+        BackendExtractRequest(item=item, backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,))
+    )
+    assert result.title == "X-123"
+
+
 class XOpenCliTextProviderTests(unittest.TestCase):
     def test_thread_provider_uses_post_id_and_does_not_pass_query_tokens(self) -> None:
         calls: list[tuple[list[str], int]] = []

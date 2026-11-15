@@ -12,6 +12,21 @@ $assetSourcePath = Join-Path $pluginDir "note-assets.ts"
 $assetRuntimePath = Join-Path $pluginDir "note-assets.js"
 $checkScript = Join-Path $scriptDir "check-openmd-xiaohongshu-plugin.ps1"
 
+# Prefer Openmd's private managed host when the user has no standalone host.
+# This only changes this PowerShell process; it never edits ~/.opencli or the
+# machine-wide PATH.
+$dataRoot = if ($env:OPENMD_DATA_DIR) { $env:OPENMD_DATA_DIR } else { Join-Path $HOME ".openmd" }
+$managedBin = Join-Path $dataRoot "tools\opencli\node_modules\.bin"
+if (Test-Path -LiteralPath $managedBin -PathType Container) {
+    $env:PATH = "$managedBin$([IO.Path]::PathSeparator)$env:PATH"
+}
+$python = Get-Command python -ErrorAction SilentlyContinue
+if ($python) {
+    $activationCode = "import os,sys;sys.path.insert(0, r'$repoRoot\src');from openmd.runtime.managed_tools import activate;activate();print(os.environ.get('PATH',''))"
+    $activatedPath = & $python.Source -c $activationCode 2>$null | Select-Object -Last 1
+    if ($LASTEXITCODE -eq 0 -and $activatedPath) { $env:PATH = [string]$activatedPath }
+}
+
 if (-not (Get-Command opencli -ErrorAction SilentlyContinue)) {
     throw "opencli is not available on PATH. Install or repair OpenCLI before registering the Openmd Xiaohongshu plugin."
 }

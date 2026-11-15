@@ -17,7 +17,6 @@ from openmd.backends.bilibili import (
 )
 from openmd.backends.douyin import DOUYIN_OPENMD_CREATOR_VIDEOS_BACKEND, douyin_user_target
 from openmd.backends.web_article import OPENCLI_WEB_READ_BACKEND
-from openmd.backends.weixin import WECHAT_ARTICLE_EXPORTER_DOWNLOAD_BACKEND
 from openmd.backends.youtube import OPENCLI_YOUTUBE_TRANSCRIPT_BACKEND
 from openmd.backends.youtube_transcript import extract_youtube_video_id
 from openmd.backends.youtube_discovery import (
@@ -251,17 +250,19 @@ def build_plan(
     gates = available_gates or set()
     required = list(record.required_gates)
     runtime_provider = record.runtime_provider
-    # Prefer the primary, but expose an existing browser alternative when that
-    # is the caller's declared gate. No provider construction or health probe.
-    browser_alternatives = {
-        "youtube": OPENCLI_YOUTUBE_TRANSCRIPT_BACKEND,
-        "bilibili": BILIBILI_OPENCLI_SUBTITLE_BACKEND,
-        "weixin": WECHAT_ARTICLE_EXPORTER_DOWNLOAD_BACKEND,
-        "web_article": OPENCLI_WEB_READ_BACKEND,
-    }
-    if "network" not in gates and "browser" in gates and source_id in browser_alternatives:
-        runtime_provider = browser_alternatives[source_id]
-        required = ["browser"]
+    if not set(required) <= gates and source_id in {"youtube", "bilibili", "weixin", "web_article"}:
+        # Project an allowed fallback from the same declarations as execution.
+        # Planning stays static: do not construct or probe a provider.
+        from openmd.routing.loader import effective_routes, load_catalog
+
+        catalog = load_catalog()
+        for route in effective_routes(source_id):
+            candidate = next((backend for backend in route["chain"]
+                              if set(catalog.capabilities[backend].get("gates", [])) <= gates), None)
+            if candidate:
+                runtime_provider = candidate
+                required = list(catalog.capabilities[candidate].get("gates", []))
+                break
     discovery_provider = None
     required_discovery_backend = None
     operation_block = None
@@ -319,7 +320,7 @@ def build_plan(
     # An executable route can differ from the default CLI primary. Surface the
     # exact override so callers never silently execute a placeholder instead.
     required_backend = None
-    if source_id in {"local_audio", "local_video", "tutorial_video", "douyin"} or runtime_provider != record.planned_provider:
+    if source_id in {"local_audio", "local_video", "tutorial_video", "douyin", "youtube", "bilibili", "weixin", "web_article"} or runtime_provider != record.planned_provider:
         required_backend = runtime_provider
     return PlanResult(
         ok=True,

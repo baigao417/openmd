@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题 / 讨论
+    url: https://github.com/baigao417/openmd/discussions
+    about: 安装、用法问题先在 Discussions 提问；确定是 bug 再开 issue。
+  - name: 安全问题
+    url: https://github.com/baigao417/openmd/security/advisories/new
+    about: 涉及凭证泄露、越权读取等安全问题，请私下报告，不要公开开 issue。

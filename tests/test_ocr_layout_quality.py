@@ -30,13 +30,19 @@ def test_ocr_locators_survive_package_and_drop_untrusted_fields(tmp_path):
     from openmd.core.package_writer import write_item_package
     from openmd.core.package_validator import validate_package
     import json
-    source=tmp_path/'image.png';source.write_bytes(b'fixture')
+    # Exercise the macOS path component on every runner.
+    source=tmp_path/'private'/'image.png';source.parent.mkdir();source.write_bytes(b'fixture')
     item=ScreenshotOcrAdapter().resolve_items(str(source))[0]
     result=TranscriptResult(text='left\nright',status='partial',source_level='ocr',backend='ocr.rapidocr',metadata={'source_map':[{'line':1,'bbox':[0,0,100,20],'url':'https://example.com/?token=private'}]})
     package=write_item_package(item,result,tmp_path/'out').package_path
     sources=(package/'sources.json').read_text()
-    assert 'private' not in sources
+    # macOS itself uses /private/var/... for tmp_path. Only the untrusted
+    # backend URL/token must disappear; the local source path is legitimate.
+    assert 'https://example.com/' not in sources
+    assert 'token=private' not in sources
     entry=json.loads(sources)['sources'][0]['source_map'][0]
+    assert 'url' not in entry
+    assert entry['source_ref']['url'] == source.resolve().as_uri()
     assert entry['source_ref']['bbox']==[0,0,100,20]
     assert entry['confidence'] is None
     assert validate_package(package).ok

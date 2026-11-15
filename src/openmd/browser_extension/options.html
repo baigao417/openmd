@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Openmd 设置</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body class="options">
+  <main>
+    <header class="opt-head">
+      <img src="icons/icon-48.png" width="36" height="36" alt="">
+      <div>
+        <h1>Openmd 设置</h1>
+        <p class="host" id="host">正在连接本机 openmd…</p>
+      </div>
+    </header>
+
+    <section>
+      <h2>点击图标时</h2>
+      <label class="choice"><input type="radio" name="mode" value="auto"> 直接保存到默认位置</label>
+      <label class="choice"><input type="radio" name="mode" value="choose"> 先选择保存位置</label>
+    </section>
+
+    <section>
+      <h2>帖子里带视频时（目前 X）</h2>
+      <label class="choice"><input type="radio" name="video" value="note"> 只注明有视频（最快）</label>
+      <label class="choice"><input type="radio" name="video" value="text"> 附上视频逐字稿（本机转写，较慢）</label>
+      <p class="hint">不论选哪个，在 X 页面右键都可以单独选“含视频文字版”或“含视频文字版和视频文件”。</p>
+    </section>
+
+    <section>
+      <h2>保存位置</h2>
+      <p class="hint">名字随便起，比如“笔记收件箱”“D 盘资料”。圆点选中的是默认位置。</p>
+      <ul id="rows" class="rows"></ul>
+      <button id="add" type="button" class="secondary">＋ 添加位置</button>
+    </section>
+
+    <p class="saved" id="saved" role="status" aria-live="polite"></p>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

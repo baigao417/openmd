@@ -3,15 +3,10 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "author": "baigao417",
-  "license": "MIT",
   "description": "Project-owned read-only Douyin creator discovery for Openmd.",
   "scripts": {
     "build": "esbuild creator-videos.ts --outfile=creator-videos.js --format=esm --platform=node",
     "test": "node --test creator-videos.test.ts"
-  },
-  "devDependencies": {
-    "esbuild": "^0.25.0"
   },
   "peerDependencies": {
     "@jackwener/opencli": ">=1.8.6"

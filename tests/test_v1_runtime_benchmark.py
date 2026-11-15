@@ -76,9 +76,11 @@ class CliProjectionTests(unittest.TestCase):
     def test_doctor_profiles_are_safe_and_redacted(self) -> None:
         for profile in ("core", "web", "media", "documents", "authenticated-social"):
             stdout = io.StringIO()
-            with contextlib.redirect_stdout(stdout):
-                self.assertEqual(cli_main(["doctor", "--profile", profile]), 0)
+            with contextlib.redirect_stdout(stdout), mock.patch("openmd.core.doctor._document_diagnostics", return_value={"ready": True, "network_access": "configured_ollama_metadata_only"}):
+                exit_code = cli_main(["doctor", "--profile", profile])
             payload = json.loads(stdout.getvalue())
+            # Readiness depends on optional local tools (ASR models, opencli); not under test here.
+            self.assertEqual(exit_code, 0 if payload["ok"] else 1)
             self.assertEqual(payload["profile"], profile)
             self.assertFalse(payload["safe_session_boundary"]["reads_private_browser_profiles"])
             self.assertEqual(payload["profile_diagnostics"]["private_session_state"], "not_read")

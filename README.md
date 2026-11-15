@@ -1,115 +1,117 @@
 # Openmd
 
-Openmd is a Markdown-first content ingestion CLI. It routes supported URLs and local files through explicit backend capabilities, preserves source text, and produces resumable Markdown artifacts without summarizing the input.
+`Openmd` 是一个多平台内容摄取工具：把平台 URL、作者主页、合集、课程目录、playlist、网页文章或通用可访问视频转成统一 Markdown。
 
-## 解决什么问题
-
-网页、视频字幕、课程目录和本地文件的获取方式不同。Openmd 将输入路由、后端选择、失败状态和 Markdown 输出统一起来，让下游工具读取原始正文或逐字稿，而不是把抓取元数据误当作内容。
-
-本仓库是无历史、无账号数据的公开源码快照，作者为 `baigao417`。默认不联网、不调用付费服务、不自动登录。平台代码存在不等于平台当前可用。
-
-## 核心机制
+它不是漂亮笔记生成器，也不是完整 Agent 工作站。它只是 Markdown-first 工作流中的内容摄取节点，目标是 **高效、可靠地取得原始正文 / 逐字稿**。
 
 ```text
-URL / URL list / collection / local file
-  -> detector + platform adapter
-  -> capability registry + explicit execution gates
-  -> discovery (manifest) / extraction (backend chain)
-  -> native body or captions
-  -> optional temporary media + Whisper / OCR fallback
-  -> raw Markdown or .openmd package + provenance sidecars
-  -> sanitized runlog + coverage + validated resume/skip
+platform url / author / playlist / catalog / web page / generic media
+  -> router
+  -> backend capability registry
+  -> platform adapter
+  -> native text / transcript / media fallback / ASR
+  -> normalized raw Markdown
+  -> local archive / truth-source review / downstream agent workflow
 ```
 
-- `ingest` 处理单项，`batch` 处理 URL 列表，`collect` 先发现再提取；`--manifest-only` 不提取正文。
-- 后端能力注册表区分网络、浏览器、媒体下载、ASR 和云服务许可，默认使用安全占位路径。
-- 包模式保留来源、组件状态、提取合同与校验信息；复跑只跳过符合合同的已有产物。
-- `verified`、`partial`、`failed` 和来源等级分别记录，不以发现条数或元数据充当逐字稿覆盖率。
-- 保留抖音、小红书的项目自有 OpenCLI 插件，以及已在项目内的小鹅通适配器。未打包上游 OpenCLI 源码。
-
-## 快速开始
-
-需要 Python 3.10 或更高版本。基础 CLI 只依赖标准库。
-
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# POSIX: source .venv/bin/activate
-python -m pip install -e '.[dev]'
-openmd --help
-openmd capabilities
-openmd doctor
-openmd ingest https://example.com/synthetic-article --backend mock --out out/demo
-python -m pytest -q -p no:cacheprovider
-```
-
-Windows 无需安装即可运行仓库入口：
+## 30 秒上手
 
 ```powershell
-.\scripts\openmd.ps1 --help
-.\scripts\openmd.ps1 ingest https://example.com/synthetic-article --backend mock --package --out out/demo
+pip install openmd            # 或 pipx install openmd；需要 Python 3.10+
+openmd "https://sspai.com/post/73145"        # 粘贴链接 → 回车选保存位置 → 得到 标题.md
+openmd "https://..." -o D:\notes             # 脚本 / AI Agent：给了目录就直接跑完
+openmd doctor                                # 看看现在能处理哪些内容、缺什么怎么装
 ```
 
-`mock` 只生成合成文字，不验证平台。`docs/fixtures/` 和 `tests/fixtures/` 均为合成契约数据，不含真实抓取产物。实际内容、日志和包应保存到被忽略的 `out/` 或仓库之外。
+| 内容 | 装完即可用 | 需要额外安装 |
+|---|---|---|
+| 网页文章、YouTube 有字幕的视频 | ✓ | — |
+| B 站字幕、公众号、X 等需要浏览器读取的平台 | 首次自动准备浏览器读取组件（约 20MB，一次） | Openmd 浏览器插件（`openmd browser-setup`），借用你已登录的浏览器在后台读取，窗口自动最小化 |
+| 无字幕视频、播客（本机转录） | | `pip install "openmd[asr]"` + 模型，见 [工具接入规范](docs/tool-integration.md) |
+| 图片、PDF、Office | | `pip install "openmd[document]"` |
+| 浏览器一键保存 | | `openmd browser-setup`（目前仅 Windows，见下文） |
 
-### 可选后端
+所需运行环境随 `pip install openmd` 一起装好，不需要另装 Node.js 或其他工具。不想自动下载可设 `OPENMD_AUTO_INSTALL_TOOLS=0`，npm 慢可设 `OPENMD_NPM_REGISTRY` 指向镜像；想看到后台读取窗口（排查问题时）可设 `OPENMD_SHOW_BROWSER=1`。第三方组件与许可证见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
 
-```bash
-python -m pip install -e '.[asr]'       # local faster-whisper
-python -m pip install -e '.[ocr]'       # local RapidOCR + Pillow
-python -m pip install -e '.[document]'  # local PDF / Office
-python -m pip install -e '.[web]'       # article extraction
-python -m pip install -e '.[youtube]'   # native transcript API
-```
+取不到时 Openmd 不会存一份垃圾文件：它会说明原因，并打印一行 `提 issue 请附上：…`，复制到 [链接提取失败](.github/ISSUE_TEMPLATE/link-failure.yml) 即可。想参与开发见 [CONTRIBUTING](CONTRIBUTING.md)。
 
-媒体转换还需要用户自行安装的 FFmpeg；部分媒体下载路径需要 yt-dlp。Whisper 模型可能首次下载且耗时较长，离线使用时请预先准备模型。CLI 不托管模型或这些外部工具。
+## 输入链接后保存
 
-### 浏览器适配器
+在终端执行 `openmd` 后粘贴链接，或直接执行 `openmd "https://example.com/article"`。粘贴后直接开始提取，不做任何确认：公开读取、浏览器读取（可能使用现有登录会话）、必要时下载媒体和本机转录按路线需要自动开启；云服务从不自动开启。非交互运行（脚本 / Agent）只要给出保存目录（`-o` / `--save-to`）就按同一档自动开启；显式传入能力开关时只开这些，`--yes` 仅为兼容保留。提取成功后选择保存目录，回车沿用上次成功保存的位置，输入 `n` 取消。默认直接保存 `标题.md`，同名时才加后缀；运行日志放在 `~/.openmd/runs/`，不混入所选文件夹。终端显示“已取得正文”和“已保存”，`--verbose` 显示工具路线，`--json` 输出机器回执。
 
-用户自行安装 OpenCLI，并在其受控浏览器中提供已获授权的会话。Openmd 不附带账号、cookie、浏览器 profile 或登录脚本；抖音、小红书、小鹅通等适配器复用外部工具的会话，不导出会话数据。
+带视频的帖子（目前 X）：默认只查视频时长，在正文后注明“本帖含视频（约 N 分钟），未转文字”；`--video text` 临时下载视频、本机转写并把逐字稿接在正文后（下载文件用完即删）；`--video file` 另把视频文件存进同名 assets 文件夹并在 Markdown 里嵌入。视频这一步失败不影响正文保存，只在文件里写明原因。
 
-两个插件需要兼容的 OpenCLI 主机和 Node.js。只在需要使用插件时，在对应目录运行 `npm install`、`npm run build`，然后按外部 OpenCLI 的插件安装流程注册本地目录。`scripts/setup-openmd-*-plugin.ps1` 会注册或更新插件，应由用户明确执行；普通 Python smoke 不执行这些脚本。插件离线测试使用 `npm test`；TypeScript 测试需要支持直接运行 TypeScript 的 Node.js 版本。
-
-授权平台输入的示例：
+默认 Markdown 按说话人、章节、停顿或约 30 秒合并字幕段落，保留原字词和错误，不补写标点或总结。`--raw` 保留原字幕逐行/表格排版。YouTube/B 站标题作者缺失时，在公开网络许可内补取元数据，失败仍保存正文并说明缺失；取得正文不等于已核对全文准确性与完整性。
 
 ```powershell
-Get-Clipboard | openmd ingest - --enable-browser-backends --package --out out/authorized
-openmd collect '<authorized-creator-url>' --limit 20 --enable-browser-backends --manifest-only --out out/discovery
+openmd
+openmd go "https://example.com/article"
+openmd "https://example.com/video" --raw
+# 自动化：给了目录即可；只想开公开网络时显式写 --enable-network-backends 收窄
+openmd "https://example.com/article" -o "D:\notes" --json
+openmd doctor --profile media
+openmd doctor --profile tools
+openmd probe --enable-network-backends --enable-browser-backends # 本机 out/probe-config.json 配样本，模板见 docs/examples/probe-config.example.json；--platform bilibili 只测一个平台，报告在 out/probe/<date>/，不下载媒体或跑 ASR
+openmd routes --format markdown
 ```
 
-签名链接优先经 stdin 提供，不将会话参数写进命令历史。媒体下载及 ASR 必须分别显式启用 `--enable-media-download`、`--enable-asr`。`--all` 仅对实现了全量合同的 discovery lane 开放，其他路径提前拒绝；不保证所有平台作者页都支持全量。
+`openmd --help` 只列日常命令（`go`、`batch`），`openmd go --help` 只列 `--raw / --save-to / --video / --json / --verbose`；其余子命令和参数照常可用，只是不在帮助里显示（`openmd <命令> -h` 查看）。
 
-## 配置说明
+### 浏览器插件（Chrome / Edge）
 
-`.env.example` 只有空白和非敏感默认项，CLI **不自动加载 `.env`**。请在运行环境设置变量，不提交本地配置。
+1. 终端运行一次 `openmd browser-setup`（只写当前用户注册表和 `~/.openmd/browser/`；`--uninstall` 撤销）。
+2. 打开 `chrome://extensions`，开启“开发者模式”，“加载已解压的扩展程序”，选 `browser-setup` 打印并自动打开的文件夹（`~/.openmd/browser/extension`，升级 openmd 后重跑一次 `browser-setup` 即同步）。插件 ID 固定为 `lceckiadcfloncbklcojdiimbpollngh`。
+3. 点工具栏的 Openmd（仓鼠）图标：直接保存当前页到默认位置，图标出现 ✓ 即完成；失败才弹系统通知说明原因。
+   - 多选标签页：按住 Ctrl / Shift 点选多个标签，再点图标，一次全部保存。
+   - 保存一片链接：在课程目录、合集列表等页面拖选一段内容，右键“用 Openmd 保存选中的链接”。
+   - 右键“用 Openmd 保存此页 / 此链接”同样可用。
+   - X 帖子带视频：直接点图标只注明有视频；在 X 页面（或帖子链接、视频上）右键“用 Openmd 保存（含视频文字版）”附上逐字稿，“（含视频文字版和视频文件）”再留下视频。
+4. 设置页（右键图标 → 选项）：添加多个保存位置（名字 + 文件夹，可用“选择…”弹出文件夹对话框），选默认位置；“点击图标时”可切换为“先选择保存位置”；“帖子里带视频时”可改成默认附上逐字稿。
 
-| 配置 | 用途 |
-| --- | --- |
-| `OPENMD_PYTHON` | Windows wrapper 的 Python 可执行文件；默认优先 `.venv` |
-| `OPENMD_BILIBILI_COOKIE_FILE` | 用户在仓库外自行提供的 UTF-8 Cookie header 文本文件，仅请求时读取；不在错误中回显内容 |
-| `OPENMD_BILIBILI_COOKIE_HEADER` | 兼容已有环境变量输入，不建议将值写入命令历史 |
-| `OPENMD_YOUTUBE_API_KEY` | 可选 YouTube Data API；仅显式启用网络 discovery 时需要 |
-| `OPENMD_WECHAT_ARTICLE_EXPORTER_BASE_URL` | 用户自行运行的本地 sidecar 地址 |
-| `OPENMD_WECHAT_ARTICLE_EXPORTER_AUTH_KEY` | 外部 sidecar 的认证输入；不附带配置或服务 |
-| `OPENMD_FASTER_WHISPER_MODEL` | 默认 `large-v3`，可设本地模型路径或其他模型名 |
-| `OPENMD_FASTER_WHISPER_DEVICE` / `OPENMD_FASTER_WHISPER_COMPUTE_TYPE` | 默认 `cpu` / `int8` |
-| `OPENMD_FASTER_WHISPER_PROFILE` | 默认 `general_v1`；`zh_podcast_v2` 是可选配置，不代表质量保证 |
+借用浏览器读取（B 站、公众号、X 等）时，Chrome 可能在顶部显示“Openmd 已开始调试此浏览器”：这是 Chrome 对使用调试接口的插件统一显示的提示，插件自身无法隐藏；读取只在 Openmd 的后台窗口里进行。
 
-Cookie 文件应只包含单行 header 值，不是浏览器数据库、JSON 或 Netscape cookie 导出文件。没有提供 Cookie 时保留无 Cookie 路线；对不属于 Bilibili 的目标不会读取或发送该 Cookie。优先使用用户自己的浏览器会话，避免另行导出凭证。
+插件通过 Chrome Native Messaging 调用本机 `openmd`，不开本地端口；只有上面这个插件 ID 能连。所有保存进入后台队列，一次只跑一个（避免本机转录同时占满显卡），后台不弹任何窗口。关机时没跑完的任务，开机后插件一联系本机就自动重新排队（最多重试一次）。重启电脑后无需任何操作。任务记录在 `~/.openmd/browser-jobs/`。
 
-## 已知限制
+ASR 步骤自动选择已有 CUDA worker；主 CLI 保留自己的环境。本地模型目录或缓存不存在时明确报错，不自动从 HF 下载。工具位置、ASR Python 和模型根目录统一放在本机配置（`OPENMD_CONFIG` 指定 JSON，源码 checkout 默认 `out/local-config.json`，安装版默认 `~/.openmd/local.json`）；只存安装位置，不存凭证。配置示例与安装边界见 [工具接入规范](docs/tool-integration.md)，实际路由由打包 JSON 生成：[当前路由](docs/routes.generated.md)。架构图和各平台工具一览：[Openmd 全景](docs/architecture-map.html)（浏览器打开）。
 
-- 本公开快照只做离线测试与 mock 冒烟；未重新登录平台、执行真实抓取或调用云 API。
-- 平台页面、接口、字幕可用性和反爬规则可能变化；授权会话也不保证成功。验证码、导航拒绝与权限限制应停止并报告，不绕过。
-- 历史项目验收曾记录一次抖音作者发现 678 条、677 条成功；这里只保留该文字概述，不附原文、作者身份或验收包，也不作为当前快照实测结果。
-- ASR/OCR 结果需人工核对；多栏阅读顺序可能标为 `partial`，原生文本提取不证明公式、表格或版面保真。
-- TikTok 和 QQ 群等能力位置可能为暂停或占位，不应从注册项推断完整实现。
-- 云服务代码保留显式许可边界；本轮未调用，用户使用前应自行确认费用、隐私和供应商条款。
-- Windows 上的锁与强杀恢复测试不能证明断电、网络文件系统或其他操作系统上的恢复可靠性。
-- 输出仍可能包含用户授权源中的私人内容；脱敏的源码仓库不意味着运行结果适合公开。
+## 输出格式
 
-## 免责声明
+```md
+---
+title: ...
+author: ...
+url: ...
+published: "2026-11-07"
+platform: bilibili
+---
 
-仅用于个人学习和已获授权内容。请遵守各平台服务条款、版权、访问权限及适用法律，不用于绕过登录、付费墙、验证码或访问控制，不批量传播第三方正文、逐字稿、课程或个人数据。提供浏览器会话或 Cookie 不代表拥有内容再发布权。
+# 标题
 
-软件按现状提供，无可用性、准确性或平台兼容性保证。第三方运行依赖由用户自行安装，许可与分发注意事项见 `THIRD_PARTY_NOTICES.md`。本项目源码使用 MIT 许可证。
+**00:00:01**
+
+合并成段的原始逐字稿……
+
+*来源：自动字幕；识别错误保持原样。*
+```
+
+### 状态口径
+
+- `verified`：已成功产出可用正文 / 逐字稿，包括原生正文、官方/作者字幕、自动字幕、第三方 transcript、ASR 转写、飞书原生 Markdown 导出。
+- `partial`：产出文本但明显不完整，例如只抓到预览、部分章节缺失、视频只转写一段、collection 部分失败。
+- `failed`：没有产出可用文字稿 / 正文。
+
+`source_level` 表示来源等级，不等同于 `status`。这些字段保留在运行记录和显式 package 中，不在普通 Markdown 中重复展开。
+
+## 文档
+
+- [子系统地图](docs/subsystems/README.md)：每个模块的职责、入口和验证命令
+- [接入新平台](docs/adding-a-platform.md)：大多数平台只需加一张工具卡
+- [工具接入规范](docs/tool-integration.md)、[当前路由](docs/routes.generated.md)、[全景图](docs/architecture-map.html)
+
+## 参与开发
+
+Windows / macOS / Linux 都可以开发：`python scripts/dev_setup.py` 一条命令装好环境。流程、issue 与 PR 要求见 [CONTRIBUTING](CONTRIBUTING.md)，硬规则见 [code-standards](docs/code-standards.md)。
+
+## 许可证
+
+[MIT](LICENSE)。第三方组件见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。

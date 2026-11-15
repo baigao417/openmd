@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from openmd.adapters.registry import DEFAULT_BACKENDS
+from openmd.routing.loader import default_backend_chains, effective_routes, load_catalog
 
 
 CAPABILITY_TIERS = frozenset({"A", "B", "C", "D"})
@@ -27,6 +27,9 @@ class CapabilityRecord:
     cost_class: str
     execution_ready: bool
     blocked_reason: str | None
+    card_id: str | None = None
+    route_version: str | None = None
+    overlay_applied: bool = False
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -43,11 +46,10 @@ class CapabilityRecord:
             "cost_class": self.cost_class,
             "execution_ready": self.execution_ready,
             "blocked_reason": self.blocked_reason,
+            "card_id": self.card_id,
+            "route_version": self.route_version,
+            "overlay_applied": self.overlay_applied,
         }
-
-
-def _registry_provider(platform: str) -> str:
-    return DEFAULT_BACKENDS[platform][0]
 
 
 def _capability(
@@ -63,8 +65,10 @@ def _capability(
     runtime_provider: str | None = None,
     required_gates: tuple[str, ...] = (),
     cost_class: str = "unknown",
+    card_id: str | None = None,
+    overlay_applied: bool = False,
 ) -> CapabilityRecord:
-    planned = planned_provider or _registry_provider(platform or source_id)
+    planned = planned_provider
     binding_state = "implemented" if runtime_provider is not None else "unimplemented"
     blocked_reason: str | None = None
     if state == "paused":
@@ -87,34 +91,34 @@ def _capability(
         cost_class=cost_class,
         execution_ready=state not in {"paused", "blocked"} and binding_state == "implemented" and not required_gates,
         blocked_reason=blocked_reason,
+        card_id=card_id,
+        route_version=load_catalog().version,
+        overlay_applied=overlay_applied,
     )
 
 
-# Runtime providers below are identifiers registered by the current provider modules.
-# A missing binding stays explicit instead of treating a route declaration as executable.
-APPROVED_CAPABILITIES: tuple[CapabilityRecord, ...] = (
-    _capability("bilibili", "A", "partial", ("single", "collection"), ("collection",), ("media",), platform="bilibili", runtime_provider="bilibili-harvest.core", required_gates=("network",), cost_class="unknown"),
-    _capability("youtube", "A", "partial", ("single", "collection"), ("collection",), ("media",), platform="youtube", runtime_provider="youtube-transcript-api", required_gates=("network",), cost_class="unknown"),
-    _capability("weixin", "A", "partial", ("single", "collection"), ("collection",), ("article",), platform="weixin", runtime_provider="weixin.article.local", required_gates=("network",), cost_class="unknown"),
-    _capability("xiaoyuzhou", "A", "partial", ("single", "collection"), ("collection",), ("media",), platform="xiaoyuzhou", runtime_provider="opencli.xiaoyuzhou.transcript", required_gates=("browser",), cost_class="unknown"),
-    _capability("douyin", "A", "partial", ("single", "collection"), ("collection",), ("media",), platform="douyin", runtime_provider="douyin.transcript", required_gates=("browser",), cost_class="unknown"),
-    _capability("tiktok", "C", "paused", ("single",), (), ("media",), platform="tiktok"),
-    _capability("xiaohongshu", "A", "partial", ("single", "list"), ("list",), ("article", "media"), platform="xiaohongshu", runtime_provider="xiaohongshu.composite", required_gates=("browser",), cost_class="unknown"),
-    _capability("xiaohongshu_creator", "B", "blocked", ("collection",), (), ("article", "media"), platform="xiaohongshu"),
-    _capability("xiaoe", "A", "partial", ("single", "collection"), ("collection",), ("media",), platform="xiaoe", runtime_provider="opencli.xiaoe.transcript", required_gates=("browser",), cost_class="unknown"),
-    _capability("x", "B", "partial", ("single", "list"), (), ("article",), platform="x", runtime_provider="opencli.twitter.thread", required_gates=("browser",), cost_class="unknown"),
-    _capability("web_article", "B", "ready", ("single", "list"), (), ("article",), platform="web_article", runtime_provider="web_article.trafilatura", required_gates=("network",), cost_class="unknown"),
-    _capability("feishu", "B", "partial", ("single", "list"), (), ("article", "document"), platform="feishu", runtime_provider="lark-cli.docs.fetch", required_gates=("network", "account"), cost_class="unknown"),
-    _capability("generic_media", "B", "partial", ("single", "list"), (), ("media",), platform="generic_media", required_gates=("asr",), cost_class="local_compute"),
-    _capability("local_audio", "A", "ready", ("file", "folder"), ("folder",), ("media",), planned_provider="asr.faster_whisper", runtime_provider="asr.faster_whisper", required_gates=("asr",), cost_class="local_compute"),
-    _capability("local_video", "B", "partial", ("file", "folder"), ("folder",), ("media",), planned_provider="asr.fallback", runtime_provider="asr.faster_whisper", required_gates=("asr",), cost_class="local_compute"),
-    _capability("tutorial_video", "C", "experimental", ("file", "single"), (), ("media",), planned_provider="asr.fallback", runtime_provider="asr.faster_whisper", required_gates=("asr",), cost_class="local_compute"),
-    _capability("pdf_office", "A", "partial", ("file", "folder"), ("folder",), ("document",), platform="pdf", runtime_provider="pdf.markitdown", required_gates=("local_compute",), cost_class="local_compute"),
-    _capability("screenshot", "B", "partial", ("file", "folder"), ("folder",), ("document",), platform="screenshot", runtime_provider="ocr.rapidocr", required_gates=("local_compute",), cost_class="local_compute"),
-    _capability("wechat_moments", "B", "partial", ("collection",), ("collection",), ("conversation",), platform="wechat_moments", required_gates=("local_export",), cost_class="none"),
-    _capability("wechat_group", "B", "partial", ("collection",), ("collection",), ("conversation",), platform="wechat_group", required_gates=("local_export",), cost_class="none"),
-    _capability("qq_group", "B", "paused", ("collection",), (), ("conversation",), platform="qq_group"),
-)
+def _project_capabilities(*, effective: bool = True) -> tuple[CapabilityRecord, ...]:
+    catalog = load_catalog()
+    chains = default_backend_chains(effective=effective)
+    records: list[CapabilityRecord] = []
+    for metadata in catalog.capability_metadata:
+        source = metadata["route_source"]
+        planned = chains[source][0] if source in chains else metadata["planned_provider"]
+        binding = metadata.get("runtime_binding")
+        runtime = planned if binding == "route" else binding
+        card = catalog.capabilities.get(runtime or planned or "", {})
+        records.append(_capability(
+            metadata["source_id"], metadata["tier"], metadata["state"],
+            tuple(metadata["input_kinds"]), tuple(metadata["source_exhausted_kinds"]), tuple(metadata["profiles"]),
+            planned_provider=planned, runtime_provider=runtime,
+            required_gates=tuple(card.get("gates", [])), cost_class=card.get("cost_class", "unknown"),
+            card_id=card.get("card_id"),
+            overlay_applied=effective and any(route["overlay_applied"] for route in effective_routes(source)),
+        ))
+    return tuple(records)
+
+
+APPROVED_CAPABILITIES: tuple[CapabilityRecord, ...] = _project_capabilities(effective=False)
 
 
 def validate_capability_manifest(
@@ -145,13 +149,14 @@ NORMALIZED_CAPABILITIES = validate_capability_manifest()
 
 def get_capability(source_id: str) -> CapabilityRecord:
     normalized = source_id.strip().lower()
-    for record in NORMALIZED_CAPABILITIES:
+    for record in validate_capability_manifest(_project_capabilities()):
         if record.source_id == normalized:
             return record
     raise ValueError(f"source_unsupported: {source_id}")
 
 
 def filter_capabilities(*, source_id: str | None = None) -> tuple[CapabilityRecord, ...]:
+    current = validate_capability_manifest(_project_capabilities())
     if source_id is None:
-        return NORMALIZED_CAPABILITIES
-    return tuple(record for record in NORMALIZED_CAPABILITIES if record.source_id == source_id.strip().lower())
+        return current
+    return tuple(record for record in current if record.source_id == source_id.strip().lower())

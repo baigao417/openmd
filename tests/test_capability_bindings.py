@@ -29,7 +29,7 @@ def test_capability_planned_provider_comes_from_current_registry_or_explicit_loc
         record = get_capability(source_id)
         assert record.planned_provider == DEFAULT_BACKENDS[platform][0]
 
-    assert get_capability("local_audio").planned_provider == "asr.faster_whisper"
+    assert get_capability("local_audio").planned_provider == "asr.auto"
     assert get_capability("local_video").planned_provider == "asr.fallback"
     assert get_capability("tutorial_video").planned_provider == "asr.fallback"
 

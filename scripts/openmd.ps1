@@ -17,7 +17,7 @@ if ([string]::IsNullOrWhiteSpace($oldPythonPath)) {
 }
 
 try {
-    $localPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
+    $localPython = Join-Path $repoRoot "out\runtime\Scripts\python.exe"
     $python = if ($env:OPENMD_PYTHON) { $env:OPENMD_PYTHON } elseif (Test-Path -LiteralPath $localPython) { $localPython } else { "python" }
     & $python -m openmd @OpenmdArgs
     exit $LASTEXITCODE

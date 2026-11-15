@@ -11,11 +11,13 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import uuid
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.backends.base import (
     BackendCapability,
     BackendDescriptor,
@@ -25,6 +27,7 @@ from openmd.backends.base import (
     DiscoveryResult,
 )
 from openmd.backends.executor import BackendProviderRegistry, DiscoveryProviderRegistry
+from openmd.backends.douyin_detail import douyin_author, douyin_published_at
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.backends.youtube_discovery import _run_opencli
 from openmd.core.detector import extract_first_url
@@ -339,15 +342,15 @@ def classify_douyin_discovery_failure(message: object, *, exit_code: int | None 
 
 
 def parse_opencli_douyin_user_videos(stdout: str) -> list[ContentItem]:
-    """Parse OpenCLI ``douyin user-videos -f json`` output into safe items."""
+    """Keep transient acquisition fields in memory; manifests omit them."""
     if not stdout.strip():
         return []
-    payload = json.loads(stdout)
+    payload = load_opencli_json(stdout)
     rows = _json_video_rows(payload)
     items: list[ContentItem] = []
     seen: set[str] = set()
     for row in rows:
-        item = _content_item_from_row(row)
+        item = _content_item_from_row(row, include_transient=True)
         if item is None or not item.id or item.id in seen:
             continue
         seen.add(item.id)
@@ -359,7 +362,7 @@ def parse_opencli_openmd_douyin_creator_videos(stdout: str) -> list[ContentItem]
     """Parse full creator rows while retaining private acquisition fields in memory."""
     if not stdout.strip():
         return []
-    payload = json.loads(stdout)
+    payload = load_opencli_json(stdout)
     rows = _json_video_rows(payload)
     items: list[ContentItem] = []
     seen: set[str] = set()
@@ -388,6 +391,17 @@ class OpenCliDouyinUserVideosProvider:
             "platform": request.platform,
             "normalized_url": normalized_url,
         }
+
+        if request.platform == "douyin" and not sec_uid and _is_douyin_short_host(_parse_url(extract_first_url(request.input_url)).netloc.lower()):
+            try:
+                resolved_url = self._resolve_author_share(request.input_url)
+                sec_uid = douyin_user_target(resolved_url)
+                if not sec_uid:
+                    raise ValueError("not an author selector")
+                normalized_url = f"https://www.douyin.com/user/{sec_uid}"
+                metadata["normalized_url"] = normalized_url
+            except Exception:
+                return self._failure(error_code="douyin_author_share_resolution_failed", error_summary="The shared link did not resolve to an accessible Douyin author profile.", metadata=metadata)
 
         if request.platform != "douyin" or not sec_uid:
             return self._failure(
@@ -489,6 +503,28 @@ class OpenCliDouyinUserVideosProvider:
             ],
             metadata={**metadata, "item_count": len(items)},
         )
+
+    def _resolve_author_share(self, input_value: str) -> str:
+        """Resolve one share URL using an owned tab, reading only its URL."""
+        session = "openmd-douyin-author-" + uuid.uuid4().hex
+        try:
+            code, _stdout, _stderr = self._runner(["opencli", "browser", "open", extract_first_url(input_value), "--session", session, "--window", "background"], timeout=self.timeout)
+            if code:
+                raise ValueError("navigation failed")
+            code, stdout, _stderr = self._runner(["opencli", "browser", "eval", "JSON.stringify({url: location.href})", "--session", session, "--window", "background"], timeout=self.timeout)
+            if code:
+                raise ValueError("URL read failed")
+            payload = load_opencli_json(stdout)
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            if not isinstance(payload, dict):
+                raise ValueError("invalid URL projection")
+            return str(payload.get("url") or "")
+        finally:
+            try:
+                self._runner(["opencli", "browser", "close", "--session", session, "--window", "background"], timeout=min(self.timeout, 30))
+            except Exception:
+                pass
 
     def _failure(
         self,
@@ -672,7 +708,7 @@ def _content_item_from_row(
         return None
 
     title = _first_present(normalized, "title", "desc", "description", "caption")
-    author = _first_present(normalized, "author", "nickname", "user", "user_name")
+    author = douyin_author(normalized)
     raw_meta: dict[str, Any] = {
         "caption_status": "unknown",
         "process_status": "discovered",
@@ -684,7 +720,7 @@ def _content_item_from_row(
         value = row.get(key)
         if value is not None:
             raw_meta[key] = value
-    duration = _first_present(normalized, "duration")
+    duration = _first_present(normalized, "duration_s", "duration")
     if duration:
         raw_meta["duration"] = duration
     digg_count = _first_present(normalized, "digg_count", "like_count", "likes")
@@ -711,7 +747,7 @@ def _content_item_from_row(
             value = row.get(key)
             if value is not None:
                 raw_meta[key] = value
-    published_at = _first_present(normalized, "published_at", "create_time", "date")
+    published_at = douyin_published_at(normalized)
 
     return ContentItem(
         platform="douyin",

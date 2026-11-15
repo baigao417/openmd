@@ -1,0 +1,22 @@
+name: 体验与功能建议
+description: 让 Openmd 更好用的建议（命令、插件、输出、安装）
+title: "[建议] <一句话>"
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 你在做什么时遇到了不便
+      description: 描述真实场景，比"加个 XX 功能"更有用。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你希望怎样
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: 边界确认
+      options:
+        - label: 这个建议不需要 Openmd 总结、改写或润色原文（这些交给下游工具）

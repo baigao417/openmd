@@ -23,6 +23,7 @@ from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.interpreters import run_interruptibly
 
 
 WEB_ARTICLE_TRAFILATURA_BACKEND = "web_article.trafilatura"
@@ -42,6 +43,10 @@ def register_backend_providers(
 ) -> None:
     """Register web article providers behind explicit runtime gates."""
     requested = options.backend_override
+    from openmd.backends.discourse import DISCOURSE_BACKEND, DiscourseProvider
+
+    if (options.enable_network_backends or options.enable_browser_backends) and requested in {None, DISCOURSE_BACKEND}:
+        registry.register(DISCOURSE_BACKEND, DiscourseProvider(options))
     if options.enable_network_backends and requested in {None, WEB_ARTICLE_TRAFILATURA_BACKEND}:
         registry.register(WEB_ARTICLE_TRAFILATURA_BACKEND, WebArticleTrafilaturaProvider())
 
@@ -120,15 +125,28 @@ class WebArticleTrafilaturaProvider:
         try:
             downloaded = fetcher(item.url)
         except Exception as exc:
-            return _failed(self.name, "web_article_fetch_failed", exc)
+            downloaded, fetch_error = None, exc
+        else:
+            fetch_error = None
+        if downloaded is None and self._fetcher is None:
+            # trafilatura's urllib3 client ignores system/SOCKS proxy settings;
+            # stdlib urllib honors HTTP(S)_PROXY and the Windows proxy.
+            try:
+                downloaded = _urllib_fetch(item.url)
+            except Exception as exc:  # network errors are reported below
+                fetch_error = fetch_error or exc
         if downloaded is None:
+            if fetch_error is not None:
+                return _failed(self.name, "web_article_fetch_failed", fetch_error)
             return _failed(self.name, "web_article_fetch_empty", "trafilatura.fetch_url returned no document.")
 
         try:
             markdown = extractor(
                 downloaded,
                 output_format="markdown",
-                with_metadata=True,
+                # Metadata is read separately below; True would embed a YAML
+                # block inside the body, duplicating the rendered front matter.
+                with_metadata=False,
                 include_images=True,
                 include_links=True,
                 url=item.url,
@@ -251,10 +269,23 @@ class OpenCliWebReadProvider:
         )
 
 
+def _urllib_fetch(url: str, timeout: int = 30) -> str | bytes | None:
+    import urllib.request
+
+    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; Openmd)", "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"})
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - http(s) only, checked by input validation
+        body = response.read(20 * 1024 * 1024)
+        charset = response.headers.get_content_charset()
+    if not body:
+        return None
+    # Without a declared charset, hand bytes to trafilatura (it sniffs <meta charset>, e.g. GBK).
+    return body.decode(charset, errors="replace") if charset else body
+
+
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             [resolved, *command[1:]],
             capture_output=True,
             text=True,

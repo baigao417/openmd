@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from openmd.core.content_validation import validate_extraction_content
+from openmd.core.opencli_output import load_opencli_json
 from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 
@@ -30,6 +32,8 @@ from .base import (
 )
 from .executor import DiscoveryProviderRegistry
 from .youtube_discovery import _run_opencli
+
+from openmd.runtime.tempdirs import owned_temporary_directory
 
 
 OPENCLI_XIAOE_TRANSCRIPT_BACKEND = "opencli.xiaoe.transcript"
@@ -95,7 +99,12 @@ def register_backend_providers(registry: Any, options: Any) -> None:
 
     requested = getattr(options, "backend_override", None)
     if requested in {None, OPENCLI_XIAOE_TRANSCRIPT_BACKEND}:
-        registry.register(OPENCLI_XIAOE_TRANSCRIPT_BACKEND, OpenCliXiaoeTranscriptProvider())
+        registry.register(
+            OPENCLI_XIAOE_TRANSCRIPT_BACKEND,
+            OpenCliXiaoeTranscriptProvider(
+                allow_local_asr=bool(getattr(options, "enable_asr_backends", False)),
+            ),
+        )
     if requested in {None, OPENCLI_XIAOE_CONTENT_BACKEND}:
         registry.register(OPENCLI_XIAOE_CONTENT_BACKEND, OpenCliXiaoeContentProvider())
 
@@ -125,10 +134,12 @@ def build_opencli_xiaoe_transcript_args(url: str, *, output_dir: str) -> list[st
         "xiaoe",
         "transcript",
         url,
+        "--provider",
+        "tingwu",
         "--out",
         output_dir,
         "--keep-artifacts",
-        "false",
+        "true",
         "-f",
         "json",
     ]
@@ -180,16 +191,20 @@ class OpenCliXiaoeTranscriptProvider:
         *,
         runner: OpenCliRunner | None = None,
         timeout: int = XIAOE_TRANSCRIPT_TIMEOUT,
+        allow_local_asr: bool = False,
+        local_asr: Any | None = None,
     ) -> None:
         self._runner = runner or _run_opencli
         self.timeout = timeout
+        self.allow_local_asr = allow_local_asr
+        self._local_asr = local_asr
 
     def descriptor(self) -> BackendDescriptor:
         capability = BackendCapability(
             platforms=("xiaoe",),
             source_types=("video",),
             input_types=("single",),
-            source_levels=("third_party_extractor",),
+            source_levels=("media_asr",),
             requires_network=True,
             requires_credentials=False,
             optional_config=(
@@ -206,8 +221,10 @@ class OpenCliXiaoeTranscriptProvider:
             description=(
                 "Fetch Xiaoe transcript text through OpenCLI transcript output; "
                 "Openmd does not own or store credentials, but execution may require "
-                "an already user-accessible browser session. No batch transcript, "
-                "media download, or ASR fallback is attempted."
+                "an already user-accessible browser session. OpenCLI downloads the item's "
+                "media and transcribes it with Tingwu; a failed Tingwu upload is retried "
+                "once from the retained audio. English audio moves to local ASR under "
+                "--enable-asr. No batch transcript is attempted."
             ),
             provider="opencli.xiaoe",
         )
@@ -221,14 +238,33 @@ class OpenCliXiaoeTranscriptProvider:
         if platform_failure is not None:
             return platform_failure
 
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaoe-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaoe-") as tmp_dir:
             args = build_opencli_xiaoe_transcript_args(item.url, output_dir=tmp_dir)
             exit_code, stdout, stderr = self._runner(args, timeout=self.timeout)
+            retained_dir: Path | None = None
             if exit_code != 0:
-                return _backend_failure(self.name, item, exit_code, stderr or stdout)
+                retained_dir = _retained_tingwu_audio_dir(stderr or stdout)
+                if retained_dir is None:
+                    return _backend_failure(self.name, item, exit_code, stderr or stdout)
+                exit_code, stdout, stderr = self._runner(
+                    [
+                        *args,
+                        "--audio-file",
+                        str(retained_dir / "normalized.mp3"),
+                        *(["--title", item.title] if item.title else []),
+                    ],
+                    timeout=self.timeout,
+                )
+                if exit_code != 0:
+                    return _backend_failure(self.name, item, exit_code, stderr or stdout)
 
+            artifact_dirs = (retained_dir, _reported_temp_dir(stdout))
             text, title = _read_first_markdown(tmp_dir)
+            if title:
+                # Package and Markdown renderers add the title themselves.
+                text = text.strip().removeprefix(f"# {title}").strip()
             if not text.strip():
+                _remove_xiaoe_temp_dirs(*artifact_dirs)
                 return _failed(
                     self.name,
                     item,
@@ -236,19 +272,62 @@ class OpenCliXiaoeTranscriptProvider:
                     "OpenCLI xiaoe transcript did not produce a non-empty Markdown file.",
                 )
 
-        return TranscriptResult(
+        language_notes: list[str] = []
+        language_metadata: dict[str, Any] = {}
+        if is_predominantly_english(text):
+            language_metadata["detected_language"] = "en"
+            local = self._transcribe_english_locally(artifact_dirs) if self.allow_local_asr else None
+            if local is not None:
+                text = local.text
+                language_metadata["transcript_provider"] = local.backend
+                language_notes.append(
+                    f"English audio: replaced the Tingwu transcript with {local.backend}, which scored far better on English."
+                )
+            elif self.allow_local_asr:
+                language_notes.append("English audio: local ASR failed, so this is the Tingwu transcript, which is weak on English.")
+            else:
+                language_notes.append("English audio: this is the Tingwu transcript, which is weak on English; rerun with --enable-asr for local ASR.")
+        _remove_xiaoe_temp_dirs(*artifact_dirs)
+
+        result = TranscriptResult(
             text=text,
             status="verified",
-            source_level="third_party_extractor",
+            source_level="media_asr",
             backend=self.name,
             title=title,
             source_notes=[
-                "OpenCLI xiaoe transcript ran with --keep-artifacts false.",
+                "OpenCLI xiaoe transcript ran with --provider tingwu; its temporary artifacts were removed after use.",
                 "Generated Markdown was read from a temporary output directory and cleaned up.",
-                "No batch-transcript, full-course crawl, media download, ASR, or permission bypass was attempted.",
+                "OpenCLI downloaded this item's media and transcribed it with Tingwu; no batch-transcript, full-course crawl, or permission bypass was attempted.",
+                *(["The first Tingwu upload failed; retried once from the retained audio."] if retained_dir else []),
+                *language_notes,
             ],
-            metadata={"artifact_scope": "temporary_markdown"},
+            metadata={
+                "artifact_scope": "temporary_markdown",
+                "tingwu_upload_retries": 1 if retained_dir else 0,
+                **language_metadata,
+            },
         )
+        return validate_extraction_content(result)
+
+    def _transcribe_english_locally(self, artifact_dirs: tuple[Path | None, ...]) -> TranscriptResult | None:
+        audio = next(
+            (
+                directory / "normalized.mp3"
+                for directory in artifact_dirs
+                if directory is not None and _is_xiaoe_temp_dir(directory) and (directory / "normalized.mp3").is_file()
+            ),
+            None,
+        )
+        if audio is None:
+            return None
+        backend = self._local_asr
+        if backend is None:
+            from openmd.runtime.asr import get_asr_backend
+
+            backend = get_asr_backend("asr.auto")
+        result = backend.transcribe(audio)
+        return result if result.status == "verified" and result.text.strip() else None
 
 
 class OpenCliXiaoeCatalogProvider:
@@ -416,7 +495,7 @@ class OpenCliXiaoeContentProvider:
                 "Declared content_length differs from the returned content length; result is marked partial."
             )
 
-        return TranscriptResult(
+        result = TranscriptResult(
             text=content_payload.content,
             status="partial" if content_length_mismatch else "verified",
             source_level="native_text",
@@ -429,6 +508,7 @@ class OpenCliXiaoeContentProvider:
                 "content_selector": content_payload.content_selector,
             },
         )
+        return validate_extraction_content(result)
 
 
 def _opencli_health(runner: OpenCliRunner) -> BackendHealth:
@@ -511,7 +591,7 @@ def _catalog_records_from_stdout(stdout: str) -> list[dict[str, Any]]:
     import json
 
     try:
-        payload = json.loads(stdout.strip())
+        payload = load_opencli_json(stdout.strip())
     except json.JSONDecodeError:
         return []
     if isinstance(payload, list):
@@ -669,7 +749,7 @@ def _classify_xiaoe_resource_type(value: Any) -> tuple[str, str, bool]:
 def parse_xiaoe_content_result(stdout: str) -> XiaoeContentPayload | None:
     """Extract only the normalized content fields from an OpenCLI JSON response."""
     try:
-        payload = json.loads(stdout.strip())
+        payload = load_opencli_json(stdout.strip())
     except (TypeError, ValueError):
         return None
 
@@ -779,6 +859,45 @@ def _map_xiaoe_error(
         raw_summary or f"OpenCLI xiaoe command failed with code {mapped_code}."
     ) or "OpenCLI xiaoe command failed."
     return mapped_code, summary
+
+
+def is_predominantly_english(text: str) -> bool:
+    """True when Latin letters clearly outnumber CJK characters in a transcript."""
+    latin = len(re.findall(r"[A-Za-z]", text))
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", text))
+    return latin >= 200 and cjk < latin * 0.05
+
+
+def _retained_tingwu_audio_dir(error: object) -> Path | None:
+    """Return the retained audio directory when Tingwu rejected one upload."""
+    message = str(error)
+    if "Tingwu server reported upload/transcription failure" not in message:
+        return None
+    match = re.search(r"temp dir: ([^)\"\r\n]+)", message)
+    if match is None:
+        return None
+    directory = Path(match.group(1).strip().replace("\\\\", "\\"))
+    if not _is_xiaoe_temp_dir(directory) or not (directory / "normalized.mp3").is_file():
+        return None
+    return directory
+
+
+def _reported_temp_dir(stdout: str) -> Path | None:
+    match = re.search(r'"tempDir"\s*:\s*"([^"]+)"', stdout)
+    return Path(match.group(1).replace("\\\\", "\\")) if match else None
+
+
+def _is_xiaoe_temp_dir(directory: Path) -> bool:
+    return (
+        directory.name.startswith("xiaoe-to-md-")
+        and directory.resolve().parent == Path(tempfile.gettempdir()).resolve()
+    )
+
+
+def _remove_xiaoe_temp_dirs(*directories: Path | None) -> None:
+    for directory in directories:
+        if directory is not None and _is_xiaoe_temp_dir(directory):
+            shutil.rmtree(directory, ignore_errors=True)
 
 
 def _backend_failure(

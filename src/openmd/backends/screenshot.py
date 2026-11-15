@@ -70,6 +70,9 @@ def register_backend_providers(
     registry: BackendProviderRegistry,
     options: BackendRuntimeOptions,
 ) -> None:
+    from openmd.backends.ocr import register_ocr_providers
+
+    register_ocr_providers(registry, options)
     registry.register("screenshot.mock", ScreenshotOCRProvider(MockOCRBackend()))
     registry.register("ocr.rapidocr", ScreenshotOCRProvider(RapidOCRBackend()))
     registry.register("ocr.paddle", ScreenshotOCRProvider(MissingOCRBackend("ocr.paddle")))

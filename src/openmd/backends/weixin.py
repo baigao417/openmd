@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.backends.base import (
     BackendCapability,
     BackendDescriptor,
@@ -31,6 +32,8 @@ from openmd.backends.registry import BackendRuntimeOptions
 from openmd.backends.web_article import OPENCLI_WEB_READ_BACKEND, OpenCliWebReadProvider
 from openmd.core.models import TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.interpreters import run_interruptibly
 
 
 WEIXIN_LOCAL_BACKEND = "weixin.article.local"
@@ -183,6 +186,15 @@ class WeixinArticleLocalProvider:
         soup = BeautifulSoup(html, "html.parser")
         content_el = soup.select_one("#js_content")
         if content_el is None:
+            from openmd.core.content_validation import weixin_error_page_reason
+
+            for script in soup(["script", "style"]):
+                script.decompose()
+            verdict = weixin_error_page_reason(soup.get_text("\n"))
+            if verdict == "error":
+                return _failed(self.name, "weixin_error_page", "公众号返回了错误页，没有正文；链接可能失效、已删除或已过期。")
+            if verdict == "challenge":
+                return _failed(self.name, "browser_challenge_page", "公众号要求完成环境验证，未取得正文。")
             return _failed(
                 self.name,
                 "weixin_source_empty",
@@ -253,7 +265,7 @@ class OpenCliWeixinDownloadProvider:
 
     def extract(self, request: BackendExtractRequest) -> TranscriptResult:
         item = request.item
-        with tempfile.TemporaryDirectory(prefix="openmd-weixin-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-weixin-") as tmp_dir:
             command = [
                 "opencli",
                 "weixin",
@@ -587,7 +599,7 @@ def _absolute_image_url(url: str) -> str:
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             [resolved, *command[1:]],
             capture_output=True,
             text=True,
@@ -713,7 +725,7 @@ def _looks_like_exporter_empty_shell(markdown: str) -> bool:
 
 def _opencli_stdout_metadata(stdout: str) -> dict[str, str]:
     try:
-        payload = json.loads(stdout)
+        payload = load_opencli_json(stdout)
     except json.JSONDecodeError:
         return {}
     if isinstance(payload, list) and payload and isinstance(payload[0], dict):

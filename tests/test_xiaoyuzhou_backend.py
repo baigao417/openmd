@@ -47,7 +47,7 @@ SENSITIVE_ERROR_TERMS = (
 )
 
 
-def _xiaoyuzhou_item(url: str = "https://www.xiaoyuzhoufm.com/episode/ffff00000000000000000005") -> ContentItem:
+def _xiaoyuzhou_item(url: str = "https://www.xiaoyuzhoufm.com/episode/6a1cdbc1ac7bdb080c33d96d") -> ContentItem:
     return ContentItem(
         platform="xiaoyuzhou",
         input_type="single",
@@ -156,6 +156,75 @@ class XiaoyuzhouRuntimeGateTests(unittest.TestCase):
 
 
 class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
+    def test_missing_author_fetches_public_episode_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            credentials_path = Path(tmpdir) / "xiaoyuzhou.json"
+            _write_android_credentials(credentials_path)
+            calls = []
+
+            def runner(command, *, timeout):
+                calls.append(command)
+                if command[2] == "episode":
+                    return 0, json.dumps({"ok": True, "data": [{"podcast": "播客名称"}]}), ""
+                output = Path(command[command.index("--output") + 1])
+                (output / "transcript.txt").write_text("[00:00:00] original transcript", encoding="utf-8")
+                return 0, '{"ok":true}', ""
+
+            provider = OpenCliXiaoyuzhouTranscriptProvider(runner=runner, credential_path=credentials_path)
+            result = provider.extract(_request(_xiaoyuzhou_item(), provider.name))
+            self.assertEqual(result.author, "播客名称")
+            self.assertEqual(result.source_level, "native_caption")
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[1][1:3], ["xiaoyuzhou", "episode"])
+
+    def test_episode_metadata_failure_does_not_discard_transcript(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            credentials_path = Path(tmpdir) / "xiaoyuzhou.json"
+            _write_android_credentials(credentials_path)
+
+            def runner(command, *, timeout):
+                if command[2] == "episode":
+                    return 124, "", "metadata timed out"
+                output = Path(command[command.index("--output") + 1])
+                (output / "transcript.txt").write_text("[00:00:00] original transcript", encoding="utf-8")
+                return 0, '{"ok":true}', ""
+
+            provider = OpenCliXiaoyuzhouTranscriptProvider(runner=runner, credential_path=credentials_path)
+            result = provider.extract(_request(_xiaoyuzhou_item(), provider.name))
+            self.assertTrue(result.has_usable_text)
+            self.assertIsNone(result.author)
+
+    def test_transcript_keeps_segment_timestamps_and_reported_title(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            credentials_path = Path(tmpdir) / "xiaoyuzhou.json"
+            _write_android_credentials(credentials_path)
+
+            def fake_runner(command: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
+                output_dir = Path(command[command.index("--output") + 1]) / "episode"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                (output_dir / "transcript.txt").write_text("first second", encoding="utf-8")
+                (output_dir / "transcript.json").write_text(
+                    json.dumps(
+                        [
+                            {"text": "first useful line", "startMs": 0},
+                            {"text": "last useful line", "startMs": 8616120},
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                envelope = {"ok": True, "data": [{"title": "Real episode title", "podcast": "Fixture podcast", "status": "success"}]}
+                return 0, json.dumps(envelope), ""
+
+            provider = OpenCliXiaoyuzhouTranscriptProvider(
+                runner=fake_runner,
+                credential_path=credentials_path,
+                min_transcript_chars=1,
+            )
+            result = provider.extract(_request(_xiaoyuzhou_item(), OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND))
+
+        self.assertEqual(result.title, "Real episode title")
+        self.assertEqual(result.text, "[00:00:00] first useful line\n[02:23:36] last useful line\n")
+
     def test_opencli_transcript_success_reads_temp_text_file(self) -> None:
         calls: list[tuple[list[str], int]] = []
 
@@ -171,7 +240,7 @@ class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
                     "[00:00:00] fixture transcript\n[00:00:05] useful body",
                     encoding="utf-8",
                 )
-                return 0, '{"ok": true}', ""
+                return 0, '{"ok": true, "data": [{"podcast": "Fixture podcast"}]}', ""
 
             provider = OpenCliXiaoyuzhouTranscriptProvider(
                 runner=fake_runner,
@@ -187,17 +256,17 @@ class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
         self.assertEqual(result.source_level, "native_caption")
         self.assertEqual(result.backend, OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND)
         self.assertIn("[00:00:05] useful body", result.text)
-        self.assertEqual(result.metadata["episode_id"], "ffff00000000000000000005")
+        self.assertEqual(result.metadata["episode_id"], "6a1cdbc1ac7bdb080c33d96d")
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][1], 7)
         self.assertEqual(
             calls[0][0][:4],
-            ["opencli", "xiaoyuzhou", "transcript", "ffff00000000000000000005"],
+            ["opencli", "xiaoyuzhou", "transcript", "6a1cdbc1ac7bdb080c33d96d"],
         )
         self.assertEqual(
             calls[0][0],
             build_opencli_xiaoyuzhou_transcript_args(
-                "ffff00000000000000000005",
+                "6a1cdbc1ac7bdb080c33d96d",
                 output_dir=calls[0][0][calls[0][0].index("--output") + 1],
             ),
         )
@@ -244,7 +313,7 @@ class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
                     "[00:00:00] iOS credential fixture transcript",
                     encoding="utf-8",
                 )
-                return 0, '{"ok": true}', ""
+                return 0, '{"ok": true, "data": [{"podcast": "Fixture podcast"}]}', ""
 
             provider = OpenCliXiaoyuzhouTranscriptProvider(
                 runner=fake_runner,
@@ -436,7 +505,7 @@ class PodwiseXiaoyuzhouFallbackProviderTests(unittest.TestCase):
             opencli_calls,
             [
                 (
-                    build_opencli_web_read_args("https://www.xiaoyuzhoufm.com/episode/ffff00000000000000000005"),
+                    build_opencli_web_read_args("https://www.xiaoyuzhoufm.com/episode/6a1cdbc1ac7bdb080c33d96d"),
                     180,
                     opencli_calls[0][2],
                 )

@@ -1,41 +1,43 @@
 # Third-Party Notices
 
-No complete third-party repository, vendored library, installer, model weight, captured
-article, course, transcript, image or media file is included in this snapshot.
-The OpenCLI plugins in `integrations/` are project-owned adapter code and import
-the external OpenCLI host; they do not include its implementation.
+Openmd is MIT-licensed (see `LICENSE`). It builds on the open-source work below.
+Their licenses apply to their code; Openmd's license does not relicense them,
+model weights, external services, or content you retrieve.
 
-Optional runtime dependencies are declared in `pyproject.toml` or plugin
-`package.json` files. Executable integrations (OpenCLI, yt-dlp, FFmpeg and
-lark-cli) must be installed separately by the user. Their own licenses apply;
-this repository's MIT license does not relicense dependencies, model weights,
-external services or content retrieved later.
+## Included in this repository
 
-Dependency names used by the source include faster-whisper, MarkItDown,
-RapidOCR, Pillow, trafilatura, youtube-transcript-api, Docling, FunASR,
-PaddleOCR and Tesseract. Some lanes are only placeholders, and dependency
-installation alone does not make them operational. esbuild and pytest are
-development/test tools. No installed dependency files are redistributed here.
+### OpenCLI Browser Bridge (Apache-2.0)
 
-## Bilibili-Harvest WBI reference
+- Upstream: https://github.com/jackwener/opencli, Browser Bridge extension 1.0.27 (release v2.0.3).
+- Location: `src/openmd/browser_extension/vendor/opencli-bridge/background.js`, loaded by the Openmd
+  browser extension so users install a single extension.
+- **Modified by Openmd**: fixed bridge profile id, bridge version reporting, background windows
+  minimized, tab-group names; the idle page is Openmd's own. Every change is listed in
+  `vendor/opencli-bridge/VENDOR.md` and reproduced by `scripts/vendor_opencli_bridge.py`.
+- License text: `LICENSES/opencli-Apache-2.0.txt` (also next to the vendored file).
 
-`src/openmd/backends/bilibili_wbi.py` adapts the request-signing core represented
-by Bilibili-Harvest's `bili_wbi.py`, including the protocol permutation table.
-The reference project's local LICENSE identifies MIT and
-`Copyright (c) 2023 Lanbin07`. The original license text is preserved in
-`LICENSES/Bilibili-Harvest-MIT.txt`. This attribution covers the adapted signing
-core; the rest of the upstream repository is not included. Openmd adds its own
-provider interface, injected fetcher, cache encapsulation and explicit
-user-provided configuration boundary.
+### Bilibili-Harvest WBI signing core (MIT)
 
-A backend name containing `bilibili-harvest` is a compatibility identifier,
-not a claim that the complete upstream pipeline is integrated.
+`src/openmd/backends/bilibili_wbi.py` adapts the request-signing core represented by
+Bilibili-Harvest's `bili_wbi.py`, including the protocol permutation table.
+`Copyright (c) 2023 Lanbin07`; license text in `LICENSES/Bilibili-Harvest-MIT.txt`. The rest of the
+upstream repository is not included. A backend name containing `bilibili-harvest` is a
+compatibility identifier, not a claim that the upstream pipeline is integrated.
 
-The read-only test environment used an already installed OpenCLI 1.8.7 host.
-Its installed package metadata declares Apache-2.0. No OpenCLI files are copied
-into this repository, and its license is independent from Openmd's MIT license.
+## Installed at runtime (not redistributed here)
 
-All committed package samples and mock content are synthetic. No ownership or
-redistribution right is claimed over platform data. If redistributing external
-dependencies or media in a future release, first include the exact upstream
-license texts and attribution for the versions and files being distributed.
+| Component | License | How it arrives |
+|---|---|---|
+| opencli (`@jackwener/opencli` 2.0.3) | Apache-2.0 | Downloaded from npm on first need into `~/.openmd/tools/opencli` |
+| Node.js via `nodejs-wheel-binaries` | MIT | `pip` dependency |
+| trafilatura | Apache-2.0 | `pip` dependency |
+| youtube-transcript-api, beautifulsoup4, markdownify | MIT | `pip` dependencies |
+| faster-whisper, MarkItDown, RapidOCR, Pillow, PyMuPDF … | see each project | optional extras (`openmd[asr]`, `openmd[document]` …) |
+
+FFmpeg, yt-dlp and other command-line tools are used only if you install them; their own licenses
+apply.
+
+## Content
+
+Committed fixtures and mock content are synthetic. No ownership or redistribution right is claimed
+over platform data or anything Openmd retrieves for you.

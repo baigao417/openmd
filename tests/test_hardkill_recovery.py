@@ -17,11 +17,20 @@ from openmd.core.execution_policy import CompactOutputLock
 SOURCE = Path(__file__).resolve().parents[1] / "src"
 
 
+def _interpreter() -> str:
+    # In a Windows venv, python.exe is a redirector that spawns the real
+    # interpreter; killing the redirector would orphan the lock owner.
+    base = getattr(sys, "_base_executable", None)
+    if os.name == "nt" and sys.prefix != sys.base_prefix and base and Path(base).is_file():
+        return base
+    return sys.executable
+
+
 def _start(script: str, *args: Path | str) -> subprocess.Popen[str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SOURCE) + os.pathsep + env.get("PYTHONPATH", "")
     return subprocess.Popen(
-        [sys.executable, "-c", script, *map(str, args)],
+        [_interpreter(), "-c", script, *map(str, args)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
     )
 

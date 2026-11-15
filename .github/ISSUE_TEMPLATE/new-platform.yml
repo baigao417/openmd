@@ -1,0 +1,41 @@
+name: 新平台 / 新工具接入
+description: 希望 Openmd 支持一个新网站、新平台，或接入一个现成的开源工具
+title: "[接入] <平台或工具名>"
+labels: ["new-platform"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        大多数接入只需要一张工具卡（见 docs/adding-a-platform.md）。如果你愿意自己提 PR，请勾选最后一项。
+  - type: input
+    id: platform
+    attributes:
+      label: 平台 / 网站
+      placeholder: 例如 小红书、Substack、某播客平台
+    validations:
+      required: true
+  - type: textarea
+    id: samples
+    attributes:
+      label: 2–3 个真实样本链接
+      description: 公开链接；尽量覆盖不同形态（长文 / 短帖 / 带视频 / 合集）。
+    validations:
+      required: true
+  - type: textarea
+    id: tool
+    attributes:
+      label: 已知可用的开源工具（可选）
+      description: 工具名、仓库链接、许可证。Openmd 优先"接已知工具"而不是重写抓取器。
+  - type: dropdown
+    id: login
+    attributes:
+      label: 是否需要登录才能看到内容
+      options: [不需要, 需要, 不确定]
+    validations:
+      required: true
+  - type: checkboxes
+    id: pr
+    attributes:
+      label: 贡献意愿
+      options:
+        - label: 我愿意按 docs/adding-a-platform.md 自己提 PR

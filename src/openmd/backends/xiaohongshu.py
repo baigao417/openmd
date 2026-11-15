@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qsl, urlparse
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.backends.base import (
     BackendCapability,
     BackendDescriptor,
@@ -563,7 +564,7 @@ def parse_opencli_xiaohongshu_note_output(stdout: str) -> ParsedXiaohongshuNote:
         raise ValueError("OpenCLI Xiaohongshu note output was empty.")
 
     try:
-        payload = json.loads(text)
+        payload = load_opencli_json(text)
     except json.JSONDecodeError:
         return ParsedXiaohongshuNote(text=sanitize_url_text(text))
 
@@ -618,7 +619,7 @@ def parse_opencli_xiaohongshu_user_output(
     if not text:
         raise ValueError("OpenCLI Xiaohongshu user output was empty.")
 
-    payload = json.loads(text)
+    payload = load_opencli_json(text)
     rows = _candidate_rows(payload)
     items: list[ContentItem] = []
     seen: set[str] = set()

@@ -109,15 +109,15 @@ from openmd.core.secrets import sanitize_url_text
 def _sample_opencli_channel_json() -> str:
     return json.dumps(
         [
-            {"field": "channelId", "value": "UC_synthetic_fixture_channel"},
-            {"field": "name", "value": "ExampleChannel"},
+            {"field": "channelId", "value": "UC_x5XG1OV2P6uZZ5FSM9Ttw"},
+            {"field": "name", "value": "OpenAI"},
             {"field": "---", "value": "--- Recent Videos ---"},
             {
-                "field": "Synthetic channel video one",
-                "value": "2:39 | 5.3K views | 11 hours ago | https://www.youtube.com/watch?v=demoVideo01",
+                "field": "The Texas Town at the forefront of OpenAI's Stargate Project",
+                "value": "2:39 | 5.3K views | 11 hours ago | https://www.youtube.com/watch?v=dnzxcYl4xYI",
             },
             {
-                "field": "Synthetic channel video two",
+                "field": "Introducing OpenAI o3",
                 "value": "4:20 | 12K views | 1 day ago | https://www.youtube.com/watch?v=o3Example",
             },
         ]
@@ -311,8 +311,8 @@ class DetectorTests(unittest.TestCase):
             "https://example.feishu.cn/docx/example": "feishu",
             "https://example.com/article": "web_article",
             "https://cdn.example.com/video.mp4": "generic_media",
-            str(Path("C:/fixture/audio/openmd-sample.wav")): "generic_media",
-            "file:///C:/fixture/audio/openmd-sample.wav": "generic_media",
+            str(Path("C:/Users/example/audio/openmd-sample.wav")): "generic_media",
+            "file:///C:/Users/example/audio/openmd-sample.wav": "generic_media",
         }
         for url, expected in cases.items():
             with self.subTest(url=url):
@@ -343,14 +343,21 @@ class RendererOutputTests(unittest.TestCase):
 
             self.assertNotEqual(first, second)
             markdown = first.read_text(encoding="utf-8")
-            self.assertIn("platform: youtube", markdown)
-            self.assertIn("url: https://youtu.be/example", markdown)
+            self.assertIn('platform: "youtube"', markdown)
+            self.assertIn('url: "https://youtu.be/example"', markdown)
             self.assertIn("title: \"Sample: Video?\"", markdown)
-            self.assertIn("status: verified", markdown)
-            self.assertIn("source_level: native_caption", markdown)
-            self.assertIn("## Transcript / Content", markdown)
-            self.assertIn("[00:00:01] raw transcript line", markdown)
-            self.assertIn("## Source Notes", markdown)
+            self.assertIn('author: "tester"', markdown)
+            self.assertNotIn("published:", markdown)
+            self.assertIn("# Sample: Video?", markdown)
+            self.assertIn("**00:00:01**\n\nraw transcript line second line", markdown)
+            self.assertIn("*来源：原生字幕。*", markdown)
+            for obsolete in ("status:", "source_level:", "## Transcript / Content", "## Source Notes"):
+                self.assertNotIn(obsolete, markdown)
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+
+            raw_path = write_item_result(item, result, tmp_dir, raw=True)
+            self.assertNotIn(raw_path, (first, second))
+            self.assertIn(result.text, raw_path.read_text(encoding="utf-8"))
 
 
 class RunlogTests(unittest.TestCase):
@@ -507,14 +514,14 @@ class ManifestTests(unittest.TestCase):
     def test_write_discovery_manifest_jsonl_deduplicates_by_video_id(self) -> None:
         items = parse_opencli_youtube_channel_json(
             _sample_opencli_channel_json(),
-            collection_url="https://www.youtube.com/@ExampleChannel/videos",
+            collection_url="https://www.youtube.com/@OpenAI/videos",
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             first_path = write_discovery_manifest(
                 out_dir=tmp_dir,
                 platform="youtube",
-                collection_url="https://www.youtube.com/@ExampleChannel/videos",
+                collection_url="https://www.youtube.com/@OpenAI/videos",
                 provider=YOUTUBE_DISCOVERY_BACKEND,
                 items=items,
                 limit=20,
@@ -522,7 +529,7 @@ class ManifestTests(unittest.TestCase):
             second_path = write_discovery_manifest(
                 out_dir=tmp_dir,
                 platform="youtube",
-                collection_url="https://www.youtube.com/@ExampleChannel/videos",
+                collection_url="https://www.youtube.com/@OpenAI/videos",
                 provider=YOUTUBE_DISCOVERY_BACKEND,
                 items=items,
                 limit=20,
@@ -532,7 +539,7 @@ class ManifestTests(unittest.TestCase):
             self.assertEqual(first_path, default_manifest_path(
                 tmp_dir,
                 platform="youtube",
-                collection_url="https://www.youtube.com/@ExampleChannel/videos",
+                collection_url="https://www.youtube.com/@OpenAI/videos",
             ))
             rows = [
                 json.loads(line)
@@ -540,7 +547,7 @@ class ManifestTests(unittest.TestCase):
             ]
 
         self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0]["video_id"], "demoVideo01")
+        self.assertEqual(rows[0]["video_id"], "dnzxcYl4xYI")
         self.assertEqual(rows[0]["caption_status"], "unknown")
         self.assertEqual(rows[0]["process_status"], "discovered")
         self.assertEqual(rows[0]["discovery_provider"], YOUTUBE_DISCOVERY_BACKEND)
@@ -1877,10 +1884,10 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(result.items[0].raw_meta["discovery_limit"], 2)
 
     def test_youtube_data_api_channel_lookup_supports_handles_and_channel_ids(self) -> None:
-        self.assertEqual(youtube_data_api_channel_lookup("@ExampleChannel"), ("forHandle", "ExampleChannel"))
+        self.assertEqual(youtube_data_api_channel_lookup("@OpenAI"), ("forHandle", "OpenAI"))
         self.assertEqual(
-            youtube_data_api_channel_lookup("https://www.youtube.com/@ExampleChannel/videos"),
-            ("forHandle", "ExampleChannel"),
+            youtube_data_api_channel_lookup("https://www.youtube.com/@OpenAI/videos"),
+            ("forHandle", "OpenAI"),
         )
         self.assertEqual(
             youtube_data_api_channel_lookup("https://www.youtube.com/channel/UC123/videos"),
@@ -1900,7 +1907,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=2,
                 allow_all=False,
@@ -1919,7 +1926,7 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(result.items[0].raw_meta["view_count"], "100")
         self.assertEqual(result.items[0].raw_meta["privacy_status"], "public")
         self.assertEqual(calls[0][0], "channels")
-        self.assertEqual(calls[0][1]["forHandle"], "ExampleChannel")
+        self.assertEqual(calls[0][1]["forHandle"], "OpenAI")
         self.assertEqual(calls[1][0], "playlistItems")
         self.assertEqual(calls[1][1]["playlistId"], "UU123")
         self.assertEqual(calls[1][1]["maxResults"], "2")
@@ -1937,7 +1944,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=2,
                 allow_all=False,
@@ -1962,7 +1969,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=2,
                 allow_all=False,
@@ -1985,7 +1992,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=2,
                 allow_all=False,
@@ -2013,7 +2020,7 @@ class DiscoveryTests(unittest.TestCase):
         self.assertIsNone(youtube_data_api_playlist_id("1"))
         self.assertIsNone(youtube_data_api_playlist_id("internal-row-id"))
         self.assertIsNone(youtube_data_api_playlist_id("https://www.youtube.com/watch?v=abc123"))
-        self.assertIsNone(youtube_data_api_playlist_id("https://www.youtube.com/@ExampleChannel/videos"))
+        self.assertIsNone(youtube_data_api_playlist_id("https://www.youtube.com/@OpenAI/videos"))
         self.assertIsNone(youtube_data_api_playlist_id("https://example.com/?list=PLplaylist123"))
 
     def test_youtube_data_api_playlist_discovery_uses_injected_fetcher_with_limit(self) -> None:
@@ -2156,12 +2163,12 @@ class DiscoveryTests(unittest.TestCase):
 
     def test_opencli_channel_args_are_bounded_and_json_formatted(self) -> None:
         self.assertEqual(
-            build_opencli_youtube_channel_args("https://www.youtube.com/@ExampleChannel/videos", limit=7),
-            ["opencli", "youtube", "channel", "@ExampleChannel", "--limit", "7", "-f", "json"],
+            build_opencli_youtube_channel_args("https://www.youtube.com/@OpenAI/videos", limit=7),
+            ["opencli", "youtube", "channel", "@OpenAI", "--limit", "7", "-f", "json"],
         )
         self.assertEqual(
-            build_opencli_youtube_channel_args("@ExampleChannel"),
-            ["opencli", "youtube", "channel", "@ExampleChannel", "--limit", "20", "-f", "json"],
+            build_opencli_youtube_channel_args("@OpenAI"),
+            ["opencli", "youtube", "channel", "@OpenAI", "--limit", "20", "-f", "json"],
         )
         self.assertIsNone(
             build_opencli_youtube_channel_args("https://www.youtube.com/playlist?list=PL123")
@@ -2173,7 +2180,7 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(normalize_youtube_collection_url(playlist_url), "https://www.youtube.com/playlist?list=PL123")
         self.assertEqual(opencli_youtube_playlist_target(playlist_url), "PL123")
         self.assertEqual(opencli_youtube_playlist_target("PL123"), "PL123")
-        self.assertIsNone(opencli_youtube_playlist_target("https://www.youtube.com/@ExampleChannel/videos"))
+        self.assertIsNone(opencli_youtube_playlist_target("https://www.youtube.com/@OpenAI/videos"))
         self.assertEqual(
             build_opencli_youtube_playlist_args(playlist_url, limit=5),
             ["opencli", "youtube", "playlist", "PL123", "--limit", "5", "-f", "json"],
@@ -2186,20 +2193,20 @@ class DiscoveryTests(unittest.TestCase):
     def test_opencli_channel_json_parser_skips_metadata_and_builds_items(self) -> None:
         items = parse_opencli_youtube_channel_json(
             _sample_opencli_channel_json(),
-            collection_url="https://www.youtube.com/@ExampleChannel/videos",
+            collection_url="https://www.youtube.com/@OpenAI/videos",
         )
 
         self.assertEqual(len(items), 2)
         self.assertEqual(items[0].platform, "youtube")
         self.assertEqual(items[0].input_type, "collection")
         self.assertEqual(items[0].source_type, "video")
-        self.assertEqual(items[0].url, "https://www.youtube.com/watch?v=demoVideo01")
-        self.assertEqual(items[0].id, "demoVideo01")
-        self.assertEqual(items[0].title, "Synthetic channel video one")
-        self.assertEqual(items[0].author, "ExampleChannel")
-        self.assertEqual(items[0].raw_meta["channel_id"], "UC_synthetic_fixture_channel")
-        self.assertEqual(items[0].raw_meta["channel_title"], "ExampleChannel")
-        self.assertEqual(items[0].raw_meta["collection_url"], "https://www.youtube.com/@ExampleChannel/videos")
+        self.assertEqual(items[0].url, "https://www.youtube.com/watch?v=dnzxcYl4xYI")
+        self.assertEqual(items[0].id, "dnzxcYl4xYI")
+        self.assertEqual(items[0].title, "The Texas Town at the forefront of OpenAI's Stargate Project")
+        self.assertEqual(items[0].author, "OpenAI")
+        self.assertEqual(items[0].raw_meta["channel_id"], "UC_x5XG1OV2P6uZZ5FSM9Ttw")
+        self.assertEqual(items[0].raw_meta["channel_title"], "OpenAI")
+        self.assertEqual(items[0].raw_meta["collection_url"], "https://www.youtube.com/@OpenAI/videos")
         self.assertEqual(items[0].raw_meta["discovery_provider"], YOUTUBE_DISCOVERY_BACKEND)
         self.assertEqual(items[0].raw_meta["duration"], "2:39")
         self.assertEqual(items[0].raw_meta["views"], "5.3K views")
@@ -2391,7 +2398,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=7,
                 allow_all=False,
@@ -2400,7 +2407,7 @@ class DiscoveryTests(unittest.TestCase):
 
         self.assertTrue(result.ok)
         self.assertEqual(len(result.items), 2)
-        self.assertEqual(calls, [(["opencli", "youtube", "channel", "@ExampleChannel", "--limit", "7", "-f", "json"], 5)])
+        self.assertEqual(calls, [(["opencli", "youtube", "channel", "@OpenAI", "--limit", "7", "-f", "json"], 5)])
         self.assertIn("OpenCLI browser-context discovery", result.source_notes[0])
         self.assertTrue(result.metadata["requires_browser_context"])
 
@@ -2415,7 +2422,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=3,
                 allow_all=False,
@@ -2434,7 +2441,7 @@ class DiscoveryTests(unittest.TestCase):
 
         result = provider.discover(
             DiscoveryRequest(
-                input_url="https://www.youtube.com/@ExampleChannel/videos",
+                input_url="https://www.youtube.com/@OpenAI/videos",
                 platform="youtube",
                 limit=3,
                 allow_all=False,
@@ -2477,30 +2484,31 @@ class RegistryAndBackendTests(unittest.TestCase):
         adapter = registry.adapter_for("https://youtu.be/example")
         selection = registry.select_backend("youtube")
         self.assertEqual(adapter.id, "youtube")
-        self.assertEqual(selection.primary, "youtube-transcript-api")
-        self.assertIn("opencli.youtube.transcript", selection.fallbacks)
+        self.assertEqual(selection.primary, "opencli.youtube.transcript")
+        self.assertIn("youtube-transcript-api", selection.fallbacks)
 
         item = adapter.resolve_items("https://youtu.be/example")[0]
         result = adapter.extract_text(item, backend="mock")
         self.assertTrue(result.has_usable_text)
 
-    def test_native_source_first_default_backend_chains(self) -> None:
+    def test_declared_default_backend_chains(self) -> None:
         registry = create_default_registry()
 
         self.assertEqual(
             registry.backend_chain("bilibili"),
             (
-                "bilibili-harvest.core",
                 "opencli.bilibili.subtitle",
+                "bilibili-harvest.core",
                 "yt-dlp.bilibili",
                 "asr.fallback",
+                "yutto.bilibili.media-asr",
             ),
         )
         self.assertEqual(
             registry.backend_chain("youtube"),
             (
-                "youtube-transcript-api",
                 "opencli.youtube.transcript",
+                "youtube-transcript-api",
                 "yt-dlp.youtube",
                 "asr.fallback",
             ),
@@ -2527,15 +2535,15 @@ class RegistryAndBackendTests(unittest.TestCase):
         registry = create_default_registry()
         selection = registry.select_backend("bilibili", allow_fallback=False)
 
-        self.assertEqual(selection.primary, "bilibili-harvest.core")
+        self.assertEqual(selection.primary, "opencli.bilibili.subtitle")
         self.assertEqual(selection.fallbacks, ())
-        self.assertEqual(selection.chain, ("bilibili-harvest.core",))
+        self.assertEqual(selection.chain, ("opencli.bilibili.subtitle",))
 
-    def test_opencli_is_not_bilibili_or_youtube_default_primary(self) -> None:
+    def test_opencli_is_bilibili_and_youtube_declared_primary(self) -> None:
         registry = create_default_registry()
 
-        self.assertFalse(registry.select_backend("bilibili").primary.startswith("opencli."))
-        self.assertFalse(registry.select_backend("youtube").primary.startswith("opencli."))
+        self.assertEqual(registry.select_backend("bilibili").primary, "opencli.bilibili.subtitle")
+        self.assertEqual(registry.select_backend("youtube").primary, "opencli.youtube.transcript")
 
     def test_default_registry_can_load_platform_adapter_factory_without_core_edit(self) -> None:
         calls: list[str] = []
@@ -3239,7 +3247,7 @@ class RegistryAndBackendTests(unittest.TestCase):
                     exit_code = cli_main(
                         [
                             "collect",
-                            "https://www.youtube.com/@ExampleChannel/videos",
+                            "https://www.youtube.com/@OpenAI/videos",
                             "--out",
                             tmp_dir,
                             "--enable-network-backends",
@@ -3255,7 +3263,7 @@ class RegistryAndBackendTests(unittest.TestCase):
                 manifest_path = default_manifest_path(
                     tmp_dir,
                     platform="youtube",
-                    collection_url="https://www.youtube.com/@ExampleChannel/videos",
+                    collection_url="https://www.youtube.com/@OpenAI/videos",
                 )
                 manifest_rows = [
                     json.loads(line)
@@ -3295,7 +3303,7 @@ class RegistryAndBackendTests(unittest.TestCase):
                     exit_code = cli_main(
                         [
                             "collect",
-                            "https://www.youtube.com/@ExampleChannel/videos",
+                            "https://www.youtube.com/@OpenAI/videos",
                             "--out",
                             tmp_dir,
                             "--enable-browser-backends",
@@ -3313,21 +3321,21 @@ class RegistryAndBackendTests(unittest.TestCase):
                 self.assertTrue(payload["ok"])
                 self.assertEqual(payload["item_count"], 2)
                 self.assertEqual(payload["success_count"], 2)
-                self.assertEqual(calls, [["opencli", "youtube", "channel", "@ExampleChannel", "--limit", "2", "-f", "json"]])
+                self.assertEqual(calls, [["opencli", "youtube", "channel", "@OpenAI", "--limit", "2", "-f", "json"]])
                 for output_path in output_paths:
                     self.assertTrue(output_path.exists())
                     self.assertIn("Mock transcript for Openmd skeleton", output_path.read_text(encoding="utf-8"))
                 manifest_path = default_manifest_path(
                     tmp_dir,
                     platform="youtube",
-                    collection_url="https://www.youtube.com/@ExampleChannel/videos",
+                    collection_url="https://www.youtube.com/@OpenAI/videos",
                 )
                 manifest_rows = [
                     json.loads(line)
                     for line in manifest_path.read_text(encoding="utf-8").splitlines()
                 ]
-                self.assertEqual([row["video_id"] for row in manifest_rows], ["demoVideo01", "o3Example"])
-                self.assertEqual(manifest_rows[0]["channel_id"], "UC_synthetic_fixture_channel")
+                self.assertEqual([row["video_id"] for row in manifest_rows], ["dnzxcYl4xYI", "o3Example"])
+                self.assertEqual(manifest_rows[0]["channel_id"], "UC_x5XG1OV2P6uZZ5FSM9Ttw")
                 self.assertEqual(manifest_rows[0]["discovery_provider"], YOUTUBE_DISCOVERY_BACKEND)
         finally:
             backend_registry_module.OpenCliYouTubeChannelProvider = old_provider
@@ -3418,11 +3426,12 @@ class RegistryAndBackendTests(unittest.TestCase):
         output.encode("cp1252")
         self.assertIn("\\u5305\\u542b", output)
 
-    def test_registry_lists_podwise_as_xiaoyuzhou_fallback(self) -> None:
+    def test_registry_lists_xyz_media_asr_as_xiaoyuzhou_fallback(self) -> None:
         registry = create_default_registry()
         chain = registry.backend_chain("xiaoyuzhou")
         self.assertEqual(chain[0], "opencli.xiaoyuzhou.transcript")
-        self.assertIn("podwise.transcript", chain)
+        self.assertIn("xyz-dl.xiaoyuzhou.media-asr", chain)
+        self.assertNotIn("podwise.transcript", chain)
 
     def test_registry_uses_opencli_xiaoe_adapter(self) -> None:
         registry = create_default_registry()
@@ -3718,21 +3727,21 @@ class ArticleProviderTests(unittest.TestCase):
         )
         self.assertIsInstance(browser_web.provider_for(OPENCLI_WEB_READ_BACKEND), OpenCliWebReadProvider)
 
-    def test_default_article_backend_chain_is_native_then_browser_then_heavy_fallback(self) -> None:
+    def test_default_article_backend_chains_follow_verified_routes(self) -> None:
         registry = create_default_registry()
 
         self.assertEqual(
             registry.backend_chain("weixin"),
             (
-                WEIXIN_LOCAL_BACKEND,
-                WECHAT_ARTICLE_EXPORTER_DOWNLOAD_BACKEND,
                 OPENCLI_WEIXIN_DOWNLOAD_BACKEND,
+                "defuddle.web.content",
+                WEIXIN_LOCAL_BACKEND,
                 OPENCLI_WEB_READ_BACKEND,
             ),
         )
         self.assertEqual(
             registry.backend_chain("web_article"),
-            (WEB_ARTICLE_TRAFILATURA_BACKEND, OPENCLI_WEB_READ_BACKEND),
+            ("web_article.discourse", "defuddle.web.content", WEB_ARTICLE_TRAFILATURA_BACKEND, OPENCLI_WEB_READ_BACKEND),
         )
 
     def test_weixin_local_provider_parses_fixture_metadata_content_images_and_code(self) -> None:
@@ -3813,7 +3822,8 @@ class ArticleProviderTests(unittest.TestCase):
             self.assertEqual(image_path.read_bytes(), b"image-bytes")
             self.assertIn("![ok](assets/images/img_001.jpg)", markdown)
             self.assertIn("![bad](https://example.com/bad.png)", markdown)
-            self.assertIn("asset_download_failed", markdown)
+            self.assertIn("1 张图片下载失败，保留远程链接", markdown.splitlines()[-1])
+            self.assertNotIn("asset_download_failed", markdown)
             self.assertEqual(calls[0][1]["Referer"], "https://mp.weixin.qq.com/")
 
     def test_localize_markdown_images_has_non_throwing_failure_mode(self) -> None:

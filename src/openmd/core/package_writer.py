@@ -324,6 +324,16 @@ def build_package_metadata(
         metadata["published_at"] = published_at
     if execution_fingerprint:
         metadata["execution_fingerprint"] = execution_fingerprint
+    metadata["route_trace"] = {key: result.metadata[key] for key in ("card_id", "route_version", "overlay_applied") if key in result.metadata}
+    from .secrets import asr_execution_metrics
+
+    asr_execution = asr_execution_metrics(result.metadata)
+    if asr_execution:
+        metadata["asr_execution"] = asr_execution
+    if item.platform in {"pdf", "screenshot"}:
+        from .secrets import sanitize_document_metadata
+
+        metadata["document_metadata"] = sanitize_document_metadata({key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata})
     return metadata
 
 

@@ -30,53 +30,10 @@ OPENCLI_ADAPTER_PLATFORMS: frozenset[str] = frozenset(
 )
 
 
-DEFAULT_BACKENDS: dict[str, tuple[str, ...]] = {
-    "bilibili": (
-        "bilibili-harvest.core",
-        "opencli.bilibili.subtitle",
-        "yt-dlp.bilibili",
-        "asr.fallback",
-    ),
-    "youtube": (
-        "youtube-transcript-api",
-        "opencli.youtube.transcript",
-        "yt-dlp.youtube",
-        "asr.fallback",
-    ),
-    "weixin": (
-        "weixin.article.local",
-        "wechat-article-exporter.download",
-        "opencli.weixin.download",
-        "opencli.web.read",
-    ),
-    "wechat_group": ("opencli.wx.history",),
-    "wechat_moments": ("opencli.wx.sns-feed",),
-    "qq_group": ("qq_group.export",),
-    "xiaoyuzhou": (
-        "opencli.xiaoyuzhou.transcript",
-        "podwise.transcript",
-        "opencli.web.read",
-    ),
-    "douyin": ("douyin.metadata",),
-    "tiktok": ("opencli.tiktok.user",),
-    "xiaohongshu": ("xiaohongshu.composite",),
-    "xiaoe": ("opencli.xiaoe.transcript", "opencli.xiaoe.content"),
-    "x": ("opencli.twitter.thread",),
-    "web_article": (
-        "web_article.trafilatura",
-        "opencli.web.read",
-    ),
-    "feishu": (
-        "lark-cli.docs.fetch",
-        "lark-cli.drive.export-markdown",
-        "lark-cli.markdown.fetch",
-        "manual.markdown-export",
-    ),
-    "generic_media": ("asr.fallback",),
-    "pdf": ("pdf.markitdown", "pdf.docling", "paddleocr.pdf"),
-    "screenshot": ("ocr.rapidocr", "ocr.paddle", "ocr.tesseract"),
-}
+from openmd.routing.loader import default_backend_chains
 
+
+DEFAULT_BACKENDS: dict[str, tuple[str, ...]] = default_backend_chains(effective=False)
 
 @dataclass(frozen=True)
 class BackendSelection:
@@ -92,7 +49,7 @@ class BackendSelection:
 class AdapterRegistry:
     def __init__(self) -> None:
         self._adapters: dict[str, PlatformAdapter] = {}
-        self._backends: dict[str, tuple[str, ...]] = dict(DEFAULT_BACKENDS)
+        self._backends: dict[str, tuple[str, ...]] = default_backend_chains()
 
     def register(
         self,
@@ -147,7 +104,7 @@ def create_default_registry(
     registry = AdapterRegistry()
     load_factory = adapter_factory_loader or load_adapter_factory
     for platform_id in PLATFORM_IDS:
-        backend = DEFAULT_BACKENDS.get(platform_id, ("mock",))[0]
+        backend = registry.backend_chain(platform_id)[0]
         registry.register(_create_platform_adapter(platform_id, backend, load_factory))
     return registry
 

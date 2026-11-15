@@ -23,11 +23,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request as UrlRequest, urlopen
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.core.detector import extract_first_url
 from openmd.core.models import ContentItem
 from openmd.core.secrets import sanitize_error_summary
 
 from .base import DiscoveryRequest, DiscoveryResult
+
+from openmd.runtime.interpreters import owned_popen, communicate_interruptibly, terminate_quietly as _terminate_process_tree
 
 
 YOUTUBE_DISCOVERY_BACKEND = "opencli.youtube.discovery"
@@ -199,7 +202,7 @@ def parse_opencli_youtube_channel_json(
     discovery_provider: str = YOUTUBE_DISCOVERY_BACKEND,
 ) -> list[ContentItem]:
     """Parse OpenCLI's ``youtube channel -f json`` output into ContentItems."""
-    payload = json.loads(stdout)
+    payload = load_opencli_json(stdout)
     if not isinstance(payload, list):
         raise ValueError("OpenCLI YouTube channel output must be a JSON list.")
 
@@ -329,7 +332,7 @@ def _run_opencli(
         popen_args: list[str] | str = command
         if _is_windows_batch_file(command[0]):
             popen_args = _windows_batch_command_line(command)
-        process = subprocess.Popen(
+        process = owned_popen(
             popen_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -338,13 +341,14 @@ def _run_opencli(
             encoding="utf-8",
             errors="replace",
             creationflags=_subprocess_creation_flags(),
+            start_new_session=os.name != "nt",
         )
-        stdout, stderr = process.communicate(input=stdin_text, timeout=timeout)
+        stdout, stderr = communicate_interruptibly(process, input=stdin_text, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         if process is not None:
             _terminate_process_tree(process)
             try:
-                stdout, stderr = process.communicate(timeout=5)
+                stdout, stderr = communicate_interruptibly(process, timeout=5)
             except subprocess.TimeoutExpired:
                 stdout, stderr = exc.stdout, exc.stderr
         else:
@@ -380,24 +384,6 @@ def _subprocess_creation_flags() -> int:
     if os.name != "nt":
         return 0
     return getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-
-
-def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
-    """Terminate an OpenCLI process and child Node process on timeout."""
-    if process.poll() is not None:
-        return
-    if os.name == "nt":
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-            return
-        except OSError:
-            pass
-    process.kill()
 
 
 def _run_youtube_data_api(
@@ -935,7 +921,7 @@ def classify_youtube_playlist_discovery_failure(message: object) -> str:
 
 def _playlist_rows_from_json(stdout: str) -> list[dict[str, Any]] | None:
     try:
-        payload = json.loads(stdout)
+        payload = load_opencli_json(stdout)
     except json.JSONDecodeError:
         return None
     rows = _json_video_rows(payload)

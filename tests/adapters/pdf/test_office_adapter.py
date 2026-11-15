@@ -23,7 +23,13 @@ def test_office_routes_to_existing_local_document_backend(tmp_path, suffix):
         item = adapter.resolve_items(value)[0]
         assert item.source_type == "document"
         assert item.raw_meta["permission_scope"] == "local_file"
-        with patch.object(Path, "open", side_effect=AssertionError("plan read body")):
+        original_open = Path.open
+
+        def guard_input_open(open_path, *args, **kwargs):
+            assert open_path.resolve() != path.resolve(), "plan read input body"
+            return original_open(open_path, *args, **kwargs)
+
+        with patch.object(Path, "open", guard_input_open):
             plan = build_plan(value, available_gates={"local_compute"})
         assert plan.execution_ready
         assert plan.runtime_provider == "pdf.markitdown"

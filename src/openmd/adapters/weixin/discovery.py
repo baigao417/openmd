@@ -24,6 +24,7 @@ from openmd.backends.base import DiscoveryRequest, DiscoveryResult
 from openmd.backends.weixin import normalize_weixin_url
 from openmd.core.models import ContentItem
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.interpreters import run_interruptibly
 
 
 WECHAT_ARTICLE_EXPORTER_DISCOVERY_BACKEND = "wechat-article-exporter"
@@ -485,7 +486,7 @@ def _item_from_article(
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             [resolved, *command[1:]],
             capture_output=True,
             text=True,

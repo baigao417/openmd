@@ -1,1 +1,1 @@
-"""Optional PDF parser backend placeholders."""
+"""Optional document parser backends."""

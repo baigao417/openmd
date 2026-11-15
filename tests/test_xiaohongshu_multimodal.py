@@ -32,8 +32,8 @@ from openmd.core.package_writer import write_item_package
 from openmd.core.renderer import render_document, render_markdown_document
 
 
-NOTE_ID = "ffff00000000000000000002"
-PROFILE_ID = "ffff00000000000000000006"
+NOTE_ID = "689c37a5000000001c0361a6"
+PROFILE_ID = "683e522f000000001d008dba"
 NOTE_URL = f"https://www.xiaohongshu.com/discovery/item/{NOTE_ID}"
 
 

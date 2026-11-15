@@ -35,7 +35,8 @@ def test_t03_receipt_keeps_terminal_states_mutually_exclusive_and_skips_orthogon
 
 def test_t02_receipt_is_bounded_and_does_not_persist_raw_urls_or_body() -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
-        run = CompactReceiptRun.create(Path(tmp_dir) / ("长目录" * 30), "ingest")
+        # 20 x 3 CJK chars = 180 UTF-8 bytes: under the 255-byte Linux/macOS component limit.
+        run = CompactReceiptRun.create(Path(tmp_dir) / ("长目录" * 20), "ingest")
         error_codes = (
             "runtime_transient",
             "source_unavailable",

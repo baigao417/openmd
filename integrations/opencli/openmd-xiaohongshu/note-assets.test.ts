@@ -6,8 +6,8 @@ import { ArgumentError, CliError } from '@jackwener/opencli/errors';
 
 import { NOTE_DETAIL_JS, buildNoteAssetPlan, buildSafeAssetRows, isSafeRuntimeSelector, parseNoteId, parseProfileId, translateError } from './note-assets.ts';
 
-const NOTE_ID = 'ffff00000000000000000002';
-const OTHER_ID = 'ffff00000000000000000003';
+const NOTE_ID = '689c37a5000000001c0361a6';
+const OTHER_ID = '689c37a5000000001c0361a7';
 
 // Selector matches are declared per fixture node; querySelector uses document
 // order, just like the browser (comma-separated selectors have no priority).
@@ -143,19 +143,19 @@ test('a route with trailing unrelated segments does not establish share target i
 
 test('parse canonical note and profile selectors without retaining queries', () => {
   assert.equal(parseNoteId(`https://www.xiaohongshu.com/discovery/item/${NOTE_ID}?xsec_token=secret`), NOTE_ID);
-  assert.equal(parseProfileId('https://www.xiaohongshu.com/user/profile/ffff00000000000000000006?xsec_token=secret'), 'ffff00000000000000000006');
-  assert.equal(parseProfileId(`https://www.xiaohongshu.com/user/profile/ffff00000000000000000006/${NOTE_ID}?xsec_token=secret`), null);
+  assert.equal(parseProfileId('https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba?xsec_token=secret'), '683e522f000000001d008dba');
+  assert.equal(parseProfileId(`https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba/${NOTE_ID}?xsec_token=secret`), null);
 });
 
 test('note-assets accepts only signed Xiaohongshu runtime profile selectors', () => {
   assert.equal(isSafeRuntimeSelector(
-    'https://www.xiaohongshu.com/user/profile/ffff00000000000000000006?xsec_token=runtime-only',
+    'https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba?xsec_token=runtime-only',
   ), true);
   assert.equal(isSafeRuntimeSelector(
-    'https://www.xiaohongshu.com/user/profile/ffff00000000000000000006',
+    'https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba',
   ), false);
   assert.equal(isSafeRuntimeSelector(
-    'https://xiaohongshu.com.attacker.example/user/profile/ffff00000000000000000006?xsec_token=runtime-only',
+    'https://xiaohongshu.com.attacker.example/user/profile/683e522f000000001d008dba?xsec_token=runtime-only',
   ), false);
 });
 
@@ -282,7 +282,7 @@ test('empty output is rejected before browser navigation', async () => {
 });
 
 test('profile ids are not parsed as note ids', () => {
-  assert.equal(parseNoteId('https://www.xiaohongshu.com/user/profile/ffff00000000000000000006?xsec_token=fixture'), null);
+  assert.equal(parseNoteId('https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba?xsec_token=fixture'), null);
   assert.equal(parseNoteId(`https://www.xiaohongshu.com/search_result/${NOTE_ID}?xsec_token=fixture`), NOTE_ID);
 });
 

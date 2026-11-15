@@ -16,6 +16,9 @@ from openmd.core.secrets import sanitize_error_summary
 
 from .base import PlatformAdapter
 
+from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.interpreters import run_interruptibly
+
 
 BVID_RE = re.compile(r"(BV[0-9A-Za-z]+)")
 X_STATUS_RE = re.compile(r"/status/(\d+)")
@@ -54,7 +57,7 @@ def _run_command(
     command: list[str], *, timeout: int = 120, cwd: str | Path | None = None
 ) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
-    completed = subprocess.run(
+    completed = run_interruptibly(
         [resolved, *command[1:]],
         cwd=cwd,
         capture_output=True,
@@ -70,6 +73,10 @@ def _run_command(
 def _run_opencli(
     args: list[str], *, timeout: int = 120, cwd: str | Path | None = None
 ) -> tuple[int, str, str]:
+    # This adapter keeps stdout as backend text. OpenCLI 2.x defaults to a JSON
+    # envelope, so pin the table format instead of publishing the envelope as content.
+    if "-f" not in args and "--format" not in args:
+        args = [*args, "-f", "table"]
     return _run_command(["opencli", *args], timeout=timeout, cwd=cwd)
 
 
@@ -402,7 +409,7 @@ class OpenCliPlatformAdapter(PlatformAdapter):
         )
 
     def _weixin(self, item: ContentItem, backend: str) -> TranscriptResult:
-        with tempfile.TemporaryDirectory(prefix="openmd-weixin-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-weixin-") as tmp_dir:
             exit_code, stdout, stderr = _run_opencli(
                 [
                     "weixin",
@@ -460,7 +467,7 @@ class OpenCliPlatformAdapter(PlatformAdapter):
         return fallback
 
     def _xiaoe_transcript(self, item: ContentItem, backend: str) -> TranscriptResult:
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaoe-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaoe-") as tmp_dir:
             exit_code, _stdout, stderr = _run_opencli(
                 [
                     "xiaoe",
@@ -570,7 +577,7 @@ class OpenCliPlatformAdapter(PlatformAdapter):
             return self._failed(backend, credentials_code, credentials_summary)
 
         episode_id = _extract_episode_id(item.url)
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaoyuzhou-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaoyuzhou-") as tmp_dir:
             exit_code, stdout, stderr = _run_opencli(
                 [
                     "xiaoyuzhou",
@@ -657,7 +664,7 @@ class OpenCliPlatformAdapter(PlatformAdapter):
         )
 
     def _find_podwise_episode_url(self, xiaoyuzhou_url: str) -> str | TranscriptResult:
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaoyuzhou-web-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaoyuzhou-web-") as tmp_dir:
             exit_code, stdout, stderr = _run_opencli(
                 ["web", "read", "--url", xiaoyuzhou_url, "--stdout"],
                 cwd=tmp_dir,

@@ -222,12 +222,15 @@ class OpenCliTwitterTextProvider:
 
         metadata: dict[str, Any] = {"command": command_plan.command_name}
         metadata.update(command_plan.metadata)
+        table_title, table_author = _table_post_title(text, tweet_id=metadata.get("tweet_id"))
+        fallback = f"X-{metadata['tweet_id']}" if metadata.get("tweet_id") else f"X-@{_x_username_candidate(item) or 'posts'}"
         return TranscriptResult(
             text=text.rstrip() + "\n",
             status="verified",
             source_level="native_text",
             backend=command_plan.backend,
-            title=_markdown_title(text) or item.title,
+            title=_markdown_title(text) or item.title or table_title or fallback,
+            author=table_author or item.author,
             source_notes=[
                 f"OpenCLI twitter {command_plan.command_name} returned read-only X text.",
                 "Provider is registered only when --enable-browser-backends is enabled.",
@@ -410,6 +413,31 @@ def _markdown_title(markdown: str) -> str | None:
         if stripped.startswith("# "):
             return stripped.removeprefix("# ").strip() or None
     return None
+
+
+def _table_post_title(markdown: str, *, tweet_id: str | None) -> tuple[str | None, str | None]:
+    """Read metadata from the Markdown table without changing its raw body."""
+    headers: list[str] = []
+    for line in markdown.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = [cell.strip().replace(r"\|", "|") for cell in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
+        if "author" in cells and "text" in cells:
+            headers = cells
+            continue
+        if not headers or len(cells) < len(headers):
+            continue
+        row = dict(zip(headers, cells))
+        if tweet_id and row.get("id") != tweet_id:
+            continue
+        body = re.sub(r"<br\s*/?>|\\n", " ", row["text"], flags=re.IGNORECASE)
+        body = " ".join(body.split())
+        if not body or re.fullmatch(r"[-: ]+", body):
+            continue
+        author = row["author"] or None
+        opening = body[:56] + ("…" if len(body) > 56 else "")
+        return f"{author}：{opening}" if author else opening, author
+    return None, None
 
 
 def _failed(backend: str, code: str, error: object) -> TranscriptResult:

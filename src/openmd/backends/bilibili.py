@@ -25,7 +25,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
-from openmd.adapters.local_audio.backends.faster_whisper import FasterWhisperASRBackend
+from openmd.core.opencli_output import load_opencli_json
+from openmd.runtime.asr import get_asr_backend
 from openmd.backends.base import (
     BackendCapability,
     BackendDescriptor,
@@ -45,6 +46,8 @@ from openmd.backends.bilibili_wbi import (
 from openmd.core.detector import extract_first_url
 from openmd.core.models import ContentItem, SourceLevel, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.interpreters import run_interruptibly
 
 
 BILIBILI_HARVEST_BACKEND = "bilibili-harvest.core"
@@ -513,7 +516,7 @@ class BilibiliMediaAsrFallbackProvider:
     ) -> None:
         self._options = options
         self._runner = runner or _run_command
-        self._asr_backend = asr_backend or FasterWhisperASRBackend()
+        self._asr_backend = asr_backend or get_asr_backend("asr.auto")
         self._timeout = timeout
 
     def descriptor(self) -> BackendDescriptor:
@@ -909,7 +912,7 @@ def parse_bilibili_subtitle_segments(text: str) -> list[_SubtitleSegment]:
 
 
 def parse_opencli_bilibili_user_videos(text: str) -> list[dict[str, str]]:
-    rows = _parse_tabular_rows(text)
+    rows = _parse_json_subtitle_rows(text) or _parse_tabular_rows(text)
     return [row for row in rows if _row_lookup(row, "url") or extract_bvid(str(row))]
 
 
@@ -930,7 +933,7 @@ def _media_workspace(options: BackendRuntimeOptions):
         yield _MediaWorkspace(path=media_dir, retention="kept")
         return
 
-    with tempfile.TemporaryDirectory(prefix="openmd-bilibili-asr-") as tmp_dir:
+    with owned_temporary_directory(prefix="openmd-bilibili-asr-") as tmp_dir:
         yield _MediaWorkspace(path=Path(tmp_dir), retention="deleted")
 
 
@@ -974,7 +977,7 @@ def _default_fetch(url: str, params: dict[str, str], timeout: int) -> tuple[int,
 
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
-    completed = subprocess.run(
+    completed = run_interruptibly(
         [resolved, *command[1:]],
         capture_output=True,
         text=True,
@@ -1176,7 +1179,7 @@ def _segments_from_subtitle_payload(payload: Any) -> list[_SubtitleSegment]:
 
 def _parse_json_subtitle_rows(text: str) -> list[dict[str, Any]]:
     try:
-        payload = json.loads(text)
+        payload = load_opencli_json(text)
     except json.JSONDecodeError:
         return []
     if isinstance(payload, dict):

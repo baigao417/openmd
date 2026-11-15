@@ -28,7 +28,7 @@ class DouyinAdapterTests(unittest.TestCase):
 
         self.assertIsInstance(adapter, DouyinAdapter)
         self.assertEqual(adapter.id, "douyin")
-        self.assertEqual(registry.backend_chain("douyin"), ("douyin.metadata",))
+        self.assertEqual(registry.backend_chain("douyin"), ("douyin.transcript",))
 
     def test_resolves_user_url_as_collection_selector_without_discovery(self) -> None:
         adapter = DouyinAdapter()

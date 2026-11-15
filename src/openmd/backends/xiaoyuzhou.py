@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.backends.base import (
     BackendCapability,
     BackendDescriptor,
@@ -33,6 +34,8 @@ from openmd.backends.executor import BackendProviderRegistry, DiscoveryProviderR
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.interpreters import run_interruptibly
 
 
 OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND = "opencli.xiaoyuzhou.transcript"
@@ -117,7 +120,7 @@ def build_opencli_xiaoyuzhou_transcript_args(episode_id: str, *, output_dir: str
         "--output",
         output_dir,
         "--json",
-        "false",
+        "true",
         "--text",
         "true",
         "-f",
@@ -228,7 +231,7 @@ class OpenCliXiaoyuzhouTranscriptProvider:
         if not episode_id:
             return _failed(self.name, "invalid_input", "Could not extract a Xiaoyuzhou episode id.")
 
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaoyuzhou-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaoyuzhou-") as tmp_dir:
             command = build_opencli_xiaoyuzhou_transcript_args(episode_id, output_dir=tmp_dir)
             exit_code, stdout, stderr = self._runner(command, timeout=self.timeout)
             if exit_code != 0:
@@ -248,13 +251,27 @@ class OpenCliXiaoyuzhouTranscriptProvider:
                     metadata={"episode_id": episode_id},
                 )
 
+            author = item.author or _reported_podcast(stdout)
+            if not author:
+                # Transcript output omits podcast metadata in current OpenCLI.
+                # Public episode metadata uses no browser and never starts media/ASR.
+                try:
+                    code, episode_stdout, _ = self._runner(
+                        ["opencli", "xiaoyuzhou", "episode", episode_id, "-f", "json"],
+                        timeout=min(self.timeout, 30),
+                    )
+                    if code == 0:
+                        author = _reported_podcast(episode_stdout)
+                except (OSError, ValueError, subprocess.SubprocessError):
+                    pass  # Metadata unavailability must not discard a usable transcript.
+
             return TranscriptResult(
                 text=text.rstrip() + "\n",
                 status="verified",
                 source_level="native_caption",
                 backend=self.name,
-                title=item.title,
-                author=item.author,
+                title=_reported_title(stdout) or item.title,
+                author=author,
                 published_at=item.published_at,
                 source_notes=[
                     "OpenCLI xiaoyuzhou transcript returned existing transcript text.",
@@ -393,7 +410,7 @@ class PodwiseTranscriptProvider:
         )
 
     def _find_podwise_episode_url(self, xiaoyuzhou_url: str) -> str | TranscriptResult:
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaoyuzhou-web-") as tmp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaoyuzhou-web-") as tmp_dir:
             exit_code, stdout, stderr = self._opencli_runner(
                 build_opencli_web_read_args(xiaoyuzhou_url),
                 timeout=self.web_timeout,
@@ -670,7 +687,7 @@ def extract_xiaoyuzhou_podcast_id(input_value: str) -> str | None:
 
 def parse_xiaoyuzhou_episode_items(stdout: str, *, podcast_id: str) -> list[ContentItem]:
     try:
-        payload = json.loads(stdout.strip())
+        payload = load_opencli_json(stdout.strip())
     except json.JSONDecodeError:
         return []
     records = _episode_records_from_payload(payload)
@@ -793,7 +810,7 @@ def _run_command(
     cwd: str | Path | None = None,
 ) -> tuple[int, str, str]:
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             [_resolve_executable(command[0]), *command[1:]],
             cwd=cwd,
             stdin=subprocess.DEVNULL,
@@ -828,7 +845,59 @@ def _executable_available(executable: str) -> bool:
     return any(shutil.which(f"{executable}{extension}") for extension in (".cmd", ".bat", ".exe"))
 
 
+def _reported_title(stdout: str) -> str | None:
+    try:
+        payload = load_opencli_json(stdout)
+    except json.JSONDecodeError:
+        return None
+    row = payload[0] if isinstance(payload, list) and payload else payload
+    title = row.get("title") if isinstance(row, dict) else None
+    return title.strip() or None if isinstance(title, str) else None
+
+
+def _reported_podcast(stdout: str) -> str | None:
+    try:
+        payload = load_opencli_json(stdout)
+    except json.JSONDecodeError:
+        return None
+    row = payload[0] if isinstance(payload, list) and payload else payload
+    if not isinstance(row, dict):
+        return None
+    for key in ("podcast", "podcast_title", "podcastTitle", "author"):
+        value = row.get(key)
+        if isinstance(value, dict):
+            value = value.get("title")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _read_timed_transcript(directory: Path) -> str:
+    """Render OpenCLI's segment JSON with timestamps; empty when segments are unusable."""
+    for path in sorted(directory.rglob("transcript.json")):
+        try:
+            segments = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        except json.JSONDecodeError:
+            return ""
+        if not isinstance(segments, list):
+            return ""
+        lines = []
+        for segment in segments:
+            if not isinstance(segment, dict):
+                return ""
+            start, text = segment.get("startMs"), segment.get("text")
+            if not isinstance(start, (int, float)) or not isinstance(text, str):
+                return ""
+            seconds = int(start // 1000)
+            lines.append(f"[{seconds // 3600:02d}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}] {text.strip()}")
+        return "\n".join(lines)
+    return ""
+
+
 def _read_opencli_transcript_text(directory: Path, stdout: str) -> str:
+    timed = _read_timed_transcript(directory)
+    if timed:
+        return timed
     text_files = sorted(directory.rglob("transcript.txt"))
     if text_files:
         return text_files[0].read_text(encoding="utf-8", errors="replace")
@@ -840,7 +909,7 @@ def _extract_text_from_stdout(stdout: str) -> str:
     if not stripped:
         return ""
     try:
-        payload = json.loads(stripped)
+        payload = load_opencli_json(stripped)
     except json.JSONDecodeError:
         return stripped
     return _text_from_json_payload(payload).strip()

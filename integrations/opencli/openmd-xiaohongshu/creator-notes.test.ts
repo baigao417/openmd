@@ -42,17 +42,17 @@ const fixture = {
 };
 
 test('parseProfileTarget accepts user ids and strips signed profile queries', () => {
-  assert.deepEqual(parseProfileTarget('ffff00000000000000000006'), {
-    userId: 'ffff00000000000000000006',
-    profileUrl: 'https://www.xiaohongshu.com/user/profile/ffff00000000000000000006',
+  assert.deepEqual(parseProfileTarget('683e522f000000001d008dba'), {
+    userId: '683e522f000000001d008dba',
+    profileUrl: 'https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba',
   });
   assert.deepEqual(
     parseProfileTarget(
-      'https://www.xiaohongshu.com/user/profile/ffff00000000000000000006?xsec_token=runtime-secret&xsec_source=pc_feed',
+      'https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba?xsec_token=runtime-secret&xsec_source=pc_feed',
     ),
     {
-      userId: 'ffff00000000000000000006',
-      profileUrl: 'https://www.xiaohongshu.com/user/profile/ffff00000000000000000006',
+      userId: '683e522f000000001d008dba',
+      profileUrl: 'https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba',
     },
   );
 });
@@ -84,7 +84,7 @@ test('projectProfileNotes can expose note-specific selectors only in transient m
 });
 
 test('projectProfileNotes accepts DOM fallback note-card groups', () => {
-  const noteId = 'ffff00000000000000000002';
+  const noteId = '689c37a5000000001c0361a6';
   const snapshot = projectProfileNotes({
     storePresent: true,
     notesPresent: true,

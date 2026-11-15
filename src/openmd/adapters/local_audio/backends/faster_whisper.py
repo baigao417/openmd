@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 from openmd.adapters.local_audio.asr import ASRBackend, MissingASRBackend
 from openmd.core.models import TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.models import ModelNotFoundError, model_label, offline_model_loading, require_model, resolve_model
 
 
 DEFAULT_MODEL_SIZE = "large-v3"
@@ -35,6 +37,39 @@ DEFAULT_HOTWORDS = (
 )
 # Decode settings shared by the transcribe call and the execution fingerprint.
 FIXED_DECODE_OPTIONS: dict[str, Any] = {"best_of": 5, "temperature": 0.0, "vad_filter": True}
+# Keep handles alive: closing or collecting them removes Windows DLL directories.
+_DLL_DIRECTORY_HANDLES: dict[str, Any] = {}
+
+
+def _prepare_windows_dll_paths() -> None:
+    """Expose optional pip-installed NVIDIA runtimes before loading CTranslate2."""
+    if sys.platform != "win32":
+        return
+    spec = importlib.util.find_spec("faster_whisper")
+    if spec is None or spec.origin is None:
+        return
+    nvidia_root = Path(spec.origin).resolve().parent.parent / "nvidia"
+    directories = sorted(path.resolve() for path in nvidia_root.glob("*/bin") if path.is_dir())
+    # A CUDA torch install ships cuBLAS/cuDNN in torch/lib; reuse them without importing torch.
+    torch_lib = nvidia_root.parent / "torch" / "lib"
+    if torch_lib.is_dir():
+        directories.append(torch_lib.resolve())
+    existing = {
+        os.path.normcase(os.path.abspath(path))
+        for path in os.environ.get("PATH", "").split(os.pathsep)
+        if path
+    }
+    additions: list[str] = []
+    for directory in directories:
+        value = str(directory)
+        key = os.path.normcase(value)
+        if key not in _DLL_DIRECTORY_HANDLES:
+            _DLL_DIRECTORY_HANDLES[key] = os.add_dll_directory(value)
+        if key not in existing:
+            additions.append(value)
+            existing.add(key)
+    if additions:
+        os.environ["PATH"] = os.pathsep.join([*additions, os.environ.get("PATH", "")])
 
 
 class FasterWhisperASRBackend(ASRBackend):
@@ -78,12 +113,15 @@ class FasterWhisperASRBackend(ASRBackend):
             "OPENMD_FASTER_WHISPER_HOTWORDS", DEFAULT_HOTWORDS if podcast else ""
         )
         self.condition_on_previous_text = condition_on_previous_text
+        self.chinese_script = os.getenv("OPENMD_ASR_CHINESE_SCRIPT", "simplified")
 
     def execution_config(self) -> dict[str, Any]:
         """Effective result settings; construction never imports or downloads a model."""
         return {
             "profile": self.profile,
-            "model": self.model_size,
+            "model": model_label(self.model_size),
+            "model_origin": resolve_model(self.model_size, family="whisper").origin,
+            "local_files_only": True,
             "language": self.language,
             "device": self.device,
             "compute_type": self.compute_type,
@@ -93,6 +131,7 @@ class FasterWhisperASRBackend(ASRBackend):
             "initial_prompt": self.initial_prompt,
             "hotwords": self.hotwords,
             "condition_on_previous_text": self.condition_on_previous_text,
+            "chinese_script": self.chinese_script,
         }
 
     def is_available(self) -> bool:
@@ -112,13 +151,17 @@ class FasterWhisperASRBackend(ASRBackend):
             return MissingASRBackend(self.name).transcribe(source_path)
 
         try:
+            model_path = require_model(self.model_size, family="whisper")
+            _prepare_windows_dll_paths()
             from faster_whisper import WhisperModel
 
-            model = WhisperModel(
-                self.model_size,
-                device=self.device,
-                compute_type=self.compute_type,
-            )
+            with offline_model_loading():
+                model = WhisperModel(
+                    str(model_path),
+                    device=self.device,
+                    compute_type=self.compute_type,
+                    local_files_only=True,
+                )
             kwargs: dict[str, Any] = {
                 "beam_size": self.beam_size,
                 **FIXED_DECODE_OPTIONS,
@@ -131,6 +174,8 @@ class FasterWhisperASRBackend(ASRBackend):
                 kwargs["language"] = self.language
             segments, info = model.transcribe(str(source_path), **kwargs)
             lines = _format_segments(segments)
+        except ModelNotFoundError as exc:
+            return _failed_result(self.name, source_path, "asr_model_missing", exc)
         except Exception as exc:  # pragma: no cover - dependency/model safety net
             return _failed_result(self.name, source_path, "asr_extraction_failed", exc)
 
@@ -143,6 +188,9 @@ class FasterWhisperASRBackend(ASRBackend):
                 "faster-whisper returned no recognized text.",
             )
 
+        detected_language = getattr(info, "language", None) or self.language
+        text, script_note, applied_script = _normalize_chinese_script(text, detected_language, self.chinese_script)
+
         return TranscriptResult(
             text=f"{text}\n",
             status="verified",
@@ -151,12 +199,14 @@ class FasterWhisperASRBackend(ASRBackend):
             source_notes=[
                 "faster-whisper transcribed a local audio file.",
                 "Raw audio file was referenced, not copied into the package.",
+                *([script_note] if script_note else []),
             ],
             title=source_path.stem or "local audio",
             metadata={
                 "profile": "media",
                 "asr_backend": self.name,
-                "model_size": self.model_size,
+                "chinese_script": applied_script,
+                "model_size": model_label(self.model_size),
                 "device": self.device,
                 "compute_type": self.compute_type,
                 "language": getattr(info, "language", None) or self.language,
@@ -172,6 +222,20 @@ class FasterWhisperASRBackend(ASRBackend):
 
 def create_backend() -> FasterWhisperASRBackend:
     return FasterWhisperASRBackend()
+
+
+def _normalize_chinese_script(text: str, language: str | None, script: str) -> tuple[str, str | None, str | None]:
+    """Whisper mixes Traditional into Mandarin output even with a Simplified prompt.
+
+    Only the character form changes; wording is untouched. Cantonese keeps its own form.
+    """
+    if language != "zh" or script != "simplified":
+        return text, None, None
+    try:
+        from opencc import OpenCC
+    except ImportError:
+        return text, "OpenCC is not installed, so Traditional characters were left unconverted.", "original"
+    return OpenCC("t2s").convert(text), "Traditional characters were converted to Simplified with OpenCC; wording is unchanged.", "simplified"
 
 
 def _format_segments(segments: Any) -> list[str]:
@@ -217,5 +281,5 @@ def _failed_result(
         error_code=code,
         error_summary=sanitize_error_summary(error),
         title=path.stem or "local audio",
-        metadata={"profile": "media", "asr_backend": backend, "source_ref": str(path)},
+        metadata={"profile": "media", "asr_backend": backend, "source_ref": path.name},
     )

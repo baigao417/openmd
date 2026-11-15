@@ -37,7 +37,7 @@ class PdfDocumentAdapterTests(unittest.TestCase):
             self.assertEqual(adapter.id, "pdf")
             self.assertEqual(
                 registry.backend_chain("pdf"),
-                ("pdf.markitdown", "pdf.docling", "paddleocr.pdf"),
+                ("pdf.markitdown", "pdf.textlayer", "ocr.chain"),
             )
 
     def test_resolves_local_pdf_file_without_copying_raw_document(self) -> None:
@@ -135,7 +135,7 @@ class PdfDocumentAdapterTests(unittest.TestCase):
             _write_fake_pdf(pdf_path)
 
             stdout = io.StringIO()
-            with contextlib.redirect_stdout(stdout):
+            with contextlib.redirect_stdout(stdout), patch("openmd.ocr.documents.importlib.util.find_spec", return_value=None):
                 exit_code = cli_main(
                     [
                         "ingest",
@@ -154,8 +154,8 @@ class PdfDocumentAdapterTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 1)
             self.assertFalse(payload["ok"])
-            self.assertEqual(runlog_rows[-1]["error_code"], "document_backend_missing")
-            self.assertEqual(runlog_rows[-1]["backend"], "paddleocr.pdf")
+            self.assertEqual(runlog_rows[-1]["error_code"], "pymupdf_missing")
+            self.assertEqual(runlog_rows[-1]["backend"], "ocr.chain")
             self.assertEqual(list(out_dir.rglob("*.openmd")), [])
 
     def test_markitdown_backend_parses_local_pdf_when_optional_dependency_is_available(self) -> None:

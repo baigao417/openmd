@@ -131,13 +131,12 @@ def test_ocr_recovers_when_asr_fails() -> None:
     assert "屏幕硬字幕" in result.text
 
 
-def test_image_post_without_speech_preserves_creator_text() -> None:
+def test_image_post_preserves_legacy_author_description_without_media_or_asr() -> None:
     def runner(command: list[str], timeout: int) -> tuple[int, str, str]:
-        Path(command[-1]).write_bytes(b"audio")
-        return 0, "", ""
+        raise AssertionError("image author text must not download media")
 
     provider = DouyinTranscriptProvider(
-        BackendRuntimeOptions(enable_media_download_backends=True, enable_asr_backends=True, enable_cloud_backends=True),
+        BackendRuntimeOptions(),
         runner=runner,
         asr_client=FakeAsr(error=RuntimeError("SiliconFlow ASR returned no meaningful text")),
         ocr_extractor=lambda _item: (_ for _ in ()).throw(AssertionError("frame OCR must not run for audio-only image posts")),
@@ -157,5 +156,13 @@ def test_image_post_without_speech_preserves_creator_text() -> None:
     assert result.has_usable_text
     assert result.backend == DOUYIN_POST_TEXT_BACKEND
     assert result.source_level == "native_text"
-    assert result.text == "广西加油。#广西 #广西洪水\n"
+    assert result.text == "广西加油。#广西 #广西洪水"
     assert result.metadata["transcript_method"] == "image_post_text"
+    assert result.metadata["author_text_source"] == "legacy_image_title"
+
+
+def test_short_image_post_author_text_needs_no_transcript_length_threshold() -> None:
+    provider = DouyinTranscriptProvider(BackendRuntimeOptions())
+    result = provider.extract(BackendExtractRequest(_item(source_type="image_text", title="好"), (provider.name,)))
+    assert result.text == "好"
+    assert result.source_level == "native_text"

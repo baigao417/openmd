@@ -1,0 +1,57 @@
+name: 链接提取失败
+description: 某个链接没取到正文、取错了、或取得不完整
+title: "[提取失败] <平台>：<一句话现象>"
+labels: ["extraction-failure"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢反馈！失败链接是 Openmd 迭代最重要的输入。请**不要**贴 cookie、token 或任何登录信息。
+  - type: input
+    id: url
+    attributes:
+      label: 链接
+      description: 公开可访问的原链接。需要登录才能看的内容请注明。
+      placeholder: https://...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 终端里 "提 issue 请附上：" 那一行
+      description: 失败时 openmd 会打印这一行（版本、系统、尝试过的路线和错误码），直接复制过来。
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: symptom
+    attributes:
+      label: 现象
+      options:
+        - 报错，没有保存
+        - 保存了，但内容是错误页 / 验证页 / 导航栏
+        - 保存了，但正文不完整（缺段落、缺时长）
+        - 保存了，但格式乱（HTML 残留、重复内容）
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望看到什么
+      description: 例如"文章正文共约 3000 字"、"视频 12 分钟应有完整字幕"。
+  - type: textarea
+    id: doctor
+    attributes:
+      label: openmd doctor 输出（可选）
+      description: 终端运行 `openmd doctor`，把结果贴在这里。
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 确认
+      options:
+        - label: 我在浏览器里打开过这个链接，内容确实存在
+          required: true
+        - label: 我没有贴任何 cookie、token、账号信息
+          required: true

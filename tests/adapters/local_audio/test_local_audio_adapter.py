@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from openmd.adapters.local_audio.adapter import LocalAudioAdapter
-from openmd.adapters.local_audio.backends.faster_whisper import FasterWhisperASRBackend
+from openmd.adapters.local_audio.backends.faster_whisper import FasterWhisperASRBackend, _normalize_chinese_script
 from openmd.adapters.registry import create_default_registry
 from openmd.backends.generic_media import LocalAudioASRProvider
 from openmd.backends.registry import BackendRuntimeOptions, create_runtime_backend_provider_registry
@@ -125,7 +125,8 @@ class LocalAudioAdapterTests(unittest.TestCase):
                 duration = 2.0
 
             class FakeWhisperModel:
-                def __init__(self, model_size: str, *, device: str, compute_type: str) -> None:
+                def __init__(self, model_size: str, *, device: str, compute_type: str, local_files_only: bool) -> None:
+                    assert local_files_only is True
                     self.model_size = model_size
                     self.device = device
                     self.compute_type = compute_type
@@ -146,6 +147,7 @@ class LocalAudioAdapterTests(unittest.TestCase):
             with (
                 patch.dict(sys.modules, {"faster_whisper": fake_module}),
                 patch.dict(os.environ, {}, clear=True),
+                patch("openmd.adapters.local_audio.backends.faster_whisper.require_model", return_value=audio_path.parent),
             ):
                 result = FasterWhisperASRBackend(
                     device="cpu",
@@ -191,6 +193,38 @@ class LocalAudioAdapterTests(unittest.TestCase):
             self.assertEqual(health.dependencies["asr.faster_whisper"], "ok")
         else:
             self.assertEqual(health.error_code, "asr_backend_missing")
+
+
+class ChineseScriptTests(unittest.TestCase):
+    def _fake_opencc(self):
+        module = types.ModuleType("opencc")
+
+        class OpenCC:
+            def __init__(self, config: str) -> None:
+                self.config = config
+
+            def convert(self, text: str) -> str:
+                return text.replace("這", "这")
+
+        module.OpenCC = OpenCC
+        return module
+
+    def test_mandarin_is_converted_and_noted(self) -> None:
+        with patch.dict(sys.modules, {"opencc": self._fake_opencc()}):
+            text, note, script = _normalize_chinese_script("這是", "zh", "simplified")
+        self.assertEqual((text, script), ("这是", "simplified"))
+        self.assertIn("OpenCC", note)
+
+    def test_other_languages_and_opt_out_are_untouched(self) -> None:
+        with patch.dict(sys.modules, {"opencc": self._fake_opencc()}):
+            for language, script in (("en", "simplified"), ("yue", "simplified"), ("zh", "original")):
+                self.assertEqual(_normalize_chinese_script("這是", language, script), ("這是", None, None))
+
+    def test_missing_opencc_keeps_text_and_says_so(self) -> None:
+        with patch.dict(sys.modules, {"opencc": None}):
+            text, note, script = _normalize_chinese_script("這是", "zh", "simplified")
+        self.assertEqual((text, script), ("這是", "original"))
+        self.assertIn("not installed", note)
 
 
 def _write_silence_wav(path: Path) -> None:

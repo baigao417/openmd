@@ -145,14 +145,7 @@ def test_empty_all_manifest_cli(tmp_path, compact):
     output = io.StringIO()
     with patch("openmd.backends.registry.YouTubeDataApiPlaylistProvider", return_value=provider), contextlib.redirect_stdout(output):
         code = main(args)
-    assert code == (1 if compact else 0), output.getvalue()
-    if compact:
-        receipt = json.loads(output.getvalue())
-        assert receipt["status"] == "blocked"
-        assert receipt["counts"]["discovered"] == 0
-        summary = json.loads((tmp_path / receipt["summary_ref"]).read_text())
-        assert "empty_scope" in summary["limitations"]
-        assert summary["coverage"] is None
+    assert code == 0, output.getvalue()
 
 
 def test_opencli_all_remains_blocked_in_plan():

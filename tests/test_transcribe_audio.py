@@ -3,6 +3,11 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
+# The script imports the optional ASR stack at module level (pip install "openmd[asr]").
+pytest.importorskip("faster_whisper")
+
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "transcribe_audio.py"
 SPEC = importlib.util.spec_from_file_location("openmd_transcribe_audio", SCRIPT)

@@ -1,0 +1,71 @@
+{
+  "schema": "openmd.tool-card/v1",
+  "installation": {
+    "mode": "isolated_existing",
+    "sha256": "e00f35735b2408bd3f28bdcb933531a2a138db951d108407d1f5cb6d7a19c166",
+    "verification": "SHA256 of the installed entry file; dependency tree is isolated, not attested"
+  },
+  "evidence": [
+    {
+      "date": "2026-11-07",
+      "ledger": "docs/benchmarks/routes/trials-backup.jsonl",
+      "scope": "one real sample; does not establish platform-wide completeness"
+    }
+  ],
+  "id": "x-tweet-fetcher",
+  "kind": "python_entry",
+  "version": "3.1.0",
+  "license": "MIT",
+  "homepage": "https://github.com/ythx-101/x-tweet-fetcher",
+  "launcher": {
+    "entry": "xtf.cli:main",
+    "which": [
+      "xtf"
+    ]
+  },
+  "capabilities": [
+    {
+      "status_policy": "verified_if_valid_else_failed",
+      "requires_login": false,
+      "cost_class": "none",
+      "id": "x-tweet-fetcher.x.content",
+      "sources": [
+        "x"
+      ],
+      "capability": "content",
+      "url_hosts": [
+        "x.com",
+        "twitter.com",
+        "www.x.com",
+        "www.twitter.com"
+      ],
+      "url_path_pattern": "^/[^/]+/status/[0-9]+/?$",
+      "argv": [
+        "--url",
+        "{url}"
+      ],
+      "reader": {
+        "type": "json_stdout",
+        "title_from_first_line": true,
+        "fields": {
+          "text": [
+            "tweet.article.full_text",
+            "tweet.text"
+          ],
+          "title": "tweet.article.title",
+          "author": "tweet.author",
+          "published_at": "tweet.created_at"
+        }
+      },
+      "gates": [
+        "network"
+      ],
+      "source_level": "third_party_extractor",
+      "timeout_s": 90,
+      "validation": {
+        "min_chars": 1
+      },
+      "coverage_note": "Single post only; this extractor does not establish full thread coverage."
+    }
+  ]
+}

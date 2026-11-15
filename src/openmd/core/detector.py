@@ -108,6 +108,8 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
         return "qq_group"
     if _BV_RE.match(value):
         return "bilibili"
+    if re.fullmatch(r"\d{15,20}", value):
+        return "douyin"
 
     extension_path = _path_for_extension_check(value)
     if extension_path.endswith(DOCUMENT_EXTENSIONS):

@@ -9,7 +9,7 @@ from typing import Any
 
 from .models import ContentItem, FAILURE_CLASS_VALUES, TranscriptResult
 from .package_contract import extraction_contract_version_for
-from .secrets import sanitize_runlog_entry
+from .secrets import asr_execution_metrics, sanitize_runlog_entry, sanitize_source_scope
 
 
 USER_RESOLVABLE_ERROR_TERMS: tuple[str, ...] = (
@@ -93,6 +93,10 @@ def build_runlog_entry(
     extraction_contract_version: str | None = None,
     components: list[dict[str, Any]] | None = None,
     terminal_gap_count: int = 0,
+    route_trace: dict[str, Any] | None = None,
+    document_metadata: dict[str, Any] | None = None,
+    asr_execution: dict[str, Any] | None = None,
+    source_scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     success = success_count if success_count is not None else int(status in {"verified", "partial"})
     failed = failed_count if failed_count is not None else int(status == "failed")
@@ -121,6 +125,10 @@ def build_runlog_entry(
         "extraction_contract_version": extraction_contract_version,
         "components": components or [],
         "terminal_gap_count": terminal_gap_count,
+        "route_trace": route_trace or {},
+        "document_metadata": document_metadata or {},
+        "asr_execution": asr_execution or {},
+        "source_scope": sanitize_source_scope(source_scope),
     }
 
 
@@ -146,6 +154,10 @@ def build_item_runlog_entry(
         status=result.status,
         source_type=item.source_type,
         source_level=result.source_level,
+        asr_execution=asr_execution_metrics(result.metadata),
+        source_scope=result.metadata,
+        route_trace={key: result.metadata[key] for key in ("card_id", "route_version", "overlay_applied", "fallback_attempts") if key in result.metadata},
+        document_metadata={key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata} if item.platform in {"screenshot", "pdf"} else {},
         output_path=output_path,
         package_id=package_id,
         package_operation=package_operation,

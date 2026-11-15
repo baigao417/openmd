@@ -1,0 +1,504 @@
+{
+  "schema": "openmd.routes/v1",
+  "version": "2026-11-10.1",
+  "routes": [
+    {
+      "source": "bilibili",
+      "capability": "transcript",
+      "chain": [
+        "opencli.bilibili.subtitle",
+        "bilibili-harvest.core",
+        "yt-dlp.bilibili",
+        "asr.fallback"
+      ]
+    },
+    {
+      "source": "bilibili",
+      "capability": "media",
+      "chain": [
+        "yutto.bilibili.media-asr"
+      ]
+    },
+    {
+      "source": "youtube",
+      "capability": "transcript",
+      "chain": [
+        "opencli.youtube.transcript",
+        "youtube-transcript-api",
+        "yt-dlp.youtube",
+        "asr.fallback"
+      ]
+    },
+    {
+      "source": "weixin",
+      "capability": "content",
+      "chain": [
+        "opencli.weixin.download",
+        "defuddle.web.content",
+        "weixin.article.local",
+        "opencli.web.read"
+      ]
+    },
+    {
+      "source": "wechat_group",
+      "capability": "content",
+      "chain": [
+        "opencli.wx.history"
+      ]
+    },
+    {
+      "source": "wechat_moments",
+      "capability": "content",
+      "chain": [
+        "opencli.wx.sns-feed"
+      ]
+    },
+    {
+      "source": "qq_group",
+      "capability": "content",
+      "chain": [
+        "qq_group.export"
+      ]
+    },
+    {
+      "source": "xiaoyuzhou",
+      "capability": "transcript",
+      "chain": [
+        "opencli.xiaoyuzhou.transcript"
+      ]
+    },
+    {
+      "source": "xiaoyuzhou",
+      "capability": "media",
+      "chain": [
+        "xyz-dl.xiaoyuzhou.media-asr"
+      ]
+    },
+    {
+      "source": "douyin",
+      "capability": "content",
+      "chain": [
+        "douyin.transcript"
+      ]
+    },
+    {
+      "source": "tiktok",
+      "capability": "content",
+      "chain": [
+        "opencli.tiktok.user"
+      ]
+    },
+    {
+      "source": "xiaohongshu",
+      "capability": "content",
+      "chain": [
+        "xiaohongshu.composite"
+      ]
+    },
+    {
+      "source": "xiaoe",
+      "capability": "transcript",
+      "chain": [
+        "opencli.xiaoe.transcript",
+        "opencli.xiaoe.content"
+      ]
+    },
+    {
+      "source": "x",
+      "capability": "content",
+      "chain": [
+        "x-tweet-fetcher.x.content",
+        "opencli.twitter.thread"
+      ]
+    },
+    {
+      "source": "web_article",
+      "capability": "content",
+      "chain": [
+        "web_article.discourse",
+        "defuddle.web.content",
+        "web_article.trafilatura",
+        "opencli.web.read"
+      ]
+    },
+    {
+      "source": "feishu",
+      "capability": "content",
+      "chain": [
+        "lark-cli.docs.fetch",
+        "lark-cli.drive.export-markdown",
+        "lark-cli.markdown.fetch",
+        "manual.markdown-export"
+      ]
+    },
+    {
+      "source": "generic_media",
+      "capability": "transcript",
+      "chain": [
+        "asr.fallback"
+      ]
+    },
+    {
+      "source": "pdf",
+      "capability": "content",
+      "chain": [
+        "pdf.markitdown",
+        "pdf.textlayer",
+        "ocr.chain"
+      ]
+    },
+    {
+      "source": "screenshot",
+      "capability": "content",
+      "chain": [
+        "ocr.chain",
+        "ocr.rapidocr",
+        "ocr.tesseract"
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "source_id": "bilibili",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "bilibili",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "youtube",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "youtube",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "weixin",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "article"
+      ],
+      "route_source": "weixin",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "xiaoyuzhou",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "xiaoyuzhou",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "douyin",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "douyin",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "tiktok",
+      "tier": "C",
+      "state": "paused",
+      "input_kinds": [
+        "single"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "tiktok",
+      "runtime_binding": null
+    },
+    {
+      "source_id": "xiaohongshu",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "list"
+      ],
+      "source_exhausted_kinds": [
+        "list"
+      ],
+      "profiles": [
+        "article",
+        "media"
+      ],
+      "route_source": "xiaohongshu",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "xiaohongshu_creator",
+      "tier": "B",
+      "state": "blocked",
+      "input_kinds": [
+        "collection"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article",
+        "media"
+      ],
+      "route_source": "xiaohongshu",
+      "runtime_binding": null
+    },
+    {
+      "source_id": "xiaoe",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "xiaoe",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "x",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "list"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article"
+      ],
+      "route_source": "x",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "web_article",
+      "tier": "B",
+      "state": "ready",
+      "input_kinds": [
+        "single",
+        "list"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article"
+      ],
+      "route_source": "web_article",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "feishu",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "list"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article",
+        "document"
+      ],
+      "route_source": "feishu",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "generic_media",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "list"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "media"
+      ],
+      "route_source": "generic_media",
+      "runtime_binding": null
+    },
+    {
+      "source_id": "local_audio",
+      "tier": "A",
+      "state": "ready",
+      "input_kinds": [
+        "file",
+        "folder"
+      ],
+      "source_exhausted_kinds": [
+        "folder"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "planned_provider": "asr.auto",
+      "route_source": "local_audio",
+      "runtime_binding": "asr.auto"
+    },
+    {
+      "source_id": "local_video",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "file",
+        "folder"
+      ],
+      "source_exhausted_kinds": [
+        "folder"
+      ],
+      "profiles": [
+        "media"
+      ],
+      "planned_provider": "asr.fallback",
+      "route_source": "local_video",
+      "runtime_binding": "asr.auto"
+    },
+    {
+      "source_id": "tutorial_video",
+      "tier": "C",
+      "state": "experimental",
+      "input_kinds": [
+        "file",
+        "single"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "media"
+      ],
+      "planned_provider": "asr.fallback",
+      "route_source": "tutorial_video",
+      "runtime_binding": "asr.auto"
+    },
+    {
+      "source_id": "pdf_office",
+      "tier": "A",
+      "state": "partial",
+      "input_kinds": [
+        "file",
+        "folder"
+      ],
+      "source_exhausted_kinds": [
+        "folder"
+      ],
+      "profiles": [
+        "document"
+      ],
+      "route_source": "pdf",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "screenshot",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "file",
+        "folder"
+      ],
+      "source_exhausted_kinds": [
+        "folder"
+      ],
+      "profiles": [
+        "document"
+      ],
+      "route_source": "screenshot",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "wechat_moments",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "conversation"
+      ],
+      "route_source": "wechat_moments",
+      "runtime_binding": null
+    },
+    {
+      "source_id": "wechat_group",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "collection"
+      ],
+      "source_exhausted_kinds": [
+        "collection"
+      ],
+      "profiles": [
+        "conversation"
+      ],
+      "route_source": "wechat_group",
+      "runtime_binding": null
+    },
+    {
+      "source_id": "qq_group",
+      "tier": "B",
+      "state": "paused",
+      "input_kinds": [
+        "collection"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "conversation"
+      ],
+      "route_source": "qq_group",
+      "runtime_binding": null
+    }
+  ]
+}

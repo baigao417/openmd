@@ -1,0 +1,68 @@
+{
+  "schema": "openmd.tool-card/v1",
+  "installation": {
+    "mode": "isolated_existing",
+    "sha256": "5ac46c79fcca8f1ad80d9fc39df1ab8720d1fa8ba6f561f93cb03a7d50bb4c17",
+    "verification": "SHA256 of the installed entry file; dependency tree is isolated, not attested"
+  },
+  "evidence": [
+    {
+      "date": "2026-11-07",
+      "ledger": "docs/benchmarks/routes/trials-backup.jsonl",
+      "scope": "one real sample; does not establish platform-wide completeness"
+    }
+  ],
+  "id": "yutto",
+  "kind": "python_entry",
+  "version": "2.3.1",
+  "license": "GPL-3.0",
+  "homepage": "https://github.com/yutto-dev/yutto",
+  "launcher": {
+    "entry": "yutto.__main__:main",
+    "which": [
+      "yutto"
+    ]
+  },
+  "capabilities": [
+    {
+      "status_policy": "verified_if_valid_else_failed",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "id": "yutto.bilibili.media-asr",
+      "sources": [
+        "bilibili"
+      ],
+      "capability": "media",
+      "url_hosts": [
+        "www.bilibili.com",
+        "bilibili.com"
+      ],
+      "argv": [
+        "{url}",
+        "--audio-only",
+        "--no-danmaku",
+        "--no-subtitle",
+        "--no-cover",
+        "--auth-file",
+        "{workdir}/no-auth.toml",
+        "-d",
+        "{workdir}"
+      ],
+      "reader": {
+        "type": "media_dir"
+      },
+      "then": "asr.auto",
+      "gates": [
+        "network",
+        "media_download",
+        "asr"
+      ],
+      "source_level": "media_asr",
+      "timeout_s": 300,
+      "validation": {
+        "min_chars": 1
+      },
+      "url_path_pattern": "^/video/BV[A-Za-z0-9]+/?$"
+    }
+  ]
+}

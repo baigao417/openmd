@@ -5,27 +5,39 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "openmd"
 version = "0.0.1"
-description = "Markdown-first content ingestion CLI with explicit backend gates and resumable artifacts."
-authors = [{name = "baigao417"}]
-license = {text = "MIT"}
+description = "把网页文章、公众号、视频字幕等链接保存成干净的 Markdown 原文 / 逐字稿。"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = []
+# Out-of-the-box: web/WeChat articles, YouTube captions; Node for the managed opencli.
+dependencies = ["trafilatura>=2,<3", "youtube-transcript-api>=1.2,<2", "beautifulsoup4>=4.12", "markdownify>=0.13",
+    # Bundled Node.js runtime for Openmd-managed opencli (browser-session routes).
+    "nodejs-wheel-binaries>=22.12,<23"]
+
+[project.urls]
+Homepage = "https://github.com/baigao417/openmd"
+Issues = "https://github.com/baigao417/openmd/issues"
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
-youtube = ["youtube-transcript-api>=1.0"]
-asr = ["faster-whisper>=1.1.0"]
-web = ["trafilatura>=2,<3"]
+asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7"]
+web = []  # kept for compatibility; trafilatura is now a core dependency
 pdf = ["markitdown[pdf]>=0.1.6"]
 ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+ocr-router = ["Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]
 document = ["markitdown[pdf,docx,pptx,xlsx]>=0.1.6", "rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+# Contributors: pip install -e ".[dev]" then python -m pytest
+dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also need ffmpeg on PATH
 
 [project.scripts]
 openmd = "openmd.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"openmd.routing" = ["routes.json", "cards/*.json"]
+"openmd" = ["browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
+"openmd.ocr" = ["settings.json", "ovis-prompt.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

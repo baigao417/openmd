@@ -6,7 +6,8 @@ import hashlib
 from urllib.parse import parse_qs, urlparse
 
 from openmd.adapters.base import PlatformAdapter
-from openmd.backends.douyin import DOUYIN_METADATA_BACKEND, douyin_user_target, normalize_douyin_collection_url
+from openmd.backends.douyin import douyin_user_target, normalize_douyin_collection_url
+from openmd.backends.douyin_detail import douyin_video_id
 from openmd.core.detector import detect_platform, extract_first_url
 from openmd.core.models import ContentItem, TranscriptResult
 
@@ -14,7 +15,7 @@ from openmd.core.models import ContentItem, TranscriptResult
 class DouyinAdapter(PlatformAdapter):
     """Resolve Douyin single video and author selectors without side effects."""
 
-    def __init__(self, platform_id: str = "douyin", default_backend: str = DOUYIN_METADATA_BACKEND) -> None:
+    def __init__(self, platform_id: str = "douyin", default_backend: str = "douyin.transcript") -> None:
         self.id = platform_id
         self.default_backend = default_backend
 
@@ -29,7 +30,7 @@ class DouyinAdapter(PlatformAdapter):
         all: bool = False,
     ) -> list[ContentItem]:
         target = extract_first_url(input_value)
-        aweme_id = _douyin_aweme_id(target)
+        aweme_id = douyin_video_id(target)
         if aweme_id is not None:
             return [
                 ContentItem(
@@ -45,6 +46,10 @@ class DouyinAdapter(PlatformAdapter):
                     },
                 )
             ]
+
+        if (urlparse(target).hostname or "").lower() == "v.douyin.com":
+            return [ContentItem(platform=self.id, input_type="single", url=target,
+                                source_type="video", raw_meta={"profile": "media", "identity_unresolved": True})]
 
         sec_uid = douyin_user_target(target)
         normalized = normalize_douyin_collection_url(target) or target
@@ -79,7 +84,7 @@ class DouyinAdapter(PlatformAdapter):
             return TranscriptResult(
                 text="[00:00:00] Mock Douyin transcript for Openmd package smoke.\n",
                 status="verified",
-                source_level="third_party_extractor",
+                source_level="platform_transcript",
                 backend=selected,
                 title=item.title or item.id or "Mock Douyin item",
                 source_notes=["local mock adapter smoke only; no sidecar/OpenCLI/browser/account/media/ASR action was attempted"],

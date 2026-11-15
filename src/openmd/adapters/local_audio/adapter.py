@@ -19,6 +19,8 @@ from openmd.core.models import ContentItem, TranscriptResult
 from .asr import MissingASRBackend, MockASRBackend
 
 FASTER_WHISPER_BACKEND = "asr.faster_whisper"
+QWEN3_BACKEND = "asr.qwen3"
+AUTO_BACKEND = "asr.auto"
 
 AUDIO_EXTENSIONS: tuple[str, ...] = (
     ".mp3",
@@ -80,10 +82,10 @@ class LocalAudioAdapter(PlatformAdapter):
         path = _item_path(item)
         if selected == "local_audio.mock":
             return MockASRBackend().transcribe(path)
-        if selected == FASTER_WHISPER_BACKEND:
-            from openmd.adapters.local_audio.backends.faster_whisper import FasterWhisperASRBackend
+        if selected in {FASTER_WHISPER_BACKEND, AUTO_BACKEND, QWEN3_BACKEND}:
+            from openmd.runtime.asr import get_asr_backend
 
-            return FasterWhisperASRBackend().transcribe(path)
+            return get_asr_backend(selected).transcribe(path)
         return MissingASRBackend(selected).transcribe(path)
 
 

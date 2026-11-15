@@ -82,9 +82,9 @@ class FeishuCommandRunnerTests(unittest.TestCase):
 
         def fake_which(name: str) -> str | None:
             if name == "lark-cli.cmd":
-                return "C:\\nvm4w\\nodejs\\lark-cli.cmd"
+                return "C:\\tools\\node\\lark-cli.cmd"
             if name == "lark-cli":
-                return "C:\\nvm4w\\nodejs\\lark-cli"
+                return "C:\\tools\\node\\lark-cli"
             return None
 
         def fake_run(args: list[str], **kwargs: object) -> object:
@@ -93,7 +93,7 @@ class FeishuCommandRunnerTests(unittest.TestCase):
             return SimpleNamespace(returncode=0, stdout="lark-cli version 1.0.49", stderr="")
 
         with patch("openmd.backends.feishu.shutil.which", side_effect=fake_which), patch(
-            "openmd.backends.feishu.subprocess.run",
+            "openmd.backends.feishu.run_interruptibly",
             side_effect=fake_run,
         ):
             exit_code, stdout, stderr = _run_command(["lark-cli", "--version"], timeout=3)
@@ -101,7 +101,7 @@ class FeishuCommandRunnerTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stdout, "lark-cli version 1.0.49")
         self.assertEqual(stderr, "")
-        self.assertEqual(calls, [["C:\\nvm4w\\nodejs\\lark-cli.cmd", "--version"]])
+        self.assertEqual(calls, [["C:\\tools\\node\\lark-cli.cmd", "--version"]])
 
 
 class FeishuDocsFetchProviderTests(unittest.TestCase):

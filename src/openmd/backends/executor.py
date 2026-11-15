@@ -9,8 +9,10 @@ their own hidden fallback loops.
 from __future__ import annotations
 
 from dataclasses import replace
+from collections.abc import Callable
 
 from openmd.adapters.base import PlatformAdapter
+from openmd.core.content_validation import validate_extraction_content
 from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 
@@ -146,7 +148,7 @@ class MockBackendProvider:
             platforms=("*",),
             source_types=("article", "video", "audio", "image_text", "mixed", "document"),
             input_types=("single", "batch", "collection", "generic"),
-            source_levels=("third_party_extractor",),
+            source_levels=("third_party_extractor", "platform_transcript"),
             requires_network=False,
         )
         return BackendDescriptor(
@@ -164,7 +166,9 @@ class MockBackendProvider:
         return TranscriptResult(
             text="[00:00:00] Mock transcript for Openmd skeleton.\n",
             status="verified",
-            source_level="third_party_extractor",
+            # The video fixture must satisfy the same source contract as real
+            # providers. Its backend/notes still identify this as synthetic.
+            source_level="platform_transcript" if request.item.platform == "douyin" else "third_party_extractor",
             backend=request.primary_backend,
             source_notes=["local smoke check only"],
         )
@@ -314,12 +318,14 @@ class BackendExecutor:
         *,
         provider_registry: BackendProviderRegistry | None = None,
         default_provider: BackendProvider | None = None,
+        result_enricher: Callable[[ContentItem, TranscriptResult], TranscriptResult] | None = None,
     ) -> None:
         self._provider_registry = provider_registry or BackendProviderRegistry(providers)
         if provider_registry is not None:
             for name, provider in (providers or {}).items():
                 self._provider_registry.register(name, provider)
         self._default_provider = default_provider
+        self._result_enricher = result_enricher
 
     def extract(
         self,
@@ -386,23 +392,42 @@ class BackendExecutor:
             return _failed_result(request.item, "not_selected", "backend_chain_empty")
 
         attempt_notes: list[str] = [f"backend_chain: {' -> '.join(chain)}"]
+        attempts: list[dict[str, str]] = []
         last_result: TranscriptResult | None = None
+        current_item = request.item
 
         for backend in chain:
             provider = self._provider_for(backend)
             if provider is None:
                 result = _failed_result(request.item, backend, "backend_not_registered")
             else:
-                result = self._extract_one(provider, request.item, backend)
+                result = self._extract_one(provider, current_item, backend)
 
-            if result.has_usable_text:
+            # Engine detection is evidence for every later fallback. Generic
+            # article readers cannot replace a known missing forum body with UI.
+            if result.metadata.get("engine") == "discourse" or result.metadata.get("site_engine") == "discourse":
+                current_item = replace(current_item, raw_meta={**current_item.raw_meta, "site_engine": "discourse"})
+
+            from openmd.routing.loader import route_trace
+
+            result = replace(result, metadata={**result.metadata, **route_trace(request.item.platform, result.backend)})
+
+            if result.has_usable_text or (result.status == "partial" and result.metadata.get("terminal_partial") is True):
+                if self._result_enricher is not None:
+                    result = self._result_enricher(request.item, result)
                 return _with_attempt_notes(result, attempt_notes)
 
-            last_result = result
+            # A later "tool not installed" must not hide an earlier verdict about
+            # the source itself (error page, challenge, no subtitles).
+            if last_result is None or not _is_tool_unavailable(result) or _is_tool_unavailable(last_result):
+                last_result = result
+            attempts.append({"backend": backend, "error_code": result.error_code or result.status})
             attempt_notes.append(
                 f"fallback_attempt: {backend} failed with {result.error_code or result.status}"
             )
 
+        if last_result is not None:
+            last_result = replace(last_result, metadata={**last_result.metadata, "fallback_attempts": attempts})
         return _with_attempt_notes(last_result, attempt_notes) if last_result else _failed_result(
             request.item,
             chain[-1],
@@ -419,13 +444,14 @@ class BackendExecutor:
         backend: str,
     ) -> TranscriptResult:
         try:
-            return provider.extract(
+            result = provider.extract(
                 BackendExtractRequest(
                     item=item,
                     backend_chain=(backend,),
                     allow_fallback=False,
                 )
             )
+            return validate_extraction_content(result, item)
         except Exception as exc:  # pragma: no cover - final provider safety net
             return _failed_result(item, backend, "backend_provider_error", exc)
 
@@ -448,6 +474,16 @@ def _failed_result(
         error_summary=sanitize_error_summary(error or code),
         metadata={"platform": item.platform},
     )
+
+
+_TOOL_UNAVAILABLE_CODES = frozenset({
+    "backend_exit_127", "backend_exit_69", "tool_not_installed", "backend_dependency_missing", "backend_not_registered",
+    "backend_not_implemented", "dependency_missing", "not_installed",
+})
+
+
+def _is_tool_unavailable(result: TranscriptResult) -> bool:
+    return str(result.error_code or "") in _TOOL_UNAVAILABLE_CODES
 
 
 def _with_attempt_notes(result: TranscriptResult, attempt_notes: list[str]) -> TranscriptResult:

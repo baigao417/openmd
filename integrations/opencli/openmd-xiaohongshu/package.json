@@ -3,15 +3,10 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "author": "baigao417",
-  "license": "MIT",
   "description": "Project-owned read-only Xiaohongshu creator discovery for Openmd.",
   "scripts": {
     "build": "esbuild creator-notes.ts --outfile=creator-notes.js --format=esm --platform=node && esbuild note-assets.ts --outfile=note-assets.js --format=esm --platform=node",
     "test": "node --test creator-notes.test.ts note-assets.test.ts"
-  },
-  "devDependencies": {
-    "esbuild": "^0.25.0"
   },
   "peerDependencies": {
     "@jackwener/opencli": ">=1.8.6"

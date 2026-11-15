@@ -1,0 +1,620 @@
+{
+  "schema": "openmd.tool-card/v1",
+  "id": "builtin",
+  "kind": "builtin",
+  "version": "openmd-source",
+  "license": "project",
+  "homepage": "",
+  "installation": {
+    "mode": "project",
+    "sha256": null,
+    "verification": "source-controlled provider"
+  },
+  "evidence": [],
+  "capabilities": [
+    {
+      "id": "asr.fallback",
+      "provider": "asr.fallback",
+      "sources": [
+        "bilibili",
+        "generic_media",
+        "youtube"
+      ],
+      "capability": "content",
+      "gates": [
+        "network",
+        "media_download",
+        "asr"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "bilibili-harvest.core",
+      "provider": "bilibili-harvest.core",
+      "sources": [
+        "bilibili"
+      ],
+      "capability": "content",
+      "gates": [
+        "network"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "douyin.metadata",
+      "provider": "douyin.metadata",
+      "sources": [
+        "douyin"
+      ],
+      "capability": "metadata",
+      "gates": [],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "lark-cli.docs.fetch",
+      "provider": "lark-cli.docs.fetch",
+      "sources": [
+        "feishu"
+      ],
+      "capability": "content",
+      "gates": [
+        "network",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "lark-cli.drive.export-markdown",
+      "provider": "lark-cli.drive.export-markdown",
+      "sources": [
+        "feishu"
+      ],
+      "capability": "content",
+      "gates": [
+        "network",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "lark-cli.markdown.fetch",
+      "provider": "lark-cli.markdown.fetch",
+      "sources": [
+        "feishu"
+      ],
+      "capability": "content",
+      "gates": [
+        "network",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "manual.markdown-export",
+      "provider": "manual.markdown-export",
+      "sources": [
+        "feishu"
+      ],
+      "capability": "content",
+      "gates": [],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "ocr.paddle",
+      "provider": "ocr.paddle",
+      "sources": [
+        "screenshot"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "ocr.rapidocr",
+      "provider": "ocr.rapidocr",
+      "sources": [
+        "screenshot"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "ocr.tesseract",
+      "provider": "ocr.tesseract",
+      "sources": [
+        "screenshot"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.bilibili.subtitle",
+      "provider": "opencli.bilibili.subtitle",
+      "sources": [
+        "bilibili"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.tiktok.user",
+      "provider": "opencli.tiktok.user",
+      "sources": [
+        "tiktok"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.twitter.thread",
+      "provider": "opencli.twitter.thread",
+      "sources": [
+        "x"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.web.read",
+      "provider": "opencli.web.read",
+      "sources": [
+        "web_article",
+        "weixin",
+        "xiaoyuzhou"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.weixin.download",
+      "provider": "opencli.weixin.download",
+      "sources": [
+        "weixin"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.wx.history",
+      "provider": "opencli.wx.history",
+      "sources": [
+        "wechat_group"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_export"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.wx.sns-feed",
+      "provider": "opencli.wx.sns-feed",
+      "sources": [
+        "wechat_moments"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_export"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.xiaoe.content",
+      "provider": "opencli.xiaoe.content",
+      "sources": [
+        "xiaoe"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.xiaoe.transcript",
+      "provider": "opencli.xiaoe.transcript",
+      "sources": [
+        "xiaoe"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.xiaoyuzhou.transcript",
+      "provider": "opencli.xiaoyuzhou.transcript",
+      "sources": [
+        "xiaoyuzhou"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.youtube.transcript",
+      "provider": "opencli.youtube.transcript",
+      "sources": [
+        "youtube"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "pdf.markitdown",
+      "provider": "pdf.markitdown",
+      "sources": [
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "podwise.transcript",
+      "provider": "podwise.transcript",
+      "sources": [
+        "xiaoyuzhou"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "qq_group.export",
+      "provider": "qq_group.export",
+      "sources": [
+        "qq_group"
+      ],
+      "capability": "content",
+      "gates": [],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "web_article.trafilatura",
+      "provider": "web_article.trafilatura",
+      "sources": [
+        "web_article"
+      ],
+      "capability": "content",
+      "gates": [
+        "network"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "wechat-article-exporter.download",
+      "provider": "wechat-article-exporter.download",
+      "sources": [
+        "weixin"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "weixin.article.local",
+      "provider": "weixin.article.local",
+      "sources": [
+        "weixin"
+      ],
+      "capability": "content",
+      "gates": [
+        "network"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "xiaohongshu.composite",
+      "provider": "xiaohongshu.composite",
+      "sources": [
+        "xiaohongshu"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "youtube-transcript-api",
+      "provider": "youtube-transcript-api",
+      "sources": [
+        "youtube"
+      ],
+      "capability": "content",
+      "gates": [
+        "network"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "yt-dlp.bilibili",
+      "provider": "yt-dlp.bilibili",
+      "sources": [
+        "bilibili"
+      ],
+      "capability": "content",
+      "gates": [
+        "network",
+        "media_download"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "yt-dlp.youtube",
+      "provider": "yt-dlp.youtube",
+      "sources": [
+        "youtube"
+      ],
+      "capability": "content",
+      "gates": [
+        "network",
+        "media_download"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "asr.auto",
+      "provider": "asr.auto",
+      "sources": [
+        "local_audio",
+        "local_video",
+        "tutorial_video"
+      ],
+      "capability": "transcript",
+      "gates": [
+        "asr"
+      ],
+      "source_level": "media_asr",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "ocr.ovis3",
+      "provider": "ocr.ovis3",
+      "sources": [
+        "screenshot",
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute",
+        "network"
+      ],
+      "source_level": "ocr",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "ocr.minicpm",
+      "provider": "ocr.minicpm",
+      "sources": [
+        "screenshot",
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute",
+        "network"
+      ],
+      "source_level": "ocr",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "ocr.chain",
+      "provider": "ocr.chain",
+      "sources": [
+        "screenshot",
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute",
+        "network"
+      ],
+      "source_level": "ocr",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "pdf.textlayer",
+      "provider": "pdf.textlayer",
+      "sources": [
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "native_text",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "douyin.transcript",
+      "provider": "douyin.transcript",
+      "sources": [
+        "douyin"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "media_download",
+        "asr"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "web_article.discourse",
+      "provider": "web_article.discourse",
+      "sources": [
+        "web_article"
+      ],
+      "capability": "content",
+      "gates": [
+        "network"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined",
+      "gate_policy": "network OR browser; enforced by provider registration"
+    },
+    {
+      "id": "siliconflow.sensevoice",
+      "provider": "siliconflow.sensevoice",
+      "sources": [
+        "douyin"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "media_download",
+        "asr",
+        "cloud"
+      ],
+      "source_level": "media_asr",
+      "requires_login": false,
+      "cost_class": "cloud_api",
+      "status_policy": "provider_defined"
+    }
+  ]
+}

@@ -13,6 +13,7 @@ import shutil
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 
@@ -212,7 +213,7 @@ def _video_id_candidates(item: ContentItem) -> tuple[str, ...]:
 def _extract_transcript_text(stdout: str, *, output_format: str) -> str:
     if output_format == "json":
         try:
-            payload = json.loads(stdout)
+            payload = load_opencli_json(stdout)
         except json.JSONDecodeError:
             return stdout.strip()
         return _text_from_json_payload(payload).strip()

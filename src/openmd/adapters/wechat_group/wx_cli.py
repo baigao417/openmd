@@ -13,11 +13,13 @@ import subprocess
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.adapters.high_privacy import HIGH_PRIVACY_STATUS_KEY, high_privacy_status_metadata
 from openmd.adapters.wechat_group.adapter import parse_wechat_group_selector, render_wechat_group_markdown
 from openmd.backends.base import DiscoveryRequest, DiscoveryResult
 from openmd.core.models import ContentItem
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.interpreters import run_interruptibly
 
 
 OPENCLI_WX_HISTORY_DISCOVERY_BACKEND = "opencli.wx.history"
@@ -141,7 +143,7 @@ def build_opencli_wx_history_args(
 
 def parse_opencli_wx_history_output(stdout: str) -> list[dict[str, Any]]:
     try:
-        payload = json.loads(stdout)
+        payload = load_opencli_json(stdout)
     except json.JSONDecodeError as exc:
         raise ValueError("opencli wx history did not return valid JSON") from exc
 
@@ -222,7 +224,7 @@ def _conversation_item(
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             [resolved, *command[1:]],
             capture_output=True,
             text=True,

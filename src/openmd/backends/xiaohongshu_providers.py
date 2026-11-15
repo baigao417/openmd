@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlparse
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.adapters.screenshot.backends.rapidocr import RapidOCRBackend
 from openmd.backends.base import (
     BackendCapability,
@@ -37,6 +38,8 @@ from openmd.backends.youtube_discovery import (
 from openmd.core.models import ContentItem, ExtractionComponent, TranscriptResult
 from openmd.core.package_contract import XIAOHONGSHU_EXTRACTION_CONTRACT_VERSION
 from openmd.core.secrets import sanitize_error_summary, sanitize_url
+from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.interpreters import run_interruptibly
 
 
 XIAOHONGSHU_COMPOSITE_BACKEND = "xiaohongshu.composite"
@@ -193,7 +196,7 @@ class XiaohongshuCompositeProvider:
         profile_id = _profile_id_for_item(item)
         selector = _runtime_selector_for_item(item)
         download = self._options.enable_media_download_backends
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaohongshu-assets-") as temp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaohongshu-assets-") as temp_dir:
             temp_root = Path(temp_dir)
             command = build_opencli_xiaohongshu_note_assets_args(
                 item.url,
@@ -229,7 +232,7 @@ class XiaohongshuCompositeProvider:
                 error_code="xiaohongshu_identity_selector_missing",
                 error_summary="Xiaohongshu durable identity resolution requires a runtime selector.",
             )
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaohongshu-identity-") as temp_dir:
+        with owned_temporary_directory(prefix="openmd-xiaohongshu-identity-") as temp_dir:
             command = build_opencli_xiaohongshu_note_assets_args(
                 item.url,
                 output_dir=Path(temp_dir),
@@ -513,7 +516,7 @@ class XiaohongshuCompositeProvider:
         if self._hard_subtitle_override is not None:
             return self._hard_subtitle_override(video_path)
         ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
-        with tempfile.TemporaryDirectory(prefix="openmd-xiaohongshu-frames-") as frames_dir:
+        with owned_temporary_directory(prefix="openmd-xiaohongshu-frames-") as frames_dir:
             pattern = Path(frames_dir) / "frame_%05d.jpg"
             command = [
                 ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(video_path),
@@ -537,7 +540,7 @@ class XiaohongshuCompositeProvider:
 
 
 def parse_opencli_xiaohongshu_note_assets(stdout: str, *, temp_root: Path) -> XiaohongshuAssetBundle:
-    payload = json.loads(str(stdout or "").strip())
+    payload = load_opencli_json(str(stdout or "").strip())
     rows = payload if isinstance(payload, list) else payload.get("items") if isinstance(payload, dict) else None
     if not isinstance(rows, list):
         raise ValueError("Xiaohongshu note-assets output must be JSON rows.")
@@ -743,7 +746,7 @@ def _retryable_code(error: object, *, prefix: str) -> str:
 
 
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
-    completed = subprocess.run(
+    completed = run_interruptibly(
         command,
         capture_output=True,
         text=True,
@@ -765,7 +768,7 @@ def _run_asset_command(
     if _is_windows_batch_file(resolved[0]):
         popen_args = _windows_batch_command_line(resolved)
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             popen_args,
             input=selector or "",
             capture_output=True,

@@ -29,6 +29,7 @@ def write_markdown_document(
     item_id: str | None = None,
     url: str | None = None,
     overwrite: bool = False,
+    raw: bool = False,
 ) -> Path:
     platform_dir = Path(out_dir) / safe_filename(platform, fallback="unknown", max_length=80)
     filename_base = filename_base_for_item(document.title, item_id=item_id, url=url)
@@ -38,7 +39,7 @@ def write_markdown_document(
         collision_key=url or item_id or document.title,
         overwrite=overwrite,
     )
-    output_path.write_text(render_document(document), encoding="utf-8", newline="\n")
+    output_path.write_text(render_document(document, raw=raw), encoding="utf-8", newline="\n")
     return output_path
 
 
@@ -51,6 +52,7 @@ def write_item_result(
     captured_at: str | None = None,
     download_assets: bool = False,
     asset_fetcher: AssetFetcher | None = None,
+    raw: bool = False,
 ) -> Path:
     document = render_markdown_document(item, result, captured_at=captured_at)
     platform_dir = Path(out_dir) / safe_filename(item.platform, fallback="unknown", max_length=80)
@@ -72,7 +74,7 @@ def write_item_result(
             content=localized_content,
             source_notes=[*document.source_notes, *asset_notes],
         )
-    output_path.write_text(render_document(document), encoding="utf-8", newline="\n")
+    output_path.write_text(render_document(document, raw=raw), encoding="utf-8", newline="\n")
     return output_path
 
 

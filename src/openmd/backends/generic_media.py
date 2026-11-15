@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from openmd.adapters.local_audio.adapter import LocalAudioAdapter
-from openmd.adapters.local_audio.backends.faster_whisper import FasterWhisperASRBackend
+from openmd.runtime.asr import get_asr_backend
 from openmd.adapters.local_audio.asr import MissingASRBackend, MockASRBackend
 from openmd.backends.base import (
     BackendCapability,
@@ -71,5 +71,7 @@ def register_backend_providers(
     options: BackendRuntimeOptions,
 ) -> None:
     registry.register("local_audio.mock", LocalAudioASRProvider(MockASRBackend()))
-    registry.register("asr.faster_whisper", LocalAudioASRProvider(FasterWhisperASRBackend()))
+    registry.register("asr.faster_whisper", LocalAudioASRProvider(get_asr_backend("asr.faster_whisper")))
+    registry.register("asr.auto", LocalAudioASRProvider(get_asr_backend("asr.auto")))
+    registry.register("asr.qwen3", LocalAudioASRProvider(get_asr_backend("asr.qwen3")))
     registry.register("asr.fallback", LocalAudioASRProvider(MissingASRBackend("asr.fallback")))

@@ -6,7 +6,8 @@ import argparse
 import json
 import shutil
 import sys
-from dataclasses import asdict, dataclass, field
+import time
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from openmd.adapters.registry import create_default_registry
@@ -30,7 +31,7 @@ from openmd.backends.youtube_discovery import (
     opencli_youtube_playlist_target,
     youtube_data_api_playlist_id,
 )
-from openmd.core.detector import detect_platform
+from openmd.core.detector import PLATFORM_IDS, detect_platform
 from openmd.core.coverage import CollectionCoverage, collection_content_type_counts
 from openmd.core.capabilities import filter_capabilities
 from openmd.core.doctor import DOCTOR_PROFILES, build_doctor_report
@@ -86,32 +87,60 @@ class OutputWriteResult:
     package_operation: str | None = None
 
 
+ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup")
+GO_DAILY_OPTIONS = {"help", "url", "save_to", "video", "raw", "json", "verbose"}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="openmd",
-        description="Markdown-first content ingestion CLI. Official command entry: openmd.",
+        usage="openmd [链接]  |  openmd batch <链接清单.txt> --out <目录>",
+        description="把链接保存成干净的 Markdown 原文 / 逐字稿。",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Common examples:\n"
-            "  openmd ingest <url> --out out\n"
-            "  Get-Clipboard | openmd ingest - --out out\n"
-            "  openmd collect <target> --manifest-only --out out\n"
-            "  openmd batch urls.txt --package --out out"
+            "日常用法：\n"
+            "  openmd                       粘贴链接，回车，选保存位置\n"
+            "  openmd \"https://...\"         直接处理这个链接\n"
+            "  openmd \"https://...\" -o <目录>   脚本 / Agent：不提问，直接保存\n"
+            "  openmd batch urls.txt --out <目录>   一次处理多个链接\n"
+            "  openmd doctor                能处理哪些内容、缺什么怎么装\n"
+            "\n"
+            "浏览器插件：运行 openmd browser-setup，按提示在 Chrome / Edge 加载它打开的文件夹。\n"
+            f"高级命令（自动化 / 排障）：{', '.join(ADVANCED_COMMANDS)}；用 openmd <命令> -h 查看。"
         ),
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
-    ingest = subparsers.add_parser("ingest", help="ingest one input")
+    # Advanced commands are registered without help text so the daily help stays short;
+    # they keep working exactly as before.
+    ingest = subparsers.add_parser("ingest", description="ingest one input")
     ingest.add_argument("url")
     _add_shared_options(ingest)
     ingest.set_defaults(func=cmd_ingest)
 
-    batch = subparsers.add_parser("batch", help="ingest inputs from a text file")
+    from openmd.interactive import cmd_go
+
+    go = subparsers.add_parser("go", help="处理一个链接，然后问保存位置（默认命令）", description="处理一个链接，然后问保存位置。")
+    go.add_argument("url", nargs="?", help="链接或本地文件；不填则提示粘贴")
+    _add_shared_options(go, output_required=False, default_limit=1)
+    go.add_argument("-o", "--save-to", dest="save_to", help="保存目录；不填则询问（回车用上次目录）")
+    go.add_argument("--yes", action="store_true", help="compatibility no-op: a destination is the grant; capability flags narrow it")
+    go.add_argument("--json", action="store_true", help="输出机器可读的 JSON 结果")
+    go.add_argument("--verbose", action="store_true", help="显示用了哪条工具路线和诊断信息")
+    go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频时（目前 X）：note 只注明有视频（默认）；text 附上视频逐字稿；file 再保留视频文件")
+    for action in go._actions:
+        if action.dest == "raw":
+            action.help = "保留原始逐行时间戳 / 表格，不合并段落"
+        elif action.dest not in GO_DAILY_OPTIONS:
+            action.help = argparse.SUPPRESS  # still accepted; hidden from daily help
+    go.set_defaults(func=cmd_go)
+
+    batch = subparsers.add_parser("batch", help="一次处理清单文件里的多个链接", description="ingest inputs from a text file")
     batch.add_argument("urls_file")
     _add_shared_options(batch)
     batch.set_defaults(func=cmd_batch)
 
-    collect = subparsers.add_parser("collect", help="discover a target, then optionally ingest its items")
+    collect = subparsers.add_parser("collect", description="discover a target, then optionally ingest its items")
     collect.add_argument("url")
     _add_shared_options(
         collect,
@@ -138,12 +167,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     collect.set_defaults(func=cmd_collect)
 
-    capabilities = subparsers.add_parser("capabilities", help="show read-only capability bindings")
+    capabilities = subparsers.add_parser("capabilities", description="show read-only capability bindings")
     capabilities.add_argument("--source", help="filter by normalized source id")
     capabilities.add_argument("--format", choices=("json", "table"), default="table")
     capabilities.set_defaults(func=cmd_capabilities)
 
-    plan = subparsers.add_parser("plan", help="build a read-only capability plan")
+    plan = subparsers.add_parser("plan", description="build a read-only capability plan")
     plan.add_argument("input")
     plan.add_argument("--input-kind", choices=("auto", "single", "list", "collection", "file", "folder"), default="auto")
     plan.add_argument("--all", action="store_true", help="request source-exhausted planning only")
@@ -153,12 +182,51 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser(
         "doctor",
-        help="print local entry and safe session-boundary diagnostics",
+        description="print local entry and safe session-boundary diagnostics",
     )
-    doctor.add_argument("--profile", choices=DOCTOR_PROFILES, default="core")
+    doctor.add_argument("--profile", choices=DOCTOR_PROFILES, default="all")
+    doctor.add_argument("--json", action="store_true", help="machine-readable report (default when stdout is not a terminal)")
+    doctor.add_argument("--probe-commands", action="store_true", help="explicitly probe installed tool versions")
+    doctor.add_argument("--clear-gpu-quarantine", action="store_true", help="explicitly clear only the local GPU quarantine marker; never unload models or contact Ollama")
     doctor.set_defaults(func=cmd_doctor)
 
-    report = subparsers.add_parser("report", help="build reports from sanitized runlogs")
+    from openmd.probe import cmd_probe
+
+    probe = subparsers.add_parser("probe", description="用本机配置的单条样本探活平台；不下载媒体或运行 ASR。")
+    probe.add_argument("--platform", choices=PLATFORM_IDS)
+    probe.add_argument("--config", help="本机样本 JSON；默认 OPENMD_PROBE_CONFIG 或 out/probe-config.json")
+    probe.add_argument("--out", default="out/probe", help="脱敏 JSON 报告目录（默认 out/probe/<date>/）")
+    probe.add_argument("--timeout", type=int, choices=range(1, 301), metavar="1..300", default=90, help="每个平台的最长秒数；默认 90，超时回收该平台调用子树并继续")
+    probe.add_argument("--enable-network-backends", action="store_true", help="显式允许现有公开网络读取路线")
+    probe.add_argument("--enable-browser-backends", action="store_true", help="显式允许现有浏览器/登录态读取路线")
+    probe.add_argument("--json", action="store_true", help="输出脱敏 JSON 回执")
+    probe.set_defaults(func=cmd_probe)
+
+    routes = subparsers.add_parser("routes", description="show effective routes or manage benchmark evidence")
+    routes.add_argument("action", nargs="?", choices=("bench", "demote", "restore"))
+    routes.add_argument("capability_id", nargs="?")
+    routes.add_argument("--source")
+    routes.add_argument("--capability")
+    routes.add_argument("--sample", help="fixed sample identifier for this bounded benchmark")
+    routes.add_argument("--samples-file", help="explicit sample registry, including existing local PDF/image fixtures")
+    routes.add_argument("--artifacts", help="benchmark artifacts directory")
+    routes.add_argument("--format", choices=("json", "table", "markdown"), default="table")
+    routes.add_argument("--candidates", help="comma-separated backend capability identifiers")
+    routes.add_argument("--evidence", action="append", default=[])
+    routes.add_argument("--ledger")
+    routes.add_argument("--overlay")
+    routes.add_argument("--note", default="")
+    for gate in ("network-backends", "browser-backends", "media-download", "asr", "cloud-backends"):
+        routes.add_argument(f"--enable-{gate}", action="store_true")
+    routes.set_defaults(func=cmd_routes)
+
+    from openmd.browser_setup import cmd_browser_setup
+
+    browser_setup = subparsers.add_parser("browser-setup", description="连接 Chrome / Edge 插件与本机 openmd（只写当前用户设置）")
+    browser_setup.add_argument("--uninstall", action="store_true", help="移除本地连接")
+    browser_setup.set_defaults(func=cmd_browser_setup)
+
+    report = subparsers.add_parser("report", description="build reports from sanitized runlogs")
     report_subparsers = report.add_subparsers(dest="report_command")
     weixin_author_batch = report_subparsers.add_parser(
         "weixin-author-batch",
@@ -187,8 +255,9 @@ def _add_shared_options(
     default_limit: int | None = None,
     include_manifest_only: bool = False,
     include_discovery_backend: bool = False,
+    output_required: bool = True,
 ) -> None:
-    parser.add_argument("--out", required=True, help="output directory")
+    parser.add_argument("--out", required=output_required, help="output directory")
     parser.add_argument("--backend", help="backend name override")
     parser.add_argument("--fallback", dest="fallback", action="store_true", default=True)
     parser.add_argument("--no-fallback", dest="fallback", action="store_false")
@@ -224,6 +293,7 @@ def _add_shared_options(
         help="create a versioned package snapshot instead of updating/skipping",
     )
     parser.add_argument("--download-assets", action="store_true")
+    parser.add_argument("--raw", action="store_true", help="retain original transcript lines and timestamps without readable grouping")
     parser.add_argument("--keep-raw", action="store_true")
     parser.add_argument("--keep-media", action="store_true")
     parser.add_argument(
@@ -273,7 +343,7 @@ def _add_shared_options(
     parser.add_argument(
         "--enable-network-backends",
         action="store_true",
-        help="opt in to real network backends such as youtube-transcript-api",
+        help="opt in to real network backends and LibreOffice fetching Office external resources",
     )
     parser.add_argument(
         "--enable-browser-backends",
@@ -335,7 +405,7 @@ def _compact_failure_payload() -> dict[str, object]:
 
 
 def _print_compact_failure() -> int:
-    print(json.dumps(_compact_failure_payload(), ensure_ascii=False, separators=(",", ":")))
+    print(json.dumps(_compact_failure_payload(), ensure_ascii=True, separators=(",", ":")))
     return 1
 
 
@@ -466,7 +536,7 @@ def _emit_result(
         if lock is not None:
             lock.release()
             args._compact_output_lock = None
-        print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
         return exit_code
     except (OSError, ValueError):
         return _print_compact_failure()
@@ -505,6 +575,8 @@ def _prepare_resolved_item(
 ) -> tuple[ContentItem, str | None] | None:
     """Return the contract-applied item and its fingerprint, or None if the receipt already has it."""
     item = apply_platform_extraction_contract(resolved)
+    if item.platform == "douyin" and getattr(args, "backend", None) == "douyin.metadata":
+        item = replace(item, raw_meta={**item.raw_meta, "extraction_target": "metadata"})
     _reconcile_compact_identity(args, original, item)
     run = getattr(args, "_compact_receipt_run", None)
     if run is not None and run.has_item(_compact_item_identity(item)):
@@ -553,6 +625,7 @@ def _record_compact_rows(
             error_code=str(row.get("error_code") or "") or None,
             failure_class=str(row.get("failure_class") or "") or None,
             recovery_type=str(row.get("resume_pointer") or "") or None,
+            route_trace=row.get("route_trace") if isinstance(row.get("route_trace"), dict) else None,
         )
     return set(grouped)
 
@@ -591,10 +664,21 @@ def _compact_execution_fingerprint(
     modalities_value = raw_meta.get("modalities")
     modalities = tuple(str(value) for value in modalities_value) if isinstance(modalities_value, list) else (item.source_type,)
     effective_config: dict[str, object] = {}
-    if "asr.faster_whisper" in provider_chain:
-        from openmd.adapters.local_audio.backends.faster_whisper import FasterWhisperASRBackend
+    if item.platform in {"pdf", "screenshot"} and any(backend.startswith(("ocr.", "pdf.")) for backend in provider_chain):
+        from openmd.ocr.config import settings
 
-        effective_config["faster_whisper"] = FasterWhisperASRBackend().execution_config()
+        effective_config["ocr_router"] = settings()
+    from openmd.runtime.asr import backend_execution_config
+
+    if "asr.faster_whisper" in provider_chain:
+        effective_config["faster_whisper"] = backend_execution_config("asr.faster_whisper")
+    from openmd.routing.loader import load_catalog
+
+    composed_asr = any(load_catalog().capabilities.get(backend, {}).get("then") == "asr.auto" for backend in provider_chain)
+    if "asr.auto" in provider_chain or composed_asr or "douyin.transcript" in provider_chain:
+        effective_config["asr_auto"] = backend_execution_config("asr.auto")
+    if "asr.qwen3" in provider_chain:
+        effective_config["qwen3"] = backend_execution_config("asr.qwen3")
     if item.platform in {"douyin", "xiaohongshu"}:
         from openmd.backends.douyin_providers import SILICONFLOW_MODEL
 
@@ -670,11 +754,23 @@ def _allow_scoped_all_collect(input_url: str, args: argparse.Namespace) -> bool:
 
 
 def _build_backend_executor(args: argparse.Namespace, *, platform: str) -> BackendExecutor:
+    from openmd.backends.video_metadata import enrich_video_result
+
     provider_registry = create_runtime_backend_provider_registry(
         platform,
         _backend_runtime_options(args),
     )
-    return BackendExecutor(provider_registry=provider_registry)
+    authorizer = getattr(args, "_browser_authorizer", None)
+    if authorizer is not None:
+        from openmd.backends.interactive import DeferredBrowserRegistry
+
+        provider_registry = DeferredBrowserRegistry(provider_registry, platform, args, authorizer)
+    return BackendExecutor(
+        provider_registry=provider_registry,
+        result_enricher=lambda item, result: enrich_video_result(
+            item, result, network_enabled=bool(getattr(args, "enable_network_backends", False))
+        ),
+    )
 
 
 def _build_discovery_executor(args: argparse.Namespace, *, platform: str) -> DiscoveryExecutor:
@@ -721,11 +817,30 @@ def _select_collect_discovery_backend(input_url: str, args: argparse.Namespace) 
         args.discovery_backend = "youtube-playlist"
 
 
+def _requested_backend(platform: str, args: argparse.Namespace) -> str | None:
+    """Explicit --backend wins; local media under --enable-asr picks its model by language."""
+    if getattr(args, "backend", None):
+        return args.backend
+    if platform == "generic_media" and getattr(args, "enable_asr", False):
+        return "asr.auto"
+    return None
+
+
 def _detect_collect_platform(input_url: str) -> str:
     platform = detect_platform(input_url)
     if platform == "web_article" and is_youtube_collection_candidate(input_url):
         return "youtube"
     return platform
+
+
+def _pace_douyin_extraction(item: ContentItem, args: argparse.Namespace) -> None:
+    """Share one bounded cadence across collection and multi-URL batch items."""
+    if item.platform != "douyin" or getattr(args, "backend", None) in {"mock", "douyin.metadata"}:
+        return
+    previous = getattr(args, "_douyin_last_extraction_at", None)
+    if previous is not None:
+        time.sleep(max(0.0, 1.0 - (time.monotonic() - previous)))
+    args._douyin_last_extraction_at = time.monotonic()
 
 
 def _process_items(
@@ -750,7 +865,7 @@ def _process_items(
         processed_count += 1
         selection = registry.select_backend(
             item.platform,
-            args.backend,
+            _requested_backend(item.platform, args),
             allow_fallback=args.fallback,
         )
         executor = executors.get(item.platform)
@@ -821,6 +936,7 @@ def _process_items(
                 )
             continue
 
+        _pace_douyin_extraction(item, args)
         result = executor.extract(
             item,
             selection.chain,
@@ -908,9 +1024,14 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
     adapter = registry.adapter_for(input_url)
     selection = registry.select_backend(
         adapter.id,
-        args.backend,
+        _requested_backend(adapter.id, args),
         allow_fallback=args.fallback,
     )
+    if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
+        from openmd.runtime.managed_tools import ensure_opencli
+
+        # One `pip install openmd` is enough: fetch the pinned opencli on first need.
+        ensure_opencli()
     items = [
         apply_platform_extraction_contract(item)
         for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
@@ -955,6 +1076,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             )
             continue
 
+        _pace_douyin_extraction(item, args)
         result = executor.extract(
             item,
             selection.chain,
@@ -1081,6 +1203,7 @@ def _write_extraction_output(
             args.out,
             overwrite=getattr(args, "overwrite", False),
             download_assets=getattr(args, "download_assets", False),
+            raw=getattr(args, "raw", False),
         )
     )
 
@@ -1168,10 +1291,32 @@ def _read_package_metadata(package_path: Path) -> dict:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    if getattr(args, "clear_gpu_quarantine", False):
+        from openmd.runtime.gpu_quarantine import clear_quarantine_manually
+
+        print(json.dumps({"command": "doctor", "ok": True, "gpu_quarantine": clear_quarantine_manually()}, sort_keys=True))
+        return 0
+    from openmd.runtime.tempdirs import sweep_tempdirs
+
+    cleanup = sweep_tempdirs()
     profile = getattr(args, "profile", "core")
+    try:
+        diagnostics = build_doctor_report(profile)
+        from openmd.routing.loader import effective_routes
+
+        effective_routes()
+        if profile in {"all", "tools"}:
+            from openmd.routing.providers import doctor_tools
+
+            diagnostics["tools"] = doctor_tools(probe_commands=getattr(args, "probe_commands", False))
+            diagnostics["ready"] = bool(diagnostics.get("ready") and diagnostics["tools"]["ok"])
+    except (OSError, ValueError) as exc:
+        diagnostics = {"profile": profile, "ready": False, "error_code": "local_configuration_invalid", "error_summary": sanitize_error_summary(exc), "next_action": "Repair the explicitly selected local position configuration or route overlay; no source extraction was started."}
+    ready = diagnostics.get("ready", diagnostics.get("manifest_valid", True))
     payload = {
-        "ok": True,
+        "ok": ready,
         "command": "doctor",
+        "temp_cleanup": cleanup,
         "official_command": "openmd",
         "module_entry": "python -m openmd",
         "repo_wrapper": str(Path("scripts/openmd.ps1")),
@@ -1191,13 +1336,62 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             "no_delta",
             "sidecar_unreachable",
         ],
-        "next_action": (
+        "next_action": diagnostics.get("next_action") or (
             "Use platform or sidecar UI to repair login/session/cache state, "
             "then rerun Openmd. Core records status only and does not store private session material."
         ),
         "profile": profile,
-        "profile_diagnostics": build_doctor_report(profile),
+        "profile_diagnostics": diagnostics,
     }
+    if not getattr(args, "json", False) and sys.stdout.isatty():
+        from openmd.doctor_view import render
+
+        print(render(payload))
+        # Optional capabilities never make the human view an error.
+        return 0 if diagnostics.get("manifest_valid", True) and "error_code" not in diagnostics else 1
+    print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+    return 0 if ready else 1
+
+
+def cmd_routes(args: argparse.Namespace) -> int:
+    from openmd.routing.loader import route_view
+
+    action = args.action
+    if action is None:
+        view = route_view(source=args.source)
+        if args.format == "json":
+            print(json.dumps(view, ensure_ascii=True, sort_keys=True))
+        elif args.format == "markdown":
+            from openmd.routing.view import render_routes_markdown
+
+            print(render_routes_markdown(source=args.source, effective=True), end="")
+        else:
+            rows = view["routes"]
+            for row in rows:
+                values = (row["source"], row["capability"], " → ".join(row["chain"]))
+                print("\t".join(values))
+        return 0
+    if not args.source:
+        raise ValueError("routes_source_required")
+    from openmd.routing.lifecycle import demote, restore, run_benchmark
+
+    if action == "bench":
+        if not args.capability:
+            raise ValueError("routes_capability_required")
+        payload = run_benchmark(source=args.source, capability=args.capability,
+                                candidates=args.candidates.split(",") if args.candidates else None,
+                                options=_backend_runtime_options(args), ledger_path=args.ledger, sample_id=args.sample,
+                                samples_path=getattr(args, "samples_file", None), artifact_dir=getattr(args, "artifacts", None))
+    else:
+        if not args.capability_id:
+            raise ValueError("routes_capability_id_required")
+        if action == "demote":
+            if not args.ledger:
+                raise ValueError("routes_ledger_required")
+            payload = demote(args.capability_id, source=args.source, evidence_ids=args.evidence,
+                             ledger_path=args.ledger, overlay_path=args.overlay, note=args.note)
+        else:
+            payload = restore(args.capability_id, source=args.source, overlay_path=args.overlay, note=args.note)
     print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
     return 0
 
@@ -1472,7 +1666,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
             outputs=[str(manifest_path)],
             message="manifest written",
         )
-        return _emit_result(args, result, discovery_complete=discovery_complete, manifest_only=True)
+        return _emit_result(args, result, discovery_complete=discovery_complete and result.ok, manifest_only=True)
 
     start_index = max(0, int(getattr(args, "start_index", 0) or 0))
     max_items = max(0, int(getattr(args, "max_items", 0) or 0))
@@ -1509,11 +1703,29 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from openmd.console import configure_console
+
+    configure_console()
+    actual = list(sys.argv[1:] if argv is None else argv)
+    if not actual:
+        from openmd.interactive import is_interactive
+
+        if is_interactive():
+            actual = ["go"]
+    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup"} and not actual[0].startswith("-"):
+        actual.insert(0, "go")
     parser = build_parser()
     try:
-        args = parser.parse_args(argv)
+        args = parser.parse_args(actual)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 1
+    from openmd.runtime.managed_tools import activate as activate_managed_tools
+
+    activate_managed_tools()  # put Openmd's own opencli/node on PATH if it was installed
+    if getattr(args, "command", None) != "doctor":
+        from openmd.runtime.tempdirs import sweep_at_startup
+
+        sweep_at_startup()
     if not hasattr(args, "func"):
         parser.print_help()
         return 0
@@ -1541,6 +1753,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except (Exception, KeyboardInterrupt) as exc:
+        if isinstance(exc, KeyboardInterrupt):
+            print("已取消。", file=sys.stderr)
+            if getattr(args, "receipt", None) != "compact":
+                return 130
         if getattr(args, "receipt", None) == "compact":
             args._compact_execution_failed = not isinstance(exc, KeyboardInterrupt)
             if getattr(args, "_compact_receipt_run", None) is not None:

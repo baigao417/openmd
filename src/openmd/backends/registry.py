@@ -91,6 +91,9 @@ def create_runtime_backend_provider_registry(
         options,
         extension_module_loader=extension_module_loader,
     )
+    from openmd.routing.providers import register_card_providers
+
+    register_card_providers(registry, platform, options)
     return registry
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -32,6 +33,10 @@ ALLOWED_RUNLOG_FIELDS: frozenset[str] = frozenset(
         "extraction_contract_version",
         "components",
         "terminal_gap_count",
+        "route_trace",
+        "document_metadata",
+        "asr_execution",
+        "source_scope",
     }
 )
 
@@ -198,6 +203,16 @@ def sanitize_runlog_entry(entry: dict[str, Any]) -> dict[str, Any]:
         value = entry[key]
         if key in {"error_code", "error_summary"}:
             sanitized[key] = sanitize_error_summary(value)
+        elif key == "input_url" and isinstance(value, str):
+            # This locator is hashed again by compact receipts. Truncating it
+            # creates a second identity for the same discovered item.
+            sanitized[key] = sanitize_url(value)
+        elif key == "document_metadata":
+            sanitized[key] = sanitize_document_metadata(value)
+        elif key == "asr_execution":
+            sanitized[key] = sanitize_asr_execution(value)
+        elif key == "source_scope":
+            sanitized[key] = sanitize_source_scope(value)
         elif isinstance(value, (dict, list, tuple)):
             sanitized[key] = sanitize_for_logging(value, key=key)
         elif isinstance(value, str):
@@ -205,3 +220,94 @@ def sanitize_runlog_entry(entry: dict[str, Any]) -> dict[str, Any]:
         else:
             sanitized[key] = value
     return sanitized
+
+
+def sanitize_asr_execution(value: Any) -> dict[str, Any]:
+    """Publish numeric ASR metrics and bounded route labels, never source text."""
+    if not isinstance(value, dict):
+        return {}
+
+    def number(v: Any) -> bool:
+        return type(v) in (int, float) and math.isfinite(v) and v >= 0
+
+    keys = {"elapsed_seconds", "inference_seconds", "batch_size_requested", "batch_size_effective",
+            "batch_oom_retries", "torch_peak_allocated_bytes", "torch_peak_reserved_bytes"}
+    result = {key: value[key] for key in keys if key in value and number(value[key])}
+    for key in ("duration", "segment_count"):
+        if key in value and number(value[key]):
+            result[key] = value[key]
+    for key in ("model", "model_size", "device", "language", "detected_language"):
+        label = value.get(key)
+        if isinstance(label, str) and (re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", label)
+                                       or (key == "model" and label == "Qwen/Qwen3-ASR-1.7B")):
+            result[key] = label
+    backend = value.get("asr_backend")
+    if backend in {"asr.auto", "asr.qwen3", "asr.faster_whisper"}:
+        result["asr_backend"] = backend
+    route = value.get("asr_route")
+    if isinstance(route, dict):
+        result.update(sanitize_asr_execution({
+            "asr_backend": route.get("selected_backend"),
+            "detected_language": route.get("detected_language"),
+        }))
+    histogram = value.get("batch_size_histogram")
+    if isinstance(histogram, dict):
+        result["batch_size_histogram"] = {str(n): histogram[str(n)] for n in range(1, 33)
+                                          if str(n) in histogram and type(histogram[str(n)]) is int and histogram[str(n)] >= 0}
+    attempts = value.get("batch_oom_attempts")
+    if isinstance(attempts, list):
+        result["batch_oom_attempts"] = [v for v in attempts[:6] if type(v) is int and 1 <= v <= 32]
+    return result
+
+
+def asr_execution_metrics(metadata: dict[str, Any]) -> dict[str, Any]:
+    worker = metadata.get("asr_execution")
+    return sanitize_asr_execution({**metadata, **(worker if isinstance(worker, dict) else {})})
+
+
+def sanitize_source_scope(value: Any) -> dict[str, Any]:
+    """A small structural receipt; no text, signed URLs or arbitrary API data."""
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, Any] = {}
+    for key in ("engine", "scope"):
+        label = value.get(key)
+        if isinstance(label, str) and re.fullmatch(r"[a-z_]{1,40}", label):
+            result[key] = label
+    for key in ("topic_id", "post_id", "target_post_id"):
+        identity = value.get(key)
+        if type(identity) is int and identity > 0:
+            result[key] = identity
+        elif isinstance(identity, str) and re.fullmatch(r"\d{1,24}", identity):
+            result[key] = identity
+    if value.get("post_body_present") is True:
+        result["post_body_present"] = True
+    coverage = value.get("coverage")
+    if isinstance(coverage, dict):
+        safe: dict[str, Any] = {}
+        for key, metric in coverage.items():
+            if key not in {"duration_seconds", "expected_count", "fetched_count", "missing_count", "visible_count",
+                           "expected_posts", "fetched_posts", "missing_posts", "initial_count", "request_count",
+                           "sample_interval_seconds", "max_seconds", "sampled_seconds", "complete"}:
+                continue
+            if type(metric) is bool or (type(metric) in (int, float) and math.isfinite(metric) and metric >= 0):
+                safe[key] = metric
+        if safe:
+            result["coverage"] = safe
+    return result
+
+
+def sanitize_document_metadata(value: Any) -> Any:
+    """Keep every page/tile receipt, but never retain recognized text or API bodies.
+
+    Generic log sanitization truncates lists to 20; document provenance needs
+    all pages. This restricted field contains only scalar metrics, identities,
+    routing and artifact paths produced by the local document/OCR providers.
+    """
+    if isinstance(value, dict):
+        return {str(k): sanitize_document_metadata(v) for k, v in value.items() if not is_sensitive_key(str(k)) and str(k) not in {"text", "content", "prompt", "raw_text", "snippet", "message", "messages"}}
+    if isinstance(value, (list, tuple)):
+        return [sanitize_document_metadata(v) for v in value]
+    if isinstance(value, str):
+        return truncate_text(sanitize_url_text(value))
+    return value

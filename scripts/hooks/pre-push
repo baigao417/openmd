@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run from the repository root using the current Python environment. No dependency installs.
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+python -m pytest

@@ -52,11 +52,17 @@ def test_relative_directory_never_enumerates(tmp_path, monkeypatch):
 def test_real_local_file_is_stat_only_and_uses_real_backend(tmp_path):
     path = tmp_path / 'fixture.wav'
     path.write_bytes(b'fixture')
-    with patch.object(Path, 'open', side_effect=AssertionError('content read')):
+    original_open = Path.open
+
+    def guard_input_open(open_path, *args, **kwargs):
+        assert open_path.resolve() != path.resolve(), 'input content read'
+        return original_open(open_path, *args, **kwargs)
+
+    with patch.object(Path, 'open', guard_input_open):
         result = build_plan(str(path), available_gates={'asr'})
     assert result.execution_ready
-    assert result.runtime_provider == 'asr.faster_whisper'
-    assert result.required_backend == 'asr.faster_whisper'
+    assert result.runtime_provider == 'asr.auto'
+    assert result.required_backend == 'asr.auto'
 
 
 def test_xhs_extraction_binding_is_not_discovery():
@@ -69,7 +75,7 @@ def test_video_uses_implemented_local_backend(tmp_path):
     path = tmp_path / 'fixture.mp4'
     path.write_bytes(b'fixture')
     result = build_plan(str(path), available_gates={'asr'})
-    assert result.runtime_provider == 'asr.faster_whisper'
+    assert result.runtime_provider == 'asr.auto'
     assert result.execution_ready
 
 
@@ -141,7 +147,7 @@ def test_declared_extraction_bindings_are_registered_real_providers():
 
 
 def test_all_weixin_and_douyin_have_current_operations():
-    for value, gates in [('weixin://fixture', {'network', 'browser'}), ('https://www.douyin.com/user/fixture123', {'browser'})]:
+    for value, gates in [('weixin://fixture', {'network', 'browser'}), ('https://www.douyin.com/user/fixture123', {'browser', 'media_download', 'asr'})]:
         result = build_plan(value, request_all=True, available_gates=gates)
         assert result.execution_ready
         assert result.discovery_provider is not None

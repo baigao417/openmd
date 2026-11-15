@@ -21,6 +21,7 @@ from openmd.backends.douyin import (
     classify_douyin_input_failure,
     douyin_user_target,
     normalize_douyin_collection_url,
+    parse_opencli_douyin_user_videos,
 )
 from openmd.backends.douyin_providers import DOUYIN_TRANSCRIPT_BACKEND
 from openmd.cli import (
@@ -75,7 +76,7 @@ class DouyinInputNormalizationTests(unittest.TestCase):
             "tiktok_not_supported",
         )
 
-    def test_short_link_discovery_fails_without_running_opencli(self) -> None:
+    def test_short_link_discovery_failure_closes_owned_browser_session(self) -> None:
         calls: list[list[str]] = []
 
         def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
@@ -86,12 +87,31 @@ class DouyinInputNormalizationTests(unittest.TestCase):
         result = provider.discover(_douyin_request("https://v.douyin.com/iFixture/?token=secret"))
 
         self.assertFalse(result.ok)
-        self.assertEqual(result.error_code, "douyin_short_link_resolution_required")
+        self.assertEqual(result.error_code, "douyin_author_share_resolution_failed")
         self.assertEqual(result.metadata["normalized_url"], "https://v.douyin.com/iFixture/")
-        self.assertEqual(calls, [])
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(calls[-1][:3], ["opencli", "browser", "close"])
 
 
 class DouyinOpenCliDiscoveryTests(unittest.TestCase):
+    def test_discovery_normalizes_nickname_and_publication_field_shapes(self) -> None:
+        cases = [
+            ({"author": "作者", "published_at": "2026-11-09"}, "作者", "2026-11-09"),
+            ({"author": {"nickname": "嵌套昵称"}, "created": "2026-11-09 14:43:21"}, "嵌套昵称", "2026-11-09 14:43:21"),
+            ({"author": {"uid": "123"}, "nickname": "顶层昵称", "create_time": 1794182400}, "顶层昵称", "2026-11-09T00:00:00+00:00"),
+            ({"user": {"nickname": "用户昵称"}, "createTime": 1794182400000}, "用户昵称", "2026-11-09T00:00:00+00:00"),
+            ({"user_name": "用户名", "publish_time": "20261109"}, "用户名", "2026-11-09"),
+            ({"author": {"uid": "123"}, "created": {"time": 123}}, None, None),
+        ]
+        for fields, author, published_at in cases:
+            with self.subTest(fields=fields):
+                value = parse_opencli_douyin_user_videos(json.dumps([{"aweme_id": "7123456789012345678", "title": "原标题", **fields}]))[0]
+                self.assertEqual(value.author, author)
+                self.assertEqual(value.published_at, published_at)
+                manifest = discovery_manifest_row(value, collection_url="https://www.douyin.com/user/fixture", provider="fixture")
+                self.assertEqual(manifest["author"], author)
+                self.assertEqual(manifest["published_at"], published_at)
+
     def test_bounded_user_videos_command_shape_and_safe_json_parsing(self) -> None:
         calls: list[tuple[list[str], int]] = []
 
@@ -152,7 +172,8 @@ class DouyinOpenCliDiscoveryTests(unittest.TestCase):
         self.assertEqual(item.title, "Fixture Douyin video")
         self.assertEqual(item.raw_meta["like_count"], "88")
         self.assertEqual(item.raw_meta["collection_url"], f"https://www.douyin.com/user/{SEC_UID}")
-        self.assertNotIn("play_url", item.raw_meta)
+        self.assertIn("play_url", item.raw_meta)
+        self.assertNotIn("play_url", discovery_manifest_row(item, collection_url=item.raw_meta["collection_url"], provider=provider.name))
         self.assertNotIn("top_comments", item.raw_meta)
         self.assertIn("No media download, ASR, anti-bot bypass, or account mutation was attempted.", result.source_notes)
 

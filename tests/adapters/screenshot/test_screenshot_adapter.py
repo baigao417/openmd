@@ -39,7 +39,7 @@ class ScreenshotOcrAdapterTests(unittest.TestCase):
             self.assertEqual(adapter.id, "screenshot")
             self.assertEqual(
                 registry.backend_chain("screenshot"),
-                ("ocr.rapidocr", "ocr.paddle", "ocr.tesseract"),
+                ("ocr.chain", "ocr.rapidocr", "ocr.tesseract"),
             )
 
     def test_resolves_local_image_file_without_copying_raw_screenshot(self) -> None:

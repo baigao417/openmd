@@ -4,7 +4,7 @@ from openmd.core.package_contract import package_metadata_satisfies_extraction_c
 
 
 def test_old_xhs_parser_package_is_not_accepted_by_current_adapter():
-    item = XiaohongshuAdapter().resolve_items('https://www.xiaohongshu.com/explore/ffff00000000000000000004')[0]
+    item = XiaohongshuAdapter().resolve_items('https://www.xiaohongshu.com/explore/69ef400d00000000380346a7')[0]
     metadata = {
         'extraction_contract_version': 'xhs-mm-v1',
         'components': [

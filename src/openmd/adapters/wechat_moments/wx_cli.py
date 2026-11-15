@@ -9,6 +9,7 @@ import subprocess
 from collections.abc import Callable, Iterable
 from typing import Any
 
+from openmd.core.opencli_output import load_opencli_json
 from openmd.adapters.high_privacy import HIGH_PRIVACY_STATUS_KEY, high_privacy_status_metadata
 from openmd.adapters.wechat_moments.adapter import (
     parse_wechat_moments_selector,
@@ -17,6 +18,7 @@ from openmd.adapters.wechat_moments.adapter import (
 from openmd.backends.base import DiscoveryRequest, DiscoveryResult
 from openmd.core.models import ContentItem
 from openmd.core.secrets import sanitize_error_summary
+from openmd.runtime.interpreters import run_interruptibly
 
 
 OPENCLI_WX_SNS_FEED_DISCOVERY_BACKEND = "opencli.wx.sns-feed"
@@ -140,7 +142,7 @@ def build_opencli_wx_sns_feed_args(
 
 def parse_opencli_wx_sns_feed_output(stdout: str) -> list[dict[str, Any]]:
     try:
-        payload = json.loads(stdout)
+        payload = load_opencli_json(stdout)
     except json.JSONDecodeError as exc:
         raise ValueError("opencli wx sns-feed did not return valid JSON") from exc
 
@@ -221,7 +223,7 @@ def _feed_item(
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     resolved = shutil.which(command[0]) or command[0]
     try:
-        completed = subprocess.run(
+        completed = run_interruptibly(
             [resolved, *command[1:]],
             capture_output=True,
             text=True,

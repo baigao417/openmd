@@ -89,7 +89,7 @@ class XiaohongshuRuntimeGateTests(unittest.TestCase):
     def test_windows_batch_command_line_quotes_signed_url_query_params(self) -> None:
         command_line = _windows_batch_command_line(
             [
-                r"C:\fixture\npm\opencli.cmd",
+                r"C:\Users\example\AppData\Roaming\npm\opencli.cmd",
                 "xiaohongshu",
                 "note",
                 _signed_note_url(),
@@ -100,7 +100,7 @@ class XiaohongshuRuntimeGateTests(unittest.TestCase):
 
         self.assertIn(f'"{_signed_note_url()}"', command_line)
         self.assertNotIn("& -f", command_line)
-        self.assertTrue(command_line.startswith('"C:\\fixture'))
+        self.assertTrue(command_line.startswith('"C:\\Users\\example'))
 
     def test_browser_backend_gate_registers_note_provider_extension(self) -> None:
         safe_registry = create_runtime_backend_provider_registry("xiaohongshu", BackendRuntimeOptions())
@@ -136,7 +136,7 @@ class XiaohongshuRuntimeGateTests(unittest.TestCase):
 
     def test_explicit_full_provider_registers_only_behind_browser_gate(self) -> None:
         request = DiscoveryRequest(
-            input_url=_user_url("ffff00000000000000000006"),
+            input_url=_user_url("683e522f000000001d008dba"),
             platform="xiaohongshu",
             limit=None,
             allow_all=True,
@@ -271,7 +271,7 @@ class XiaohongshuUserDiscoveryTests(unittest.TestCase):
     def test_user_discovery_uses_explicit_limit_command_shape(self) -> None:
         calls: list[tuple[list[str], int]] = []
         user_url = _user_url()
-        note_id = "ffff00000000000000000001"
+        note_id = "000000000000000000000456"
         note_url = _signed_note_url(note_id)
 
         def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
@@ -325,7 +325,7 @@ class XiaohongshuUserDiscoveryTests(unittest.TestCase):
 
     def test_default_user_provider_routes_all_to_project_plugin(self) -> None:
         calls: list[tuple[list[str], int]] = []
-        profile_url = _user_url("ffff00000000000000000006")
+        profile_url = _user_url("683e522f000000001d008dba")
 
         def fake_runner(args: list[str], *, timeout: int = 120) -> tuple[int, str, str]:
             calls.append((args, timeout))
@@ -353,13 +353,13 @@ class XiaohongshuUserDiscoveryTests(unittest.TestCase):
 
 class XiaohongshuFullDiscoveryTests(unittest.TestCase):
     def test_full_command_accepts_raw_user_id_and_emits_canonical_profile(self) -> None:
-        user_id = "ffff00000000000000000006"
+        user_id = "683e522f000000001d008dba"
         command = build_opencli_openmd_xiaohongshu_creator_notes_args(user_id)
         self.assertEqual(command[3], _user_url(user_id))
 
     def test_full_provider_discovers_more_than_50_and_preserves_terminal_metadata(self) -> None:
         calls: list[tuple[list[str], int, str]] = []
-        profile_url = _user_url("ffff00000000000000000006")
+        profile_url = _user_url("683e522f000000001d008dba")
         signed_profile_url = profile_url + f"?{SENSITIVE_QUERY_KEY}=profile-secret&xsec_source=pc_feed"
 
         def fake_input_runner(
@@ -372,7 +372,7 @@ class XiaohongshuFullDiscoveryTests(unittest.TestCase):
             rows = _fixture_full_rows()
             for row in rows:
                 row["runtime_note_url"] = (
-                    f"https://www.xiaohongshu.com/user/profile/ffff00000000000000000006/{row['note_id']}"
+                    f"https://www.xiaohongshu.com/user/profile/683e522f000000001d008dba/{row['note_id']}"
                     f"?{SENSITIVE_QUERY_KEY}=note-{row['note_id']}&xsec_source=pc_user"
                 )
             return 0, json.dumps(rows), ""
@@ -445,7 +445,7 @@ class XiaohongshuFullDiscoveryTests(unittest.TestCase):
         )
         result = provider.discover(
             DiscoveryRequest(
-                input_url=_user_url("ffff00000000000000000006"),
+                input_url=_user_url("683e522f000000001d008dba"),
                 platform="xiaohongshu",
                 limit=None,
                 allow_all=True,
@@ -459,7 +459,7 @@ class XiaohongshuFullDiscoveryTests(unittest.TestCase):
         rows.append(dict(rows[0]))
         items = parse_opencli_xiaohongshu_user_output(
             json.dumps(rows),
-            collection_url=_user_url("ffff00000000000000000006"),
+            collection_url=_user_url("683e522f000000001d008dba"),
             discovery_provider=OPENCLI_OPENMD_XIAOHONGSHU_CREATOR_NOTES_BACKEND,
             include_transient=True,
             include_runtime_note_url=False,
@@ -473,7 +473,7 @@ class XiaohongshuFullDiscoveryTests(unittest.TestCase):
         self.assertNotIn("token", plugin_stdout.lower())
         row = discovery_manifest_row(
             items[0],
-            collection_url=_user_url("ffff00000000000000000006"),
+            collection_url=_user_url("683e522f000000001d008dba"),
             provider=OPENCLI_OPENMD_XIAOHONGSHU_CREATOR_NOTES_BACKEND,
             limit=None,
         )

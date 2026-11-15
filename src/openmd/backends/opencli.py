@@ -10,6 +10,8 @@ from openmd.core.secrets import sanitize_error_summary
 
 from .base import BackendCommandResult
 
+from openmd.runtime.interpreters import run_interruptibly
+
 
 class OpenCliBackend:
     """Run read-only OpenCLI commands without persisting raw stdout or stderr."""
@@ -21,7 +23,7 @@ class OpenCliBackend:
     def run(self, args: Sequence[str], *, name: str = "opencli") -> BackendCommandResult:
         command = (self.executable, *args)
         try:
-            completed = subprocess.run(
+            completed = run_interruptibly(
                 command,
                 capture_output=True,
                 text=True,

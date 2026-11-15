@@ -15,6 +15,10 @@ from openmd.cli import main
 @pytest.fixture(autouse=True)
 def isolated_data(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    # Unit tests must never start a real background queue runner: it would
+    # process the same jobs concurrently with the test (flaky on CI).
+    real_ensure_runner = browser_host.ensure_runner
+    monkeypatch.setattr(browser_host, "ensure_runner", lambda spawn=None: real_ensure_runner(spawn=spawn or (lambda *a, **k: None)))
 
 
 def _frame(value) -> bytes:
@@ -196,3 +200,26 @@ def test_child_openmd_writes_utf8(tmp_path):
     status = browser_host.start_job("https://a.example/1", str(tmp_path), spawn=lambda *a, **k: None)
     done = browser_host.run_job(browser_host.jobs_root() / status["id"], runner=run)
     assert seen["PYTHONIOENCODING"] == "utf-8" and done["title"] == "这是一条价值百万的内容"
+
+
+def test_concurrent_status_writers_never_share_a_temp_file(tmp_path, monkeypatch):
+    # The queue runner and a status poller (_recover) can write the same job at
+    # once; a shared "status.json.tmp" lets their bytes interleave (seen on CI).
+    seen = []
+    real_write_text = browser_host.Path.write_text
+
+    def record(self, *args, **kwargs):
+        seen.append(self.name)
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(browser_host.Path, "write_text", record)
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    browser_host._write_status(job_dir, {"id": "a", "state": "queued"})
+    browser_host._write_status(job_dir, {"id": "a", "state": "running"})
+    temps = [name for name in seen if name != "status.json"]
+    assert len(temps) == 2 and len(set(temps)) == 2
+    import json
+
+    assert json.loads((job_dir / "status.json").read_text(encoding="utf-8"))["state"] == "running"
+    assert not list(job_dir.glob("*.tmp"))

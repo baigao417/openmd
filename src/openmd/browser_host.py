@@ -79,9 +79,14 @@ def read_status(job_id: str) -> dict[str, Any]:
 
 
 def _write_status(job_dir: Path, status: dict[str, Any]) -> None:
-    tmp = job_dir / "status.json.tmp"
-    tmp.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, job_dir / "status.json")
+    # The queue runner and status pollers (_recover) may write the same job at
+    # once: each writer needs its own temp file, or their bytes can interleave.
+    tmp = job_dir / f"status.json.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    try:
+        tmp.write_text(json.dumps(status, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, job_dir / "status.json")
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _validate_url(url: object) -> str:

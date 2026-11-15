@@ -63,7 +63,7 @@ def test_doctor_human_view_lists_install_hints() -> None:
 
     payload = {"profile_diagnostics": {"asr_runtime": {"probe": {"ready": False}}, "tools": {"tools": [{"tool": "yutto", "resolved": False}]}}}
     text = render(payload)
-    assert "openmd[asr]" in text and "可选工具 yutto" in text and "openmd doctor --json" in text
+    assert "openmd-cli[asr]" in text and "可选工具 yutto" in text and "openmd doctor --json" in text
     assert "{" not in text
 
 

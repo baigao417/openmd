@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-# The script imports the optional ASR stack at module level (pip install "openmd[asr]").
+# The script imports the optional ASR stack at module level (pip install "openmd-cli[asr]").
 pytest.importorskip("faster_whisper")
 
 

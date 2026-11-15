@@ -1,4 +1,4 @@
-"""Tools Openmd installs and runs for the user, so one `pip install openmd` is enough.
+"""Tools Openmd installs and runs for the user, so one `pip install openmd-cli` is enough.
 
 opencli (Apache-2.0, npm `@jackwener/opencli`) powers the browser-session
 routes (Bilibili subtitles, Weixin, X, Douyin ...). Node.js comes from the

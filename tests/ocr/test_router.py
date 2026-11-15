@@ -212,7 +212,7 @@ class PDFOfficeTests(unittest.TestCase):
             with patch("openmd.ocr.documents.importlib.util.find_spec", return_value=None):
                 result = extract_pdf(item)
         self.assertEqual(result.error_code, "pymupdf_missing")
-        self.assertIn("openmd[ocr-router]", result.error_summary)
+        self.assertIn("openmd-cli[ocr-router]", result.error_summary)
 
     def test_office_sparse_visual_recovery_missing_is_partial(self):
         from zipfile import ZipFile

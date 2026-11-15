@@ -32,7 +32,7 @@ compatibility identifier, not a claim that the upstream pipeline is integrated.
 | Node.js via `nodejs-wheel-binaries` | MIT | `pip` dependency |
 | trafilatura | Apache-2.0 | `pip` dependency |
 | youtube-transcript-api, beautifulsoup4, markdownify | MIT | `pip` dependencies |
-| faster-whisper, MarkItDown, RapidOCR, Pillow, PyMuPDF … | see each project | optional extras (`openmd[asr]`, `openmd[document]` …) |
+| faster-whisper, MarkItDown, RapidOCR, Pillow, PyMuPDF … | see each project | optional extras (`openmd-cli[asr]`, `openmd-cli[document]` …) |
 
 FFmpeg, yt-dlp and other command-line tools are used only if you install them; their own licenses
 apply.

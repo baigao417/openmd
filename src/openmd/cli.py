@@ -405,7 +405,7 @@ def _compact_failure_payload() -> dict[str, object]:
 
 
 def _print_compact_failure() -> int:
-    print(json.dumps(_compact_failure_payload(), ensure_ascii=False, separators=(",", ":")))
+    print(json.dumps(_compact_failure_payload(), ensure_ascii=True, separators=(",", ":")))
     return 1
 
 
@@ -536,7 +536,7 @@ def _emit_result(
         if lock is not None:
             lock.release()
             args._compact_output_lock = None
-        print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+        print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
         return exit_code
     except (OSError, ValueError):
         return _print_compact_failure()
@@ -1703,6 +1703,9 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from openmd.console import configure_console
+
+    configure_console()
     actual = list(sys.argv[1:] if argv is None else argv)
     if not actual:
         from openmd.interactive import is_interactive

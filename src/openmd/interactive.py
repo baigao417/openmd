@@ -296,7 +296,7 @@ def issue_context(url: str, rows: list[dict[str, object]]) -> str:
 
 def _emit_saved(args: argparse.Namespace, *, target: Path, outputs: list[str], records: Path | None) -> None:
     if getattr(args, "json", False):
-        print(json.dumps({"ok": True, "command": "go", "saved_to": str(target), "outputs": outputs, "records": str(records) if records else None}, ensure_ascii=False))
+        print(json.dumps({"ok": True, "command": "go", "saved_to": str(target), "outputs": outputs, "records": str(records) if records else None}, ensure_ascii=True))
     else:
         print(f"已保存：{target}")
         if getattr(args, "verbose", False) and records:
@@ -384,7 +384,7 @@ def cmd_go(args: argparse.Namespace) -> int:
                     if retained:
                         print(f"错误记录：{retained}", file=sys.stderr)
                     if getattr(args, "json", False):
-                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None}, ensure_ascii=False))
+                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None}, ensure_ascii=True))
                     return 1
                 for output in result.outputs:
                     if Path(output).is_dir():
@@ -449,5 +449,5 @@ def cmd_go(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         print(f"openmd go: {sanitize_error_summary(exc)}", file=sys.stderr)
         if getattr(args, "json", False):
-            print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(exc)}, ensure_ascii=False))
+            print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(exc)}, ensure_ascii=True))
         return 1

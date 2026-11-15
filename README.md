@@ -68,6 +68,8 @@ openmd routes --format markdown
    - X 帖子带视频：直接点图标只注明有视频；在 X 页面（或帖子链接、视频上）右键“用 Openmd 保存（含视频文字版）”附上逐字稿，“（含视频文字版和视频文件）”再留下视频。
 4. 设置页（右键图标 → 选项）：添加多个保存位置（名字 + 文件夹，可用“选择…”弹出文件夹对话框），选默认位置；“点击图标时”可切换为“先选择保存位置”；“帖子里带视频时”可改成默认附上逐字稿。
 
+借用浏览器读取（B 站、公众号、X 等）时，Chrome 可能在顶部显示“Openmd 已开始调试此浏览器”：这是 Chrome 对使用调试接口的插件统一显示的提示，插件自身无法隐藏；读取只在 Openmd 的后台窗口里进行。
+
 插件通过 Chrome Native Messaging 调用本机 `openmd`，不开本地端口；只有上面这个插件 ID 能连。所有保存进入后台队列，一次只跑一个（避免本机转录同时占满显卡），后台不弹任何窗口。关机时没跑完的任务，开机后插件一联系本机就自动重新排队（最多重试一次）。重启电脑后无需任何操作。任务记录在 `~/.openmd/browser-jobs/`。
 
 ASR 步骤自动选择已有 CUDA worker；主 CLI 保留自己的环境。本地模型目录或缓存不存在时明确报错，不自动从 HF 下载。工具位置、ASR Python 和模型根目录统一放在本机配置（`OPENMD_CONFIG` 指定 JSON，源码 checkout 默认 `out/local-config.json`，安装版默认 `~/.openmd/local.json`）；只存安装位置，不存凭证。配置示例与安装边界见 [工具接入规范](docs/tool-integration.md)，实际路由由打包 JSON 生成：[当前路由](docs/routes.generated.md)。架构图和各平台工具一览：[Openmd 全景](docs/architecture-map.html)（浏览器打开）。

@@ -62,6 +62,11 @@ def check_tools() -> int:
 
 
 def main() -> int:
+    # This script runs before installation; the helper uses only stdlib.
+    sys.path.insert(0, str(ROOT / "src"))
+    from openmd.console import configure_console
+
+    configure_console()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="only report missing tools")
     parser.add_argument("--no-venv", action="store_true", help="install into the current interpreter")

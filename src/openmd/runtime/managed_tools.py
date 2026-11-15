@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from openmd.runtime.interpreters import run_interruptibly
 OPENCLI_PACKAGE = "@jackwener/opencli"
 OPENCLI_VERSION = "2.0.3"
 OPENCLI_BRIDGE_STORE_URL = "https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk"
+_host_package_warning_shown = False
 
 
 def node_dir() -> Path | None:
@@ -53,6 +55,11 @@ def managed_bin() -> Path:
     return managed_root() / "node_modules" / ".bin"
 
 
+def managed_package_root() -> Path:
+    """Package root used by plugins when the managed host is active."""
+    return managed_root() / "node_modules" / "@jackwener" / "opencli"
+
+
 def _managed_ready() -> bool:
     return (managed_bin() / ("opencli.cmd" if os.name == "nt" else "opencli")).is_file()
 
@@ -62,6 +69,64 @@ def _prepend_path(*folders: Path) -> None:
     additions = [str(f) for f in folders if str(f) not in current]
     if additions:
         os.environ["PATH"] = os.pathsep.join([*additions, *current])
+
+
+def _is_junction(path: Path) -> bool:
+    # Path.is_symlink() does not identify junctions on Python 3.10/3.11.
+    try:
+        return getattr(path.lstat(), "st_reparse_tag", None) == getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
+    except FileNotFoundError:
+        return False
+
+
+def _create_junction(source: Path, target: Path) -> None:
+    if os.name != "nt":
+        raise OSError("Directory junctions require Windows")
+    import _winapi
+
+    _winapi.CreateJunction(str(source.resolve()), str(target))
+
+
+def _prepare_bundled_node_host_package() -> None:
+    """Expose the managed host at the bundled Node resolution root.
+
+    Some user plugins were compiled by older OpenCLI versions that resolve
+    ``@jackwener/opencli`` relative to ``process.execPath``.  The managed
+    install keeps Node and npm under one private runtime directory, so provide
+    the same package shape there without touching ``~/.opencli`` or a user's
+    plugin directory.
+    """
+    global _host_package_warning_shown
+    node = node_dir()
+    source = managed_package_root()
+    if node is None or not source.is_dir():
+        return
+    target = node / "node_modules" / "@jackwener" / "opencli"
+    try:
+        junction = _is_junction(target)
+        if junction or target.is_symlink():
+            try:
+                if target.resolve() == source.resolve():
+                    return
+            except OSError:
+                pass
+            # rmdir removes only the junction, never the linked package tree.
+            if junction:
+                target.rmdir()
+            else:
+                target.unlink(missing_ok=True)
+        elif target.exists():
+            # Never replace a real package supplied by the Node runtime.
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.symlink_to(source, target_is_directory=True)
+        except OSError:
+            _create_junction(source, target)
+    except OSError:
+        if not _host_package_warning_shown:
+            print("Openmd: browser plugin compatibility link could not be prepared; check runtime directory permissions and retry.", file=sys.stderr)
+            _host_package_warning_shown = True
 
 
 def activate() -> str:
@@ -77,6 +142,7 @@ def activate() -> str:
             return "user"
         node = node_dir()
         _prepend_path(*([node] if node else []), managed_bin())
+        _prepare_bundled_node_host_package()
         return "managed"
     return "user" if shutil.which("opencli") else "missing"
 

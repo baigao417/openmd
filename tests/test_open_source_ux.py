@@ -201,6 +201,111 @@ def test_user_opencli_always_wins(tmp_path, monkeypatch) -> None:
     assert managed_tools.ensure_opencli(lambda _m: None) == "user"
 
 
+def test_managed_opencli_prepares_bundled_node_host_package(tmp_path, monkeypatch) -> None:
+    import os
+
+    from openmd.runtime import managed_tools
+
+    node = tmp_path / "node"
+    node.mkdir()
+    (node / ("node.exe" if os.name == "nt" else "node")).write_text("", encoding="utf-8")
+    managed_root = tmp_path / "data" / "tools" / "opencli"
+    (managed_root / "node_modules" / ".bin").mkdir(parents=True)
+    (managed_root / "node_modules" / ".bin" / ("opencli.cmd" if os.name == "nt" else "opencli")).write_text("", encoding="utf-8")
+    (managed_root / "node_modules" / "@jackwener" / "opencli").mkdir(parents=True)
+
+    calls = []
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(managed_tools, "node_dir", lambda: node)
+    monkeypatch.setattr(managed_tools.shutil, "which", lambda name, path=None: str(managed_tools.managed_bin() / ("opencli.cmd" if os.name == "nt" else "opencli")))
+    monkeypatch.setattr(Path, "symlink_to", lambda self, target, target_is_directory=False: calls.append((self, target, target_is_directory)))
+
+    assert managed_tools.activate() == "managed"
+    assert calls == [
+        (
+            node / "node_modules" / "@jackwener" / "opencli",
+            managed_root / "node_modules" / "@jackwener" / "opencli",
+            True,
+        )
+    ]
+
+
+def test_plugin_setup_scripts_include_managed_opencli_fallback() -> None:
+    root = Path(__file__).resolve().parents[1]
+    for name in ("setup-openmd-douyin-plugin.ps1", "setup-openmd-xiaohongshu-plugin.ps1"):
+        text = (root / "scripts" / name).read_text(encoding="utf-8")
+        assert "OPENMD_DATA_DIR" in text
+        assert "tools\\opencli\\node_modules\\.bin" in text
+
+
+def test_host_package_symlink_permission_failure_uses_junction(tmp_path, monkeypatch):
+    managed_tools, node = _fake_node(tmp_path, monkeypatch)
+    source = managed_tools.managed_package_root()
+    source.mkdir(parents=True)
+    calls = []
+
+    def denied(*args, **kwargs):
+        raise OSError(1314, "A required privilege is not held by the client")
+
+    monkeypatch.setattr(Path, "symlink_to", denied)
+    monkeypatch.setattr(managed_tools, "_create_junction", lambda src, dst: calls.append((src, dst)))
+    managed_tools._prepare_bundled_node_host_package()
+    assert calls == [(source, node / "node_modules/@jackwener/opencli")]
+
+
+def test_host_package_replaces_old_junction_without_deleting_source(tmp_path, monkeypatch):
+    import stat
+    from types import SimpleNamespace
+
+    managed_tools, node = _fake_node(tmp_path, monkeypatch)
+    source = managed_tools.managed_package_root()
+    source.mkdir(parents=True)
+    target = node / "node_modules/@jackwener/opencli"
+    target.mkdir(parents=True)  # emulate a junction whose is_symlink() is False
+    old = tmp_path / "old-package"
+    old.mkdir()
+    marker = old / "keep.txt"
+    marker.write_text("must remain", encoding="utf-8")
+    original_lstat, original_resolve = Path.lstat, Path.resolve
+    monkeypatch.setattr(Path, "lstat", lambda self: SimpleNamespace(st_reparse_tag=getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)) if self == target else original_lstat(self))
+    monkeypatch.setattr(Path, "is_symlink", lambda self: False)
+    monkeypatch.setattr(Path, "resolve", lambda self, **kwargs: old if self == target else original_resolve(self, **kwargs))
+    calls = []
+    monkeypatch.setattr(Path, "symlink_to", lambda self, src, **kwargs: calls.append((self, src)))
+    managed_tools._prepare_bundled_node_host_package()
+    assert calls == [(target, source)]
+    assert not target.exists() and marker.read_text(encoding="utf-8") == "must remain"
+
+
+def test_host_package_keeps_real_directory(tmp_path, monkeypatch):
+    managed_tools, node = _fake_node(tmp_path, monkeypatch)
+    managed_tools.managed_package_root().mkdir(parents=True)
+    target = node / "node_modules/@jackwener/opencli"
+    target.mkdir(parents=True)
+    marker = target / "keep.txt"
+    marker.write_text("real package", encoding="utf-8")
+    monkeypatch.setattr(Path, "symlink_to", lambda *a, **k: pytest.fail("must not replace real package"))
+    managed_tools._prepare_bundled_node_host_package()
+    assert marker.read_text(encoding="utf-8") == "real package"
+
+
+def test_host_package_failure_warns_once(tmp_path, monkeypatch, capsys):
+    managed_tools, _ = _fake_node(tmp_path, monkeypatch)
+    managed_tools.managed_package_root().mkdir(parents=True)
+    monkeypatch.setattr(managed_tools, "_host_package_warning_shown", False)
+
+    def denied(*args, **kwargs):
+        raise OSError(1314, "denied")
+
+    monkeypatch.setattr(Path, "symlink_to", denied)
+    monkeypatch.setattr(managed_tools, "_create_junction", denied)
+    managed_tools._prepare_bundled_node_host_package()
+    managed_tools._prepare_bundled_node_host_package()
+    warning = capsys.readouterr().err
+    assert warning.count("Openmd:") == 1
+    assert "plugin" in warning and "opencli" not in warning.lower()
+
+
 @pytest.mark.parametrize(("profiles", "preset", "expected"), [
     (["openmd", "x8k2m4pq"], None, "openmd"),   # both bridges: prefer the built-in one
     (["openmd"], None, None),                   # single bridge: opencli picks it itself

@@ -133,8 +133,9 @@ def test_155_real_pid_lifetimes_and_last_controller_exit_are_sweepable(monkeypat
     assert result.returncode == 0, result.stdout + result.stderr
     record = json.loads(result.stdout)
     assert len(record["pids"]) == 155
+    assert len(record["child_returncodes"]) == 155
+    assert record["child_returncodes"] == [0] * 155
     assert not tempdirs.pid_alive(record["controller"])
-    assert not any(tempdirs.pid_alive(pid) for pid in record["pids"])
     path = Path(record["directory"])
     stamp = time.time() - 25 * 3600
     os.utime(path, (stamp, stamp))

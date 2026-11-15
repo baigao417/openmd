@@ -305,16 +305,18 @@ def marker_lifecycle(root):
     """155 real sequential child lifetimes; controller then exits for real."""
     work = Path(tempdirs.owned_mkdtemp(prefix="openmd-lifetimes-", dir=root))
     pids = []
+    children = []
     max_bytes = 0
     max_records = 0
     for _ in range(155):
         child = runtime.owned_popen([sys.executable, "-c", "pass"], stdin=subprocess.DEVNULL,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         pids.append(child.pid)
+        children.append(child)
         marker = work / tempdirs.OWNER_FILE
         max_bytes = max(max_bytes, marker.stat().st_size)
         max_records = max(max_records, len(json.loads(marker.read_text()).get("pids", [])))
-        runtime.wait_interruptibly(child, 5, poll_s=.01)
+        assert runtime.wait_interruptibly(child, 5, poll_s=.01) == 0
     # A dead incoming PID must still prune previously completed workers.
     tempdirs.note_process_owner(child)
     final = json.loads(marker.read_text())
@@ -322,6 +324,7 @@ def marker_lifecycle(root):
     assert max_bytes <= tempdirs.MAX_OWNER_BYTES
     assert max_records <= tempdirs.MAX_OWNER_PIDS
     return {"case": "marker-lifetimes", "directory": str(work), "pids": pids,
+            "child_returncodes": [child.returncode for child in children],
             "controller": os.getpid(), "max_marker_bytes": max_bytes,
             "max_records": max_records, "final": final}
 

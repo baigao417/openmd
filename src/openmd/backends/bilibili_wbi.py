@@ -2,6 +2,9 @@
 
 This module ports only the request-signing core needed by Openmd's public API
 wrappers. It does not read browser profiles, local app tokens, or cookie stores.
+
+WBI core reference: Bilibili-Harvest, Copyright (c) 2023 Lanbin07, MIT.
+See THIRD_PARTY_NOTICES.md and LICENSES/Bilibili-Harvest-MIT.txt.
 """
 
 from __future__ import annotations
@@ -13,12 +16,13 @@ import posixpath
 import re
 import threading
 import time
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Mapping
 from urllib.parse import urlencode, urlparse
 
 
 BILIBILI_COOKIE_HEADER_ENV = "OPENMD_BILIBILI_COOKIE_HEADER"
+BILIBILI_COOKIE_FILE_ENV = "OPENMD_BILIBILI_COOKIE_FILE"
 BILIBILI_NAV_URL = "https://api.bilibili.com/x/web-interface/nav"
 BILIBILI_WEB_REFERER = "https://www.bilibili.com/"
 BILIBILI_WBI_KEY_TTL_SECONDS = 12 * 60 * 60
@@ -101,8 +105,18 @@ class WbiSigningError(RuntimeError):
 
 
 def bilibili_cookie_header(environ: Mapping[str, str] | None = None) -> str | None:
-    """Return the optional Bilibili cookie header from environment only."""
-    value = (environ or os.environ).get(BILIBILI_COOKIE_HEADER_ENV, "").strip()
+    """Read an explicit user-owned header file, or the legacy environment value."""
+    config = os.environ if environ is None else environ
+    cookie_path = config.get(BILIBILI_COOKIE_FILE_ENV, "").strip()
+    if cookie_path:
+        try:
+            value = Path(cookie_path).read_text(encoding="utf-8-sig").strip()
+        except (OSError, UnicodeError):
+            raise WbiSigningError("The user-provided cookie header file is unreadable.") from None
+        if "\r" in value or "\n" in value:
+            raise WbiSigningError("The user-provided cookie header must be a single line.")
+        return value or None
+    value = config.get(BILIBILI_COOKIE_HEADER_ENV, "").strip()
     return value or None
 
 

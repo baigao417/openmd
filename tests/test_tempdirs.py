@@ -245,3 +245,20 @@ def test_unreadable_ownership_stays_unchanged_and_retained(monkeypatch, tmp_path
     stamp = time.time() - 25 * 3600
     os.utime(path, (stamp, stamp))
     assert tempdirs.sweep_tempdirs()["retained"] == 1
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc zombie state is Linux-specific")
+def test_zombie_process_is_not_alive():
+    # A killed-but-unreaped child keeps os.kill(pid, 0) succeeding; it holds no
+    # files and cannot run, so ownership checks must treat it as gone (CI flake).
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        with open(f"/proc/{child.pid}/stat", encoding="ascii") as stat:
+            if stat.read().rsplit(")", 1)[1].split()[0] == "Z":
+                break
+        time.sleep(.01)
+    try:
+        assert not tempdirs.pid_alive(child.pid)
+    finally:
+        child.wait()

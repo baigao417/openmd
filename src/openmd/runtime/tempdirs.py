@@ -43,11 +43,18 @@ def pid_alive(pid: int) -> bool:
             kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         return False
     except PermissionError:
         return True
+    # A killed-but-unreaped (zombie) process still answers signal 0, yet holds
+    # no files and never runs again; orphans wait for init to reap them.
+    try:
+        with open(f"/proc/{pid}/stat", encoding="ascii", errors="replace") as stat:
+            state = stat.read().rsplit(")", 1)[1].split()[0]
+    except (OSError, IndexError):
+        return True  # no /proc (macOS) or vanished mid-read: keep the safe answer
+    return state not in {"Z", "X"}
 
 
 def _read_owner(marker: Path) -> dict:

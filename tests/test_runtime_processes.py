@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from unittest.mock import Mock
@@ -235,6 +236,21 @@ def test_repeated_job_and_pipe_use_does_not_accumulate_handles():
     for _ in range(20):
         assert runtime.run_interruptibly(command, input=b"data", capture_output=True, timeout=3).stdout == b"data"
     assert handles() <= before + 4
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job synchronization")
+def test_job_close_waits_for_kernel_tree_termination(monkeypatch):
+    from openmd.runtime import _windows_job as win
+
+    waits = []
+    job = object.__new__(win.Job)
+    job.lock = threading.Lock()
+    job.handle = 123
+    monkeypatch.setattr(win, "TerminateJobObject", lambda handle, code: True)
+    monkeypatch.setattr(win, "WaitForSingleObject", lambda handle, timeout: waits.append((handle, timeout)) or 0)
+    monkeypatch.setattr(win, "CloseHandle", lambda handle: True)
+    job.close()
+    assert waits == [(123, 2000)]
 
 
 def test_saved_posix_group_is_cleaned_once_after_leader_exits(monkeypatch):

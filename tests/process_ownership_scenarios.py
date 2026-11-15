@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,121 @@ def until(predicate, budget=5):
     while not predicate():
         assert time.monotonic() < deadline, "checkpoint exceeded budget"
         time.sleep(.01)
+
+
+def process_ownership_diagnostics(pids, created):
+    """Capture Windows process/job state before TemporaryDirectory cleanup.
+
+    The scenario deliberately keeps this best-effort: diagnostics must still
+    be emitted when a runner has already torn down a process or denies a query.
+    """
+    result = {"processes": {}, "owned_jobs": [], "current_process": {}}
+    if os.name != "nt":
+        return {"available": False, "reason": "non-Windows"}
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_current_process = kernel.GetCurrentProcess
+    get_current_process.restype = wintypes.HANDLE
+    is_process_in_job = kernel.IsProcessInJob
+    is_process_in_job.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+    is_process_in_job.restype = wintypes.BOOL
+    open_process = kernel.OpenProcess
+    open_process.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    open_process.restype = wintypes.HANDLE
+    close_handle = kernel.CloseHandle
+    close_handle.argtypes = [wintypes.HANDLE]
+    close_handle.restype = wintypes.BOOL
+    query_job = kernel.QueryInformationJobObject
+    query_job.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p]
+    query_job.restype = wintypes.BOOL
+
+    try:
+        from openmd.runtime import _windows_job as win
+        for index, child in enumerate(created):
+            owner = getattr(child, "_openmd_owner", None)
+            handle = getattr(owner, "handle", None)
+            item = {"index": index, "pid": getattr(child, "pid", None), "handle_open": bool(handle)}
+            if handle:
+                info = win.EXTENDED_LIMITS()
+                if query_job(handle, 9, ctypes.byref(info), ctypes.sizeof(info), None):
+                    flags = int(info.BasicLimitInformation.LimitFlags)
+                    item["limit_flags"] = flags
+                    item["kill_on_job_close"] = bool(flags & 0x2000)
+                    item["breakaway_ok"] = bool(flags & 0x800)
+                    item["silent_breakaway_ok"] = bool(flags & 0x1000)
+                else:
+                    item["query_error"] = ctypes.get_last_error()
+            result["owned_jobs"].append(item)
+        current = {"pid": os.getpid()}
+        in_job = wintypes.BOOL()
+        if is_process_in_job(get_current_process(), None, ctypes.byref(in_job)):
+            current["in_job"] = bool(in_job.value)
+            current["job_limit_flags"] = None
+            current["job_limit_flags_note"] = "current job handle is not exposed by Win32 API"
+        else:
+            current["in_job_error"] = ctypes.get_last_error()
+        result["current_process"] = current
+    except BaseException as exc:
+        result["api_error"] = repr(exc)
+
+    for name, pid in pids.items():
+        item = {"pid": pid, "alive": tempdirs.pid_alive(pid)}
+        handle = open_process(0x1000, False, int(pid))
+        if handle:
+            try:
+                memberships = []
+                for job in result["owned_jobs"]:
+                    child = created[job["index"]]
+                    owner = getattr(getattr(child, "_openmd_owner", None), "handle", None)
+                    if not owner:
+                        continue
+                    member = wintypes.BOOL()
+                    if is_process_in_job(handle, owner, ctypes.byref(member)):
+                        memberships.append(bool(member.value))
+                item["in_owned_jobs"] = memberships
+            finally:
+                close_handle(handle)
+        else:
+            item["open_error"] = ctypes.get_last_error()
+        result["processes"][name] = item
+
+    # WMI gives the command line and parent PID without adding a dependency.
+    try:
+        ids = ",".join(str(int(pid)) for pid in pids.values())
+        query = (
+            "$ids=@(" + ids + "); "
+            "Get-CimInstance Win32_Process | Where-Object { $ids -contains $_.ProcessId } | "
+            "Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"
+        )
+        probe = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", query],
+                               capture_output=True, text=True, timeout=5)
+        result["wmi_returncode"] = probe.returncode
+        result["wmi"] = json.loads(probe.stdout) if probe.stdout.strip() else []
+        if probe.stderr.strip():
+            result["wmi_stderr"] = probe.stderr.strip()
+    except BaseException as exc:
+        result["wmi_error"] = repr(exc)
+    result["available"] = True
+    return result
+
+
+def job_limit_flags(handle):
+    if os.name != "nt" or not handle:
+        return None
+    import ctypes
+    from openmd.runtime import _windows_job as win
+    info = win.EXTENDED_LIMITS()
+    if not win.QueryInformationJobObject(handle, 9, ctypes.byref(info), ctypes.sizeof(info), None):
+        return {"query_error": ctypes.get_last_error()}
+    flags = int(info.BasicLimitInformation.LimitFlags)
+    return {
+        "limit_flags": flags,
+        "kill_on_job_close": bool(flags & 0x2000),
+        "breakaway_ok": bool(flags & 0x800),
+        "silent_breakaway_ok": bool(flags & 0x1000),
+    }
 
 
 def tree_command(marker, *, leader_wait=False, inherit_pipes=True):
@@ -55,6 +171,10 @@ def run_case(case, root):
     def record_launch(*args, **kwargs):
         child = launch(*args, **kwargs)
         created.append(child)
+        owner = getattr(child, "_openmd_owner", None)
+        flags = job_limit_flags(getattr(owner, "handle", None))
+        if flags is not None:
+            record.setdefault("owned_jobs_at_launch", []).append({"pid": child.pid, **flags})
         return child
 
     runtime.owned_popen = record_launch
@@ -158,9 +278,15 @@ def run_case(case, root):
         record["elapsed_s"] = time.monotonic() - started
         assert record["elapsed_s"] < 4
         pids = json.loads(marker.read_text())
-        until(lambda: not any(tempdirs.pid_alive(p) for p in pids.values()), budget=2)
+        deadline = time.monotonic() + 2
+        while any(tempdirs.pid_alive(p) for p in pids.values()) and time.monotonic() < deadline:
+            time.sleep(.01)
         record["pids"] = pids
         record["alive_after"] = {k: tempdirs.pid_alive(p) for k, p in pids.items()}
+        if any(record["alive_after"].values()):
+            record["process_diagnostics"] = process_ownership_diagnostics(pids, created)
+            print(json.dumps(record, ensure_ascii=False), flush=True)
+            assert not any(record["alive_after"].values()), record["process_diagnostics"]
         if interrupter:
             interrupter.join(1)
         assert not interrupt_errors, interrupt_errors
@@ -218,6 +344,17 @@ if __name__ == "__main__":
         win.AssignProcessToJobObject = crash
         runtime.owned_popen([sys.executable, "-c", "import time;time.sleep(30)"])
     else:
-        with tempfile.TemporaryDirectory(prefix="openmd-ownership-test-") as box:
-            result = run_case(case, Path(box))
+        box = Path(tempfile.mkdtemp(prefix="openmd-ownership-test-"))
+        try:
+            result = run_case(case, box)
+        except BaseException:
+            shutil.rmtree(box, ignore_errors=True)
+            raise
+        try:
+            shutil.rmtree(box)
+        except BaseException as exc:
+            result["cleanup_error"] = repr(exc)
+            result["cleanup_diagnostics"] = process_ownership_diagnostics(result.get("pids", {}), [])
+            print(json.dumps(result, ensure_ascii=False), flush=True)
+            raise
     print(json.dumps(result, ensure_ascii=False), flush=True)

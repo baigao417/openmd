@@ -13,7 +13,6 @@ import os
 import subprocess
 import sys
 import threading
-import time
 
 
 kernel = C.WinDLL("kernel32", use_last_error=True)
@@ -77,6 +76,7 @@ SetInformationJobObject = _api("SetInformationJobObject", W.BOOL, W.HANDLE, C.c_
 AssignProcessToJobObject = _api("AssignProcessToJobObject", W.BOOL, W.HANDLE, W.HANDLE)
 TerminateJobObject = _api("TerminateJobObject", W.BOOL, W.HANDLE, W.UINT)
 QueryInformationJobObject = _api("QueryInformationJobObject", W.BOOL, W.HANDLE, C.c_int, C.c_void_p, W.DWORD, C.c_void_p)
+WaitForSingleObject = _api("WaitForSingleObject", W.DWORD, W.HANDLE, W.DWORD)
 CloseHandle = _api("CloseHandle", W.BOOL, W.HANDLE)
 ResumeThread = _api("ResumeThread", W.DWORD, W.HANDLE)
 TerminateProcess = _api("TerminateProcess", W.BOOL, W.HANDLE, W.UINT)
@@ -115,15 +115,11 @@ class Job:
                 try:
                     # Terminate explicitly; closing also protects controller crashes.
                     _checked(TerminateJobObject(handle, 1))
-                    # Termination is asynchronous. Give file handles/cwds a
-                    # bounded release window before file-backed workspaces close.
-                    deadline = time.monotonic() + 2
-                    info = BASIC_ACCOUNTING()
-                    while time.monotonic() < deadline:
-                        _checked(QueryInformationJobObject(handle, 1, C.byref(info), C.sizeof(info), None))
-                        if info.ActiveProcesses == 0:
-                            break
-                        time.sleep(.01)
+                    # Termination is asynchronous. Waiting on the Job object
+                    # itself is the kernel synchronization point for the whole
+                    # tree; ActiveProcesses can reach zero before the process
+                    # handles and inherited file handles are fully released.
+                    WaitForSingleObject(handle, 2000)
                 finally:
                     CloseHandle(handle)
 

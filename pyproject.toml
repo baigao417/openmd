@@ -3,12 +3,25 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openmd"
-version = "0.0.1"
+name = "openmd-cli"
+dynamic = ["version"]
 description = "把网页文章、公众号、视频字幕等链接保存成干净的 Markdown 原文 / 逐字稿。"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
+keywords = ["markdown", "transcript", "subtitle", "wechat", "bilibili", "youtube", "obsidian", "clipper"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: Console",
+    "Topic :: Text Processing :: Markup :: Markdown",
+    "Natural Language :: Chinese (Simplified)",
+]
 # Out-of-the-box: web/WeChat articles, YouTube captions; Node for the managed opencli.
 dependencies = ["trafilatura>=2,<3", "youtube-transcript-api>=1.2,<2", "beautifulsoup4>=4.12", "markdownify>=0.13",
     # Bundled Node.js runtime for Openmd-managed opencli (browser-session routes).
@@ -17,6 +30,7 @@ dependencies = ["trafilatura>=2,<3", "youtube-transcript-api>=1.2,<2", "beautifu
 [project.urls]
 Homepage = "https://github.com/baigao417/openmd"
 Issues = "https://github.com/baigao417/openmd/issues"
+Changelog = "https://github.com/baigao417/openmd/commits/main"
 
 [project.optional-dependencies]
 asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7"]
@@ -30,6 +44,9 @@ dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also 
 
 [project.scripts]
 openmd = "openmd.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "openmd.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

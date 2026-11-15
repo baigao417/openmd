@@ -1,6 +1,6 @@
 """One-command contributor setup for Windows, macOS and Linux.
 
-    python scripts/dev_setup.py            # create .venv, install openmd[dev], check tools
+    python scripts/dev_setup.py            # create .venv, install openmd-cli[dev], check tools
     python scripts/dev_setup.py --check    # only report what is missing
     python scripts/dev_setup.py --no-venv  # install into the current interpreter (CI, devcontainer)
     python scripts/dev_setup.py --hooks    # also run full pytest before every git push (opt-in)

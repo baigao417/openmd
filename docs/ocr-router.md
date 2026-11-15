@@ -7,7 +7,7 @@ IDs for diagnosis and benchmarks. No summary, translation or polishing is added.
 
 ## Existing dependencies and configuration
 
-PyMuPDF, Pillow and NumPy are optional: explicitly install `openmd[ocr-router]`
+PyMuPDF, Pillow and NumPy are optional: explicitly install `openmd-cli[ocr-router]`
 in the Openmd interpreter if needed. Openmd never installs them automatically.
 **PyMuPDF is AGPL licensed; evaluate licensing before distributing Openmd with
 this dependency.** MarkItDown remains the default Office parser and uses the

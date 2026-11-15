@@ -17,7 +17,7 @@ platform url / author / playlist / catalog / web page / generic media
 ## 30 秒上手
 
 ```powershell
-pip install openmd            # 或 pipx install openmd；需要 Python 3.10+
+pip install openmd-cli            # 或 pipx install openmd-cli；需要 Python 3.10+
 openmd "https://sspai.com/post/73145"        # 粘贴链接 → 回车选保存位置 → 得到 标题.md
 openmd "https://..." -o D:\notes             # 脚本 / AI Agent：给了目录就直接跑完
 openmd doctor                                # 看看现在能处理哪些内容、缺什么怎么装
@@ -27,13 +27,13 @@ openmd doctor                                # 看看现在能处理哪些内容
 |---|---|---|
 | 网页文章、YouTube 有字幕的视频 | ✓ | — |
 | B 站字幕、公众号、X 等需要浏览器读取的平台 | 首次自动准备浏览器读取组件（约 20MB，一次） | Openmd 浏览器插件（`openmd browser-setup`），借用你已登录的浏览器在后台读取，窗口自动最小化 |
-| 无字幕视频、播客（本机转录） | | `pip install "openmd[asr]"` + 模型，见 [工具接入规范](docs/tool-integration.md) |
-| 图片、PDF、Office | | `pip install "openmd[document]"` |
+| 无字幕视频、播客（本机转录） | | `pip install "openmd-cli[asr]"` + 模型，见 [工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md) |
+| 图片、PDF、Office | | `pip install "openmd-cli[document]"` |
 | 浏览器一键保存 | | `openmd browser-setup`（目前仅 Windows，见下文） |
 
-所需运行环境随 `pip install openmd` 一起装好，不需要另装 Node.js 或其他工具。不想自动下载可设 `OPENMD_AUTO_INSTALL_TOOLS=0`，npm 慢可设 `OPENMD_NPM_REGISTRY` 指向镜像；想看到后台读取窗口（排查问题时）可设 `OPENMD_SHOW_BROWSER=1`。第三方组件与许可证见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
+所需运行环境随 `pip install openmd-cli` 一起装好，不需要另装 Node.js 或其他工具。不想自动下载可设 `OPENMD_AUTO_INSTALL_TOOLS=0`，npm 慢可设 `OPENMD_NPM_REGISTRY` 指向镜像；想看到后台读取窗口（排查问题时）可设 `OPENMD_SHOW_BROWSER=1`。第三方组件与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
 
-取不到时 Openmd 不会存一份垃圾文件：它会说明原因，并打印一行 `提 issue 请附上：…`，复制到 [链接提取失败](.github/ISSUE_TEMPLATE/link-failure.yml) 即可。想参与开发见 [CONTRIBUTING](CONTRIBUTING.md)。
+取不到时 Openmd 不会存一份垃圾文件：它会说明原因，并打印一行 `提 issue 请附上：…`，复制到 [链接提取失败](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml) 即可。想参与开发见 [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md)。
 
 ## 输入链接后保存
 
@@ -72,7 +72,7 @@ openmd routes --format markdown
 
 插件通过 Chrome Native Messaging 调用本机 `openmd`，不开本地端口；只有上面这个插件 ID 能连。所有保存进入后台队列，一次只跑一个（避免本机转录同时占满显卡），后台不弹任何窗口。关机时没跑完的任务，开机后插件一联系本机就自动重新排队（最多重试一次）。重启电脑后无需任何操作。任务记录在 `~/.openmd/browser-jobs/`。
 
-ASR 步骤自动选择已有 CUDA worker；主 CLI 保留自己的环境。本地模型目录或缓存不存在时明确报错，不自动从 HF 下载。工具位置、ASR Python 和模型根目录统一放在本机配置（`OPENMD_CONFIG` 指定 JSON，源码 checkout 默认 `out/local-config.json`，安装版默认 `~/.openmd/local.json`）；只存安装位置，不存凭证。配置示例与安装边界见 [工具接入规范](docs/tool-integration.md)，实际路由由打包 JSON 生成：[当前路由](docs/routes.generated.md)。架构图和各平台工具一览：[Openmd 全景](docs/architecture-map.html)（浏览器打开）。
+ASR 步骤自动选择已有 CUDA worker；主 CLI 保留自己的环境。本地模型目录或缓存不存在时明确报错，不自动从 HF 下载。工具位置、ASR Python 和模型根目录统一放在本机配置（`OPENMD_CONFIG` 指定 JSON，源码 checkout 默认 `out/local-config.json`，安装版默认 `~/.openmd/local.json`）；只存安装位置，不存凭证。配置示例与安装边界见 [工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)，实际路由由打包 JSON 生成：[当前路由](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md)。架构图和各平台工具一览：[Openmd 全景](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html)（浏览器打开）。
 
 ## 输出格式
 
@@ -104,14 +104,14 @@ platform: bilibili
 
 ## 文档
 
-- [子系统地图](docs/subsystems/README.md)：每个模块的职责、入口和验证命令
-- [接入新平台](docs/adding-a-platform.md)：大多数平台只需加一张工具卡
-- [工具接入规范](docs/tool-integration.md)、[当前路由](docs/routes.generated.md)、[全景图](docs/architecture-map.html)
+- [子系统地图](https://github.com/baigao417/openmd/blob/main/docs/subsystems/README.md)：每个模块的职责、入口和验证命令
+- [接入新平台](https://github.com/baigao417/openmd/blob/main/docs/adding-a-platform.md)：大多数平台只需加一张工具卡
+- [工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)、[当前路由](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md)、[全景图](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html)
 
 ## 参与开发
 
-Windows / macOS / Linux 都可以开发：`python scripts/dev_setup.py` 一条命令装好环境。流程、issue 与 PR 要求见 [CONTRIBUTING](CONTRIBUTING.md)，硬规则见 [code-standards](docs/code-standards.md)。
+Windows / macOS / Linux 都可以开发：`python scripts/dev_setup.py` 一条命令装好环境。流程、issue 与 PR 要求见 [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md)，硬规则见 [code-standards](https://github.com/baigao417/openmd/blob/main/docs/code-standards.md)。
 
 ## 许可证
 
-[MIT](LICENSE)。第三方组件见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
+[MIT](https://github.com/baigao417/openmd/blob/main/LICENSE)。第三方组件见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。

@@ -29,7 +29,7 @@ Openmd 只做一件事：**把链接变成干净的 Markdown 原文 / 逐字稿*
 2. 本地开发（Windows / macOS / Linux 同一条命令）：
 
    ```bash
-   python scripts/dev_setup.py      # 建 .venv、装 openmd[dev]，并检查 ffmpeg / Node / opencli，缺什么打印本系统的安装命令
+   python scripts/dev_setup.py      # 建 .venv、装 openmd-cli[dev]，并检查 ffmpeg / Node / opencli，缺什么打印本系统的安装命令
    # 激活：Windows  .venv\Scripts\activate    macOS/Linux  source .venv/bin/activate
    python -m pytest
    ```

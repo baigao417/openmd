@@ -1030,7 +1030,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
     if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
         from openmd.runtime.managed_tools import ensure_opencli
 
-        # One `pip install openmd` is enough: fetch the pinned opencli on first need.
+        # One `pip install openmd-cli` is enough: fetch the pinned opencli on first need.
         ensure_opencli()
     items = [
         apply_platform_extraction_contract(item)

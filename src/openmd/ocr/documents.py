@@ -23,7 +23,7 @@ class PDFDependencyMissing(RuntimeError):
 
 def pymupdf():
     if importlib.util.find_spec("pymupdf") is None:
-        raise PDFDependencyMissing('PyMuPDF missing. Install explicitly: python -m pip install "openmd[ocr-router]" (AGPL; assess licensing before distribution).')
+        raise PDFDependencyMissing('PyMuPDF missing. Install explicitly: python -m pip install "openmd-cli[ocr-router]" (AGPL; assess licensing before distribution).')
     import pymupdf as module
 
     return module

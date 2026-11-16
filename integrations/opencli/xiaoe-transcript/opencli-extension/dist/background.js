@@ -2712,4 +2712,3 @@ async function handleBind(cmd, leaseKey) {
     session: getSessionFromKey(leaseKey)
   });
 }
-

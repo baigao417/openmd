@@ -11,7 +11,8 @@ import unittest
 from unittest import mock
 
 import openmd.cli as cli_module
-from openmd.adapters.registry import DEFAULT_BACKENDS, create_default_registry
+from openmd.adapters.registry import create_default_registry
+from openmd.routing.loader import default_backend_chains
 from openmd.adapters.xiaohongshu import XiaohongshuAdapter
 from openmd.backends.base import BackendExtractRequest
 from openmd.backends.executor import BackendExecutor, BackendProviderRegistry, SkeletonBackendProvider
@@ -173,7 +174,7 @@ class XiaohongshuAdapterTests(unittest.TestCase):
         self.assertEqual(item.raw_meta["extraction_contract_version"], XIAOHONGSHU_EXTRACTION_CONTRACT_VERSION)
         self.assertEqual(item.raw_meta["required_components"], ["native_text", "image_ocr", "video_transcript"])
         self.assertIn("runtime-secret", item.raw_meta["runtime_note_url"])
-        self.assertEqual(DEFAULT_BACKENDS["xiaohongshu"], (XIAOHONGSHU_COMPOSITE_BACKEND,))
+        self.assertEqual(default_backend_chains(effective=False)["xiaohongshu"], (XIAOHONGSHU_COMPOSITE_BACKEND,))
         self.assertEqual(create_default_registry().backend_chain("xiaohongshu")[0], XIAOHONGSHU_COMPOSITE_BACKEND)
 
         mock_result = XiaohongshuAdapter().extract_text(item, backend="mock")

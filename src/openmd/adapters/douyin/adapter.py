@@ -103,14 +103,6 @@ class DouyinAdapter(PlatformAdapter):
         )
 
 
-def _douyin_aweme_id(value: str) -> str | None:
-    parsed = urlparse(value if "://" in value else f"https://{value}")
-    parts = [part for part in parsed.path.split("/") if part]
-    if parts[:1] == ["video"] and len(parts) >= 2 and parts[1].isdigit():
-        return parts[1]
-    query = parse_qs(parsed.query)
-    modal = query.get("modal_id", [""])[0].strip()
-    return modal if modal.isdigit() else None
 
 
 def _stable_id(value: str) -> str:

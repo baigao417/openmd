@@ -188,17 +188,3 @@ class DiscoveryProvider(Protocol):
 
     def discover(self, request: DiscoveryRequest) -> DiscoveryResult:
         ...
-
-
-@dataclass(frozen=True)
-class BackendCommandResult:
-    name: str
-    command: tuple[str, ...]
-    exit_code: int
-    stdout_summary: str = ""
-    stderr_summary: str = ""
-    error_summary: str | None = None
-
-    @property
-    def success(self) -> bool:
-        return self.exit_code == 0

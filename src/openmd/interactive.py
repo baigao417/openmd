@@ -21,7 +21,6 @@ from openmd.runtime.tempdirs import owned_mkdtemp
 
 
 _GATE_OPTIONS = {"network": "enable_network_backends", "browser": "enable_browser_backends", "media_download": "enable_media_download", "asr": "enable_asr"}
-_GATE_LABELS = {"network": "读取公开网络", "browser": "使用浏览器读取", "media_download": "必要时下载媒体", "asr": "在本机转录", "cloud": "已明确允许的云服务"}
 
 
 def is_interactive() -> bool:

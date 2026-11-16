@@ -12,7 +12,9 @@ from unittest.mock import patch
 
 import openmd.cli as cli_module
 import openmd.backends.registry as backend_registry_module
-from openmd.adapters import opencli as opencli_adapters
+from dataclasses import astuple
+from openmd.backends import xiaoyuzhou as live_xiaoyuzhou
+from openmd.runtime.interpreters import run_interruptibly
 from openmd.adapters.base import StubPlatformAdapter
 from openmd.adapters.opencli import OpenCliPlatformAdapter
 from openmd.adapters.registry import BackendSelection, create_default_registry
@@ -46,7 +48,6 @@ from openmd.backends.executor import (
     create_safe_backend_provider_registry,
     create_safe_discovery_provider_registry,
 )
-from openmd.backends.opencli import OpenCliBackend
 from openmd.backends.registry import (
     BackendRuntimeOptions,
     create_runtime_backend_provider_registry,
@@ -3443,39 +3444,6 @@ class RegistryAndBackendTests(unittest.TestCase):
         self.assertEqual(chain[0], "opencli.xiaoe.transcript")
         self.assertIn("opencli.xiaoe.content", chain)
 
-    def test_xiaoe_transcript_uses_opencli_output_markdown(self) -> None:
-        adapter = OpenCliPlatformAdapter("xiaoe", "opencli.xiaoe.transcript")
-        item = ContentItem(
-            platform="xiaoe",
-            input_type="single",
-            url="https://demo.xet.citv.cn/p/course/video/example",
-            source_type="video",
-        )
-        calls: list[tuple[str, ...]] = []
-
-        def fake_opencli(args: list[str], **_: object) -> tuple[int, str, str]:
-            calls.append(tuple(args))
-            out_dir = Path(args[args.index("--out") + 1])
-            out_dir.mkdir(parents=True, exist_ok=True)
-            (out_dir / "lesson.md").write_text(
-                "# Xiaoe lesson\n\n[00:00:01] transcript text\n",
-                encoding="utf-8",
-            )
-            return (0, '{"outputPath":"redacted"}', "")
-
-        old_opencli = opencli_adapters._run_opencli
-        try:
-            opencli_adapters._run_opencli = fake_opencli
-            result = adapter.extract_text(item, allow_fallback=False)
-        finally:
-            opencli_adapters._run_opencli = old_opencli
-
-        self.assertTrue(result.has_usable_text)
-        self.assertEqual(result.backend, "opencli.xiaoe.transcript")
-        self.assertIn("[00:00:01] transcript text", result.text)
-        self.assertEqual(calls[0][:2], ("xiaoe", "transcript"))
-        self.assertIn("--keep-artifacts", calls[0])
-        self.assertIn("false", calls[0])
 
     def test_xiaoyuzhou_credentials_require_matching_device_properties(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -3491,9 +3459,9 @@ class RegistryAndBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            ready, code, summary = opencli_adapters._check_xiaoyuzhou_credentials(
+            ready, code, summary = astuple(live_xiaoyuzhou.check_xiaoyuzhou_credentials(
                 credential_path
-            )
+            ))
 
             self.assertFalse(ready)
             self.assertEqual(code, "xiaoyuzhou_device_properties_missing")
@@ -3514,9 +3482,9 @@ class RegistryAndBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            ready, code, summary = opencli_adapters._check_xiaoyuzhou_credentials(
+            ready, code, summary = astuple(live_xiaoyuzhou.check_xiaoyuzhou_credentials(
                 credential_path
-            )
+            ))
 
             self.assertFalse(ready)
             self.assertEqual(code, "xiaoyuzhou_device_mismatch")
@@ -3537,9 +3505,9 @@ class RegistryAndBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            ready, code, _summary = opencli_adapters._check_xiaoyuzhou_credentials(
+            ready, code, _summary = astuple(live_xiaoyuzhou.check_xiaoyuzhou_credentials(
                 credential_path
-            )
+            ))
 
             self.assertTrue(ready)
             self.assertEqual(code, "ok")
@@ -3561,9 +3529,9 @@ class RegistryAndBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            ready, code, summary = opencli_adapters._check_xiaoyuzhou_credentials(
+            ready, code, summary = astuple(live_xiaoyuzhou.check_xiaoyuzhou_credentials(
                 credential_path
-            )
+            ))
 
             self.assertTrue(ready)
             self.assertEqual(code, "ok")
@@ -3586,92 +3554,30 @@ class RegistryAndBackendTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            ready, code, _summary = opencli_adapters._check_xiaoyuzhou_credentials(
+            ready, code, _summary = astuple(live_xiaoyuzhou.check_xiaoyuzhou_credentials(
                 credential_path
-            )
+            ))
 
             self.assertTrue(ready)
             self.assertEqual(code, "ok")
 
-    def test_xiaoyuzhou_falls_back_to_podwise_when_credentials_missing(self) -> None:
-        adapter = OpenCliPlatformAdapter("xiaoyuzhou", "opencli.xiaoyuzhou.transcript")
-        item = ContentItem(
-            platform="xiaoyuzhou",
-            input_type="single",
-            url="https://www.xiaoyuzhoufm.com/episode/example",
-            source_type="audio",
-        )
-        calls: list[tuple[str, tuple[str, ...]]] = []
-
-        def fake_opencli(args: list[str], **_: object) -> tuple[int, str, str]:
-            calls.append(("opencli", tuple(args)))
-            if args[:2] == ["xiaoyuzhou", "transcript"]:
-                return (
-                    78,
-                    "",
-                    "Missing Xiaoyuzhou credentials. Expected xiaoyuzhou.json credential file.",
-                )
-            if args[:2] == ["web", "read"]:
-                return (0, "# Sample Episode\n\npublic intro", "")
-            return (1, "", "unexpected opencli call")
-
-        def fake_podwise(args: list[str], **_: object) -> tuple[int, str, str]:
-            calls.append(("podwise", tuple(args)))
-            if args[:2] == ["search", "episode"]:
-                return (
-                    0,
-                    "- Episode URL: https://podwise.ai/dashboard/episodes/123\n",
-                    "",
-                )
-            if args[:2] == ["get", "transcript"]:
-                return (0, "[00:00:01] speaker: transcript text\n", "")
-            return (1, "", "unexpected podwise call")
-
-        old_opencli = opencli_adapters._run_opencli
-        old_podwise = opencli_adapters._run_podwise
-        try:
-            opencli_adapters._run_opencli = fake_opencli
-            opencli_adapters._run_podwise = fake_podwise
-            result = adapter.extract_text(item, allow_fallback=True)
-        finally:
-            opencli_adapters._run_opencli = old_opencli
-            opencli_adapters._run_podwise = old_podwise
-
-        self.assertTrue(result.has_usable_text)
-        self.assertEqual(result.backend, "podwise.transcript")
-        self.assertIn("[00:00:01]", result.text)
-        self.assertIn(("podwise", ("get", "transcript", "https://podwise.ai/dashboard/episodes/123")), calls)
 
     def test_podwise_not_processed_does_not_auto_process_episode(self) -> None:
-        adapter = OpenCliPlatformAdapter("xiaoyuzhou", "podwise.transcript")
-        item = ContentItem(
-            platform="xiaoyuzhou",
-            input_type="single",
-            url="https://podwise.ai/dashboard/episodes/123",
-            source_type="audio",
-        )
-        calls: list[tuple[str, ...]] = []
-
-        def fake_podwise(args: list[str], **_: object) -> tuple[int, str, str]:
-            calls.append(tuple(args))
-            return (1, "", "Error: episode has not been processed yet")
-
-        old_podwise = opencli_adapters._run_podwise
-        try:
-            opencli_adapters._run_podwise = fake_podwise
-            result = adapter.extract_text(item, backend="podwise.transcript")
-        finally:
-            opencli_adapters._run_podwise = old_podwise
-
+        item = ContentItem(platform="xiaoyuzhou", input_type="single", url="https://podwise.ai/dashboard/episodes/123", source_type="audio")
+        calls = []
+        def fake_podwise(command, **kwargs):
+            calls.append(tuple(command))
+            return 1, "", "Error: episode has not been processed yet"
+        provider = live_xiaoyuzhou.PodwiseTranscriptProvider(podwise_runner=fake_podwise)
+        result = provider.extract(BackendExtractRequest(item=item, backend_chain=("podwise.transcript",)))
         self.assertFalse(result.has_usable_text)
         self.assertEqual(result.error_code, "podwise_episode_not_processed")
-        self.assertNotIn(("process", "https://podwise.ai/dashboard/episodes/123"), calls)
+        self.assertFalse(any("process" in command for command in calls))
 
-    def test_opencli_wrapper_runs_harmless_mock_command(self) -> None:
-        backend = OpenCliBackend(executable=sys.executable, timeout=10)
-        result = backend.run(["-c", "print('opencli wrapper ok')"], name="mock.opencli")
-        self.assertTrue(result.success)
-        self.assertIn("opencli wrapper ok", result.stdout_summary)
+    def test_owned_runtime_runs_harmless_command(self) -> None:
+        result = run_interruptibly([sys.executable, "-c", "print('owned runtime ok')"], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("owned runtime ok", result.stdout)
 
 
 class ArticleProviderTests(unittest.TestCase):

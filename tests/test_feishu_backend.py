@@ -336,10 +336,10 @@ class FeishuFallbackProviderTests(unittest.TestCase):
 
 class FeishuDefaultBackendChainTests(unittest.TestCase):
     def test_default_feishu_chain_matches_v0_fallback_order(self) -> None:
-        from openmd.adapters.registry import DEFAULT_BACKENDS
+        from openmd.routing.loader import default_backend_chains
 
         self.assertEqual(
-            DEFAULT_BACKENDS["feishu"],
+            default_backend_chains(effective=False)["feishu"],
             (
                 LARK_CLI_DOCS_FETCH_BACKEND,
                 LARK_CLI_DRIVE_EXPORT_MARKDOWN_BACKEND,

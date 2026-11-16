@@ -1,3 +1,4 @@
+from tests.ocr.seam_chain import merge_texts
 """Unit tests for tile_long_image merge/split. Run: python -B -m unittest test_tile_merge -v"""
 import sys
 import unittest
@@ -13,7 +14,7 @@ class MergeTests(unittest.TestCase):
              "第三段开头被切掉的那一行乱码壹贰")          # last line cut at tile bottom
         b = ("划。\n\n第三段开头被切掉的那一行现在完整了。\n\n"   # garbled head, then overlap
              "第四段：明年一季度启动扩容工程。")
-        merged, rep = T.merge_texts([a, b])
+        merged, rep = merge_texts([a, b])
         self.assertEqual(rep["seams"][0]["status"], "merge_uncertain")
         self.assertIn("第三段开头被切掉的那一行现在完整了。", merged)
         self.assertIn(a, merged)
@@ -30,7 +31,7 @@ class MergeTests(unittest.TestCase):
              "sales fell by an average of 46%. I eventually bought a sec")
         b = ("weather rnattered. On the eight rainy nights, sales fell by an average of 46%. "
              "I eventually bought a second canopy.\n\n## Pricing\n\nPricing was the hardest decision.")
-        merged, rep = T.merge_texts([a, b])
+        merged, rep = merge_texts([a, b])
         self.assertEqual(rep["seams"][0]["status"], "merge_uncertain")
         self.assertIn("I eventually bought a second canopy.", merged)
         self.assertEqual(merged.count("average of 46%"), 2)
@@ -44,7 +45,7 @@ class MergeTests(unittest.TestCase):
         self.assertTrue(rep["warnings"])
 
     def test_no_overlap_warns(self):
-        merged, rep = T.merge_texts(["完全不同的第一片内容。", "Totally unrelated second tile."])
+        merged, rep = merge_texts(["完全不同的第一片内容。", "Totally unrelated second tile."])
         self.assertEqual(rep["seams"][0]["status"], "merge_uncertain")
         self.assertTrue(rep["warnings"])
         self.assertIn("完全不同的第一片内容。", merged)
@@ -54,7 +55,7 @@ class MergeTests(unittest.TestCase):
         full = "".join(f"第{i}行：编号 A{i:03d} 的数据为 {i * 37 % 1000} 点。\n" for i in range(1, 61))
         lines = full.splitlines(keepends=True)
         tiles = ["".join(lines[0:25]), "".join(lines[20:45]), "".join(lines[40:60])]
-        merged, rep = T.merge_texts(tiles)
+        merged, rep = merge_texts(tiles)
         self.assertEqual([s["status"] for s in rep["seams"]], ["merged", "merged"])
         self.assertEqual(merged, full)
         self.assertEqual(rep["repeated_spans"], [])

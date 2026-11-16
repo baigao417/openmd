@@ -261,52 +261,6 @@ def create_safe_discovery_provider_registry() -> DiscoveryProviderRegistry:
     return DiscoveryProviderRegistry(allow_skeleton_fallback=True)
 
 
-class AdapterBackendProvider:
-    """Opt-in bridge from platform adapter to backend provider contract.
-
-    This is intentionally not used by the default CLI path because some adapters
-    can call real local tools. Register it only when a real provider is being
-    explicitly tested or enabled.
-    """
-
-    def __init__(self, adapter: PlatformAdapter, *, name: str = "adapter") -> None:
-        self.adapter = adapter
-        self.name = name
-
-    def descriptor(self) -> BackendDescriptor:
-        capability = BackendCapability(
-            platforms=(self.adapter.id,),
-            source_types=("article", "video", "audio", "image_text", "mixed", "document"),
-            input_types=("single", "batch", "collection", "generic"),
-            source_levels=(
-                "native_text",
-                "native_caption",
-                "auto_caption",
-                "third_party_extractor",
-                "media_asr",
-                "live_capture_asr",
-                "partial_extraction",
-            ),
-        )
-        return BackendDescriptor(
-            name=self.name,
-            layer="adapter",
-            capabilities=(capability,),
-            description="Adapter-backed skeleton provider.",
-            provider=self.adapter.id,
-        )
-
-    def health(self) -> BackendHealth:
-        return BackendHealth(ok=True, dependencies={"adapter": self.adapter.id})
-
-    def extract(self, request: BackendExtractRequest) -> TranscriptResult:
-        backend = request.primary_backend
-        return self.adapter.extract_text(
-            request.item,
-            backend=backend,
-            backend_chain=(backend,),
-            allow_fallback=False,
-        )
 
 
 class BackendExecutor:

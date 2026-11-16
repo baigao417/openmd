@@ -34,7 +34,6 @@ OPENCLI_ADAPTER_PLATFORMS: frozenset[str] = frozenset(
 from openmd.routing.loader import default_backend_chains
 
 
-DEFAULT_BACKENDS: dict[str, tuple[str, ...]] = default_backend_chains(effective=False)
 
 @dataclass(frozen=True)
 class BackendSelection:

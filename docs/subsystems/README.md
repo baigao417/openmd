@@ -2,15 +2,11 @@
 
 每个子系统写清：职责、入口文件、失败时的行为、改它之后跑什么验证。改哪个子系统，先读这一节。
 
-```
-链接 → detector（识别平台） → routes.json（选路线链） → executor（按序尝试 provider / 工具卡）
-     → content_validation（拒收错误页 / 空壳 / 元数据冒充正文） → renderer（统一 Markdown）
-     → interactive（保存到用户目录） / browser_host（插件后台队列）
-```
+主链路与模块所有权见[架构与接手入口](../architecture.md)。此处只维护各子系统的故障与验证入口。
 
 ## 1. 日常入口 `openmd <链接>`
 - 职责：一个链接 → 一份 Markdown，落到用户选的目录；失败时给人话原因和可提 issue 的一行。
-- 入口：`src/openmd/interactive.py`（`cmd_go`、`_authorize`、`_failure_hint`、`issue_context`），参数在 `src/openmd/cli.py`。
+- 入口：`src/openmd/interactive.py`（`cmd_go`、`_authorize`、`_failure_hint`、`issue_context`），参数在 `src/openmd/cli_parser.py`，单项流水线在 `cli_items.py`。
 - 合同：给了目录 / 在终端交互 → 自动开日常权限（CS-3）；云服务永不默认开启。
 - 验证：`python -m pytest tests/test_interactive_save.py tests/test_walkthrough_fixes.py tests/test_open_source_ux.py`
 
@@ -20,7 +16,7 @@
 
 ## 3. 路由与工具卡（扩展面）
 - 职责：声明每个平台按什么顺序试哪些读取路线；外部工具通过工具卡接入。
-- 入口：`src/openmd/routing/routes.json`、`src/openmd/routing/cards/*.json`、`src/openmd/routing/loader.py`（`validate_catalog` 硬校验）、`runner.py`、`readers.py`。
+- 声明源：`src/openmd/routing/declarations.json`；`python -m openmd.routing.generate` 生成 routes/cards/docs。加载与执行：`loader.py`（`validate_catalog` 硬校验）、`runner.py`、`readers.py`。
 - 指南：[adding-a-platform.md](../adding-a-platform.md)。查看当前路由：`openmd routes --format markdown`。
 - 验证：`python -m pytest tests/test_tool_registry.py tests/test_route_lifecycle.py`
 

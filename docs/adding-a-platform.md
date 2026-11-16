@@ -1,13 +1,15 @@
 # 接入新平台 / 新工具
 
-Openmd 的策略是**接入已知工具**，不重写抓取器：每个平台可以有多条读取路线，按顺序尝试，前一条失败才换下一条。接一个新工具，多数情况只需要加一张**工具卡**（一个 JSON 文件）再加一行路由，不用改 Python 代码。
+主链路与模块所有权见[架构入口](architecture.md)。接入已有工具通常只需在
+`src/openmd/routing/declarations.json` 中增加工具卡和路由，再运行
+`python -m openmd.routing.generate`，不必改 Python 提取逻辑。
 
 ## 1. 三种接入方式，从轻到重
 
 | 方式 | 适合 | 改动 |
 |---|---|---|
-| **工具卡**（首选） | 已有命令行工具能把链接输出成 Markdown / JSON / 字幕 | `src/openmd/routing/cards/<tool>.json` + `routes.json` 一行 |
-| 内置 provider | 需要解析 HTML、调平台公开 API、处理分页 | `src/openmd/backends/<platform>.py` + `builtin.json` 声明 |
+| **工具卡**（首选） | 已有命令行工具能把链接输出成 Markdown / JSON / 字幕 | declarations 的 `cards` / `routes`，再生成投影 |
+| 内置 provider | 需要解析 HTML、调平台公开 API、处理分页 | `src/openmd/backends/<platform>.py` + declarations 的 builtin 能力 |
 | 新平台识别 | Openmd 还不认识这个域名 | `src/openmd/core/detector.py` |
 
 ## 2. 工具卡长什么样
@@ -44,7 +46,9 @@ Openmd 的策略是**接入已知工具**，不重写抓取器：每个平台可
 
 可用的 `reader.type`：`markdown_file`、`json_file`（用 `fields` 指定 text / title / author 字段）、`json_stdout`、`subtitle_dir`、`media_dir`（必须接 `"then": "asr.auto"`，并声明 `media_download` 和 `asr` 两个 gate）。
 
-然后在 [routes.json](../src/openmd/routing/routes.json) 对应平台的 `chain` 里加上你的 capability id。**位置就是优先级**：放在前面表示优先尝试，放在后面表示作为兜底。
+然后在 declarations 的 `routes.routes` 对应平台 `chain` 中添加 capability id，
+生成 [routes.json](../src/openmd/routing/routes.json)。**位置就是优先级**。
+提交前运行 `python -m openmd.routing.generate --check` 拒绝声明与投影漂移。
 
 加载时会做硬校验（[loader.py](../src/openmd/routing/loader.py) 的 `validate_catalog`）：缺 version、license、evidence，或用了未知 gate、未知 reader，都会直接报错。
 

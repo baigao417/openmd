@@ -68,7 +68,18 @@ def pid_alive(pid: int, *, start_time: int | None = None) -> bool:
         with open(f"/proc/{pid}/stat", encoding="ascii", errors="replace") as stat:
             fields = stat.read().rsplit(")", 1)[1].split()
     except (OSError, IndexError):
-        return True  # no /proc (macOS) or vanished mid-read: keep the safe answer
+        # Signal 0 may succeed just before the process exits and /proc disappears.
+        # Recheck liveness by PID: ESRCH proves it is gone; inaccessible or
+        # unsupported process state remains conservatively live.
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        except OSError:
+            return True
+        return True  # no /proc (macOS) or process state is otherwise unavailable
     if start_time is not None:
         try:
             if int(fields[19]) != start_time:

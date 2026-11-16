@@ -14,7 +14,11 @@ from unittest.mock import Mock
 import pytest
 
 from openmd.runtime import interpreters as runtime
-from openmd.runtime.tempdirs import pid_alive
+from openmd.runtime.tempdirs import pid_alive, pid_start_time
+
+
+def pid_alive_with_identity(pid, start_time):
+    return pid_alive(pid, start_time=start_time) if start_time is not None else pid_alive(pid)
 
 
 def direct_waits(source):
@@ -105,20 +109,35 @@ def test_communicate_interrupt_kills_tree_before_reraising(monkeypatch):
 
 def test_kill_process_tree_terminates_real_descendants(tmp_path):
     marker = tmp_path / "pids.txt"
-    code = "import subprocess,sys,time;from pathlib import Path;p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)']);Path(sys.argv[1]).write_text(str(p.pid));time.sleep(60)"
+    code = '''import json,subprocess,sys,time
+from pathlib import Path
+p=subprocess.Popen([sys.executable,"-c","import time;time.sleep(60)"])
+start_time=None
+try:
+ with open(f"/proc/{p.pid}/stat",encoding="ascii",errors="replace") as stat:
+  start_time=int(stat.read().rsplit(")",1)[1].split()[19])
+except (OSError,IndexError,ValueError):
+ pass
+Path(sys.argv[1]).write_text(json.dumps({"pid":p.pid,"start_time":start_time}))
+time.sleep(60)'''
     child = runtime.owned_popen([sys.executable, "-c", code, str(marker)], **runtime.process_options())
+    child_start_time = pid_start_time(child.pid)
     try:
         deadline = time.monotonic() + 10
         while not marker.exists() and time.monotonic() < deadline:
             time.sleep(.02)
         assert marker.exists()
-        grandchild = int(marker.read_text())
-        assert pid_alive(child.pid) and pid_alive(grandchild)
+        grandchild_record = json.loads(marker.read_text())
+        grandchild = grandchild_record["pid"]
+        grandchild_start_time = grandchild_record["start_time"]
+        assert pid_alive_with_identity(child.pid, child_start_time)
+        assert pid_alive_with_identity(grandchild, grandchild_start_time)
         runtime.terminate_quietly(child)
         deadline = time.monotonic() + 5
-        while pid_alive(grandchild) and time.monotonic() < deadline:
+        while pid_alive_with_identity(grandchild, grandchild_start_time) and time.monotonic() < deadline:
             time.sleep(.02)
-        assert child.poll() is not None and not pid_alive(grandchild)
+        assert child.poll() is not None
+        assert not pid_alive_with_identity(grandchild, grandchild_start_time)
     finally:
         runtime.terminate_quietly(child)
 

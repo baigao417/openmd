@@ -66,6 +66,44 @@ def test_sweep_rejects_reused_pid_from_owner_start_time(monkeypatch, tmp_path):
     assert report["deleted"] == 1 and not recycled.exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal-zero liveness")
+def test_pid_alive_rechecks_when_proc_disappears_after_signal_probe(monkeypatch):
+    calls = []
+
+    def kill(pid, sig):
+        calls.append((pid, sig))
+        if len(calls) == 2:
+            raise ProcessLookupError
+
+    def missing_stat(path, **kwargs):
+        assert path == "/proc/12345/stat"
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(tempdirs.os, "kill", kill)
+    monkeypatch.setattr("builtins.open", missing_stat)
+
+    assert not tempdirs.pid_alive(12345)
+    assert calls == [(12345, 0), (12345, 0)]
+
+
+@pytest.mark.parametrize("stat_error", [FileNotFoundError, PermissionError])
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal-zero liveness")
+def test_pid_alive_keeps_unknown_proc_state_conservative(monkeypatch, stat_error):
+    calls = []
+
+    def kill(pid, sig):
+        calls.append((pid, sig))
+
+    def unavailable_stat(path, **kwargs):
+        raise stat_error(path)
+
+    monkeypatch.setattr(tempdirs.os, "kill", kill)
+    monkeypatch.setattr("builtins.open", unavailable_stat)
+
+    assert tempdirs.pid_alive(12345)
+    assert calls == [(12345, 0), (12345, 0)]
+
+
 def test_live_worker_keeps_directory_after_controller_dies(monkeypatch, tmp_path):
     from types import SimpleNamespace
     from pathlib import Path

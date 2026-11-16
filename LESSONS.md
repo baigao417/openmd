@@ -17,6 +17,13 @@
 
 ---
 
+## 2026-11-17 媒体传输：协议白名单须覆盖现有代理传输
+- 现象：最终真实短样本发现媒体成功，FFmpeg 下载因 httpproxy 不在白名单而失败。
+- 原因：HTTP/HTTPS 资源可能经调用者已有的 HTTP 代理连接，底层额外需要 httpproxy 协议。
+- 规则：允许已有网络传输所需的明确协议，同时保持远端播放列表不能启用 file/concat/data；不输出可能含签名地址的 FFmpeg 原始错误流。
+- 证据：tests/test_runtime_media.py::test_media_download_supports_proxy_transport_without_local_protocols；真实样本诊断只保存错误类别与被拒协议。
+- 同类出现：2026-11-17
+
 ## 2026-11-17 声明生成：生成器与运行视图必须共用渲染边界
 - 现象：路由声明生成检查通过，但全量测试发现生成文档与运行时路由视图不同。
 - 原因：声明源虽已统一，生成器和运行视图仍分别维护 Markdown 渲染逻辑。

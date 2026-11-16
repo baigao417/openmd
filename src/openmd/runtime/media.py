@@ -17,7 +17,7 @@ def download_audio(url: str, target: Path, *, referer: str, timeout: int = 600) 
     # The URL is transient argv only; ffmpeg's diagnostic stream may echo signed
     # locators, so never propagate it to a result, exception, log or artifact.
     command = [executable, "-nostdin", "-y", "-hide_banner", "-loglevel", "error",
-               "-protocol_whitelist", "http,https,tcp,tls,crypto", "-rw_timeout", "30000000", "-headers", f"User-Agent: Mozilla/5.0\r\nReferer: {referer}\r\n",
+               "-protocol_whitelist", "http,https,tcp,tls,crypto,httpproxy", "-rw_timeout", "30000000", "-headers", f"User-Agent: Mozilla/5.0\r\nReferer: {referer}\r\n",
                "-i", url, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", str(target)]
     try:
         result = run_interruptibly(command, capture_output=True, timeout=timeout, check=False)

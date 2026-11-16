@@ -22,7 +22,9 @@
     "node_api": {
       "module": "defuddle/dist/node.js",
       "export": "Defuddle",
-      "options": {"removeExactSelectors": false}
+      "options": {
+        "removeExactSelectors": false
+      }
     },
     "which": [
       "defuddle"
@@ -51,7 +53,10 @@
         "type": "json_file",
         "path": "content.json",
         "fields": {
-          "text": ["contentMarkdown", "content"],
+          "text": [
+            "contentMarkdown",
+            "content"
+          ],
           "title": "title",
           "author": "author",
           "published_at": "published"

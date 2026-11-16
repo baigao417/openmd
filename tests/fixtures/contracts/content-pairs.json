@@ -1,0 +1,4 @@
+[
+  {"name":"platform-state","platform":"weixin","negative":"Parameter error\n参数错误","positive":"这篇文章分析接口参数错误。作者引用了 Parameter error，并逐步说明如何核对参数和请求。\n\n正常文章应保留全部原文。"},
+  {"name":"browser-error","platform":"web_article","negative":"This site can’t provide a secure connection\nexample.invalid sent an invalid response.\nERR_SSL_PROTOCOL_ERROR\nReload","positive":"这是一篇浏览器排障记录。页面中的 ERR_SSL_PROTOCOL_ERROR 只是被引用的错误代码。\n\n作者随后说明证书检查和正确的访问方式，并提供完整正文。"}
+]

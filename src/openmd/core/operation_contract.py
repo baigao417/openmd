@@ -46,13 +46,10 @@ def collect_all_allowed(
 
 
 # These are discovery IDs, deliberately separate from extraction bindings.
+from openmd.routing.generate import declarations
+
 COLLECTION_BINDINGS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "bilibili": (BILIBILI_NATIVE_DISCOVERY_BACKEND, ("network",)),
-    "youtube": (YOUTUBE_DATA_API_DISCOVERY_BACKEND, ("network", "account")),
-    "weixin": (WECHAT_ARTICLE_EXPORTER_HTTP_DISCOVERY_BACKEND, ("browser",)),
-    "xiaoyuzhou": (OPENCLI_XIAOYUZHOU_EPISODES_DISCOVERY_BACKEND, ("browser",)),
-    "douyin": (DOUYIN_OPENCLI_USER_VIDEOS_BACKEND, ("browser",)),
-    "xiaoe": (OPENCLI_XIAOE_CATALOG_DISCOVERY_BACKEND, ("browser",)),
-    "xiaohongshu_creator": (OPENCLI_XIAOHONGSHU_USER_DISCOVERY_BACKEND, ("browser",)),
-    **plugins.collection_bindings(),
+    source: (binding[0], tuple(binding[1]))
+    for source, binding in declarations()["collection_bindings"].items()
 }
+COLLECTION_BINDINGS.update(plugins.collection_bindings())

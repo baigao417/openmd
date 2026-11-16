@@ -2,7 +2,7 @@
 
 # Openmd
 
-**把任何链接存成干净的 Markdown：原文和完整逐字稿，不是摘要。**
+**把任何链接存成干净的 Markdown：原文和完整逐字稿。**
 
 [![PyPI](https://img.shields.io/pypi/v/openmd-cli?color=3b5bdb)](https://pypi.org/project/openmd-cli/)
 [![Python](https://img.shields.io/pypi/pyversions/openmd-cli)](https://pypi.org/project/openmd-cli/)
@@ -13,7 +13,7 @@
 
 </div>
 
-网页文章、公众号、B 站和 YouTube 视频、播客……Openmd 把它们统一存成一种人和 AI agent 都好读的 Markdown。它只保留原作者的原话：不总结、不改写、不补标点。拿不全的时候，它会说清缺了什么，而不是存下一页错误内容。
+网页文章、公众号、B 站和 YouTube 视频、播客等一切形式……Openmd 把它们统一存成一种人和 AI agent 都好读的 Markdown。它只保留原作者的原话：不总结、不改写。拿不全的时候，它会说清缺了什么，而不是存下一页错误内容。
 
 ```bash
 pip install openmd-cli
@@ -22,7 +22,7 @@ openmd "https://www.bilibili.com/video/BV1GJ411x7h7"
 
 ## 亮点
 
-- **一条命令，多种来源**：网页文章、公众号文章、X 帖子、B 站和 YouTube 字幕、小宇宙播客逐字稿、PDF 和 Office 文件。
+- **一条命令，多种来源**：网页文章、公众号文章、X 帖子、B 站和 YouTube 视频、小宇宙播客、PDF 和 Office 文件。
 - **原文优先**：字幕和逐字稿按时间整理成带时间戳的段落，方便阅读，但一个字都不改。
 - **结果诚实**：错误页、登录墙、"请验证你是真人"之类的页面直接拒收，不会存成正文；只拿到一部分时会明确标注。
 - **装完就能用**：不用手动装 Node.js 或其他工具，需要借用浏览器读取时，Openmd 第一次用到会自动准备好。
@@ -60,10 +60,10 @@ openmd batch links.txt --out ~/notes     # 一行一个链接，批量处理
 | 网页文章 | ✓ | — |
 | YouTube 有字幕的视频 | ✓ | — |
 | 小宇宙播客逐字稿 | ✓ | —（第一次使用时自动准备约 20MB 的读取组件） |
-| 公众号文章、X 帖子、B 站字幕 | ✓ | Openmd 浏览器插件；B 站 AI 字幕还需要你已登录 |
+| 公众号文章、X 帖子、B 站字幕 | ✓ | Openmd 浏览器插件；B 站 AI 字幕还需要你已登录账号 |
 | 没有字幕的视频和播客 | | `pip install "openmd-cli[asr]"` 加本机语音模型（[说明](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)） |
 | PDF、Word、PPT、Excel、图片 | | `pip install "openmd-cli[document]"` |
-| 抖音、小红书 | 实验性 | 浏览器插件并登录；这两个站点经常拦截自动读取 |
+| 抖音、小红书 | 实验性 | 浏览器插件并已登录你自己账号 |
 
 运行 `openmd doctor` 可以看到你这台机器上哪些已经就绪。链接处理失败时，Openmd 会说明原因，并打印一行信息，直接贴进[问题反馈](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)就行。
 
@@ -124,9 +124,6 @@ platform: "bilibili"
 **我的数据会去哪里？**
 哪里都不去。Openmd 在本机运行，用你自己的网络和浏览器读取页面，文件写进你选的文件夹，不保存任何 cookie 或密码。
 
-**为什么安装包叫 `openmd-cli`？**
-PyPI 上的 `openmd` 这个名字属于一个无关的项目。装好之后，命令依然是 `openmd`。
-
 **有个链接处理不了怎么办？**
 加上 `--verbose` 再跑一次，看看尝试了哪些读取方式，然后带着 Openmd 打印的那行信息提一个[链接提取失败](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)的反馈。失败的链接是最有价值的贡献。
 
@@ -144,7 +141,7 @@ python -m pytest
 
 ## 致谢
 
-Openmd 建立在这些项目之上：[opencli](https://github.com/jackwener/opencli)（浏览器读取，已内置）、[trafilatura](https://github.com/adbar/trafilatura)、[youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)、Bilibili-Harvest（Lanbin07）、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[MarkItDown](https://github.com/microsoft/markitdown)。详情与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
+Openmd 建立在这些项目之上：[opencli](https://github.com/jackwener/opencli)（浏览器读取）、[trafilatura](https://github.com/adbar/trafilatura)、[youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)、Bilibili-Harvest（Lanbin07）、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[MarkItDown](https://github.com/microsoft/markitdown)。详情与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
 
 ## 许可证
 

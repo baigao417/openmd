@@ -1,22 +1,53 @@
 {
   "schema": "openmd.probe-config/v1",
   "samples": {
-    "bilibili": {"url": ""},
-    "youtube": {"url": ""},
-    "weixin": {"url": ""},
-    "wechat_group": {"url": ""},
-    "wechat_moments": {"url": ""},
-    "qq_group": {"url": ""},
-    "xiaoyuzhou": {"url": ""},
-    "douyin": {"url": "", "mode": "manifest"},
-    "tiktok": {"url": "", "mode": "manifest"},
-    "xiaohongshu": {"url": ""},
-    "xiaoe": {"url": "", "mode": "manifest"},
-    "x": {"url": ""},
-    "feishu": {"url": ""},
-    "web_article": {"url": ""},
-    "generic_media": {"url": ""},
-    "pdf": {"url": ""},
-    "screenshot": {"url": ""}
+    "bilibili": {
+      "url": ""
+    },
+    "youtube": {
+      "url": ""
+    },
+    "weixin": {
+      "url": ""
+    },
+    "qq_group": {
+      "url": ""
+    },
+    "xiaoyuzhou": {
+      "url": ""
+    },
+    "douyin": {
+      "url": "",
+      "mode": "manifest"
+    },
+    "tiktok": {
+      "url": "",
+      "mode": "manifest"
+    },
+    "xiaohongshu": {
+      "url": ""
+    },
+    "xiaoe": {
+      "url": "",
+      "mode": "manifest"
+    },
+    "x": {
+      "url": ""
+    },
+    "feishu": {
+      "url": ""
+    },
+    "web_article": {
+      "url": ""
+    },
+    "generic_media": {
+      "url": ""
+    },
+    "pdf": {
+      "url": ""
+    },
+    "screenshot": {
+      "url": ""
+    }
   }
 }

@@ -6,26 +6,10 @@ import re
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from openmd.core import plugins
 
-PLATFORM_IDS: tuple[str, ...] = (
-    "bilibili",
-    "youtube",
-    "weixin",
-    "wechat_group",
-    "wechat_moments",
-    "qq_group",
-    "xiaoyuzhou",
-    "douyin",
-    "tiktok",
-    "xiaohongshu",
-    "xiaoe",
-    "x",
-    "feishu",
-    "web_article",
-    "generic_media",
-    "pdf",
-    "screenshot",
-)
+
+PLATFORM_IDS: tuple[str, ...] = plugins.BUILTIN_PLATFORM_IDS + plugins.platform_ids()
 
 MEDIA_EXTENSIONS: tuple[str, ...] = (
     ".mp4",
@@ -100,10 +84,9 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
         return directory_platform
     if _is_weixin_official_account_selector(value):
         return "weixin"
-    if _is_wechat_moments_selector(value):
-        return "wechat_moments"
-    if _is_wechat_group_selector(value):
-        return "wechat_group"
+    plugin_platform = plugins.detect_platform(value)
+    if plugin_platform is not None:
+        return plugin_platform
     if _is_qq_group_selector(value) or _looks_like_qq_export_path(value):
         return "qq_group"
     if _BV_RE.match(value):
@@ -195,13 +178,6 @@ def _local_path_for_detection(value: str) -> Path | None:
     return Path(value)
 
 
-def _is_wechat_group_selector(value: str) -> bool:
-    parsed = urlparse(value.strip())
-    if parsed.scheme in {"wx", "wechat"} and parsed.netloc.lower() == "group":
-        return bool(parsed.path.strip("/"))
-    if parsed.scheme in {"wx-group", "wechat-group"}:
-        return bool(parsed.netloc or parsed.path.strip("/"))
-    return False
 
 
 def _is_weixin_official_account_selector(value: str) -> bool:
@@ -221,13 +197,6 @@ def _is_weixin_official_account_selector(value: str) -> bool:
     return False
 
 
-def _is_wechat_moments_selector(value: str) -> bool:
-    parsed = urlparse(value.strip())
-    if parsed.scheme in {"wx", "wechat"} and parsed.netloc.lower() in {"moments", "sns"}:
-        return bool(parsed.path.strip("/"))
-    if parsed.scheme in {"wx-moments", "wechat-moments"}:
-        return bool(parsed.netloc or parsed.path.strip("/"))
-    return False
 
 
 def _is_qq_group_selector(value: str) -> bool:

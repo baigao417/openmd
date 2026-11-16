@@ -1291,6 +1291,8 @@ def _read_package_metadata(package_path: Path) -> dict:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    from openmd.runtime.managed_tools import status as managed_tools_status
+
     if getattr(args, "clear_gpu_quarantine", False):
         from openmd.runtime.gpu_quarantine import clear_quarantine_manually
 
@@ -1342,6 +1344,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         ),
         "profile": profile,
         "profile_diagnostics": diagnostics,
+        "managed_tools": managed_tools_status(),
     }
     if not getattr(args, "json", False) and sys.stdout.isatty():
         from openmd.doctor_view import render

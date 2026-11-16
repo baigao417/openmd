@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from openmd.core import plugins
 from openmd.core.detector import DOCUMENT_EXTENSIONS, IMAGE_TEXT_EXTENSIONS, detect_platform
 from openmd.backends.bilibili import (
     BILIBILI_OPENCLI_DISCOVERY_BACKEND,
@@ -146,6 +147,9 @@ def _inspect_input(value: str) -> tuple[str, str, Path | None, str | None]:
                 return source, "file", path, "input_not_regular_file"
             return source, "file", path, None
         parsed = urlparse(value)
+        plugin_source = plugins.detect_platform(value)
+        if plugin_source is not None:
+            return plugin_source, _infer_remote_kind(value, plugin_source), None, None
         if parsed.scheme in {"http", "https"}:
             if not parsed.hostname or any(c.isspace() for c in value):
                 return "unknown", "single", None, "source_unsupported"
@@ -157,7 +161,7 @@ def _inspect_input(value: str) -> tuple[str, str, Path | None, str | None]:
             if source == "xiaohongshu" and "/user/profile/" in parsed.path:
                 source = "xiaohongshu_creator"
             return source, _infer_remote_kind(value, source), None, None
-        if parsed.scheme in {"weixin", "wx-official", "wechat-official", "wechat", "wx", "wx-group", "wechat-group", "wx-moments", "wechat-moments", "qq", "qq-group", "qq_export", "qq-export"}:
+        if parsed.scheme in {"weixin", "wx-official", "wechat-official", "wechat", "wx", "qq", "qq-group", "qq_export", "qq-export"}:
             source = detect_platform(value)
             if source != "web_article":
                 return source, "collection", None, None
@@ -179,7 +183,7 @@ def _infer_remote_kind(value: str, source: str) -> str:
         return "collection"
     if source in {"weixin", "xiaoe"} and any(marker in path for marker in ("/author", "/collection", "/course", "/catalog", "/column")):
         return "collection"
-    if source in {"xiaohongshu_creator", "wechat_group", "wechat_moments", "qq_group"}:
+    if source in {"xiaohongshu_creator", "qq_group"} or source in plugins.collection_sources():
         return "collection"
     return "single"
 

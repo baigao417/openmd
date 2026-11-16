@@ -15,7 +15,7 @@ def doctor_tools(*, probe_commands: bool = False):
 
 
 def render_routes_markdown(*, source: str | None = None, effective: bool = False) -> str:
-    view = route_view(source, effective=effective)
+    view = route_view(source, effective=effective, include_plugins=effective)
     lines = ["# Openmd routes", "", f"Generated from bundled cards and routes, version `{view['version']}`.", "", "| Source | Capability | Ordered backends |", "|---|---|---|"]
     for route in view["routes"]:
         lines.append(f"| {route['source']} | {route['capability']} | {' → '.join(route['chain'])} |")
@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bundled", action="store_true", help="Use bundled routes only when generating repository documentation.")
     args = parser.parse_args(argv)
     if args.format == "json":
-        print(json.dumps(route_view(args.source, effective=not args.bundled), ensure_ascii=False, indent=2))
+        print(json.dumps(route_view(args.source, effective=not args.bundled, include_plugins=not args.bundled), ensure_ascii=False, indent=2))
     else:
         print(render_routes_markdown(source=args.source, effective=not args.bundled), end="")
     return 0

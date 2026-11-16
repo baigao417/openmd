@@ -1,0 +1,25 @@
+{
+  "name": "opencli-xiaoe-to-md",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "xiaoe-to-md": "./dist/src/cli/xiaoe-to-md.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "xiaoe-to-md": "tsx src/cli/xiaoe-to-md.ts",
+    "douyin-batch-export": "tsx src/cli/douyin-batch-export.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
+  }
+}

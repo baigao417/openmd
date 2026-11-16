@@ -76,6 +76,19 @@ def test_doctor_stays_json_when_not_a_terminal(capsys) -> None:
     assert json.loads(capsys.readouterr().out)["command"] == "doctor"
 
 
+def test_doctor_json_reports_managed_tool_origin(capsys, monkeypatch) -> None:
+    import json
+
+    from openmd.cli import main
+    from openmd.runtime import managed_tools
+
+    monkeypatch.setattr(managed_tools, "status", lambda: {"opencli": "managed", "opencli_version_pinned": "2.0.3"})
+    main(["doctor", "--profile", "core", "--json"])
+    assert json.loads(capsys.readouterr().out)["managed_tools"] == {
+        "opencli": "managed", "opencli_version_pinned": "2.0.3",
+    }
+
+
 def test_source_verdict_outranks_later_missing_tool() -> None:
     from dataclasses import replace as _replace
 

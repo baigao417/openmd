@@ -1,0 +1,7 @@
+node_modules/
+.vite/
+.vite-temp/
+.tmp*/
+tmp/
+out/
+outputs/

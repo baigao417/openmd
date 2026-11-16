@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from openmd.adapters.registry import DEFAULT_BACKENDS
 from openmd.core.capabilities import APPROVED_CAPABILITIES, get_capability
+from openmd.core import plugins
 
 
 def test_capability_planned_provider_comes_from_current_registry_or_explicit_local_route() -> None:
@@ -21,9 +22,8 @@ def test_capability_planned_provider_comes_from_current_registry_or_explicit_loc
         "generic_media": "generic_media",
         "pdf_office": "pdf",
         "screenshot": "screenshot",
-        "wechat_moments": "wechat_moments",
-        "wechat_group": "wechat_group",
         "qq_group": "qq_group",
+        **{platform: platform for platform in plugins.platform_ids()},
     }
     for source_id, platform in registry_sources.items():
         record = get_capability(source_id)

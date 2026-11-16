@@ -61,3 +61,74 @@ Openmd 的策略是**接入已知工具**，不重写抓取器：每个平台可
 ## 4. 本地试跑而不改仓库
 
 不想先改仓库里的路由，可以用本机路由覆盖（route overlay）试跑：配置方法见 [tool-integration.md](tool-integration.md)。确认可用后再提 PR。
+
+## 5. Independently installed platform packages (contract v1)
+
+Use a separate Python package when a platform needs its own detector, adapter,
+providers and routing resources. It must use its own namespace; no files are
+copied into `openmd`. Install core and the plugin in the same environment:
+
+```sh
+python -m pip install openmd-cli
+python -m pip install ./my-platform
+openmd routes
+```
+
+Declare one entry point in the plugin's `pyproject.toml`:
+
+```toml
+[project.entry-points."openmd.platforms"]
+sample = "my_platform:plugin"
+```
+
+The entry point value is a `openmd.core.plugins.PlatformPlugin` instance:
+
+```python
+from openmd.core.plugins import PlatformPlugin
+
+plugin = PlatformPlugin(
+    PLATFORM_IDS=("sample_feed",),
+    detect_platform=lambda value: "sample_feed" if value.startswith("sample:") else None,
+    adapter_modules={"sample_feed": "my_platform.adapter"},
+    backend_modules={"sample_feed": ("my_platform.providers",)},
+    collection_sources=frozenset({"sample_feed"}),
+    collection_bindings=lambda: {"sample_feed": ("sample.content", ("browser",))},
+    resource_package="my_platform.resources",
+    routes_resource="routes.json",
+    card_resources=("cards/tool.json",),
+)
+```
+
+- `PLATFORM_IDS` are globally unique, including core IDs. A detector returns
+  `None` or one declared ID. Ambiguous matches fail. Collection selectors also
+  reach planning; no core scheme table change is needed.
+- Each adapter module exposes `create_adapter(platform_id, default_backend)`.
+  Backend modules expose `register_backend_providers(registry, options)` and/or
+  `register_discovery_providers(registry, options)` using existing runtime APIs.
+  These callbacks must respect `BackendRuntimeOptions`, including explicit
+  browser/network/media/ASR/cloud gates. Missing declared modules are errors;
+  discovery never guesses an external module inside the core namespace.
+- Collection bindings map every declared collection source to its discovery
+  provider ID and gates. The provider ID must be in the plugin cards. This
+  describes availability; it neither constructs a provider nor grants permission.
+- Package resources use `openmd.plugin-routes/v1` with `routes` and
+  `capabilities` arrays matching the built-in route and source metadata shapes.
+  Cards use `openmd.tool-card/v1`. Include JSON files as package data.
+- Keep one owner for platform IDs/default provider IDs in your plugin (for
+  example derive the descriptor and bindings from its route resource). The
+  core does not duplicate platform-specific facts.
+- Duplicate platform, entry-point, tool-card, backend-capability, route
+  `(source, capability)` or source metadata IDs raise an error. Installed
+  plugins extend the catalog; they cannot overwrite a bundled ID.
+- Descriptors must be cheap and free of network/session/model side effects.
+  Installed plugins are trusted executable Python, not a sandbox. Discovery
+  is cached per process; restart the CLI after installing/removing a plugin.
+- `openmd routes` shows installed resources plus local priority overrides.
+  `python -m openmd.routing.view --bundled --format markdown` generates only
+  core documentation, regardless of installed plugins. Local route overrides
+  remain separate and do not register platforms.
+
+Test core alone, core with fake entry points, and the installed package's own
+adapter/provider tests. Keep invalid declarations and duplicate-ID negative
+cases. Offline tests do not establish live platform availability; report real
+CLI output and read the final artifact with the same gates and installed code.

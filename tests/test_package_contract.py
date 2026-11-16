@@ -575,9 +575,9 @@ class PackageWriterTests(unittest.TestCase):
             ),
             (
                 ContentItem(
-                    platform="wechat_group",
+                    platform="qq_group",
                     input_type="collection",
-                    url="wechat://group/example",
+                    url="qq://group/example",
                     id="conv1",
                     title="Conversation",
                     source_type="conversation",

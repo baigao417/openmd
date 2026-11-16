@@ -17,6 +17,13 @@
 
 ---
 
+## 2026-11-17 发布：PyPI 成功不代表 GitHub Release 已创建
+- 现象：两个已发布版本有 tag 和 PyPI 文件，但 GitHub Release 页为空。
+- 原因：release.yml 只构建并发布 PyPI，没有创建 GitHub Release 的步骤。
+- 规则：GitHub Release 必须依赖成功的 PyPI 发布，使用同一次构建的 wheel/sdist，并校验已有 tag；补发附件须与 PyPI 的 SHA256 一致。
+- 证据：tests/test_release_workflow.py；.github/workflows/release.yml。
+- 同类出现：2026-11-17
+
 ## 2026-11-17 媒体传输：协议白名单须覆盖现有代理传输
 - 现象：最终真实短样本发现媒体成功，FFmpeg 下载因 httpproxy 不在白名单而失败。
 - 原因：HTTP/HTTPS 资源可能经调用者已有的 HTTP 代理连接，底层额外需要 httpproxy 协议。

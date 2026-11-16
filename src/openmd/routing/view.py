@@ -16,6 +16,11 @@ def doctor_tools(*, probe_commands: bool = False):
 
 def render_routes_markdown(*, source: str | None = None, effective: bool = False) -> str:
     view = route_view(source, effective=effective, include_plugins=effective)
+    return render_route_table(view)
+
+
+def render_route_table(view: dict) -> str:
+    """Render bundled declarations and effective runtime views identically."""
     lines = ["# Openmd routes", "", f"Generated from bundled cards and routes, version `{view['version']}`.", "", "| Source | Capability | Ordered backends |", "|---|---|---|"]
     for route in view["routes"]:
         lines.append(f"| {route['source']} | {route['capability']} | {' → '.join(route['chain'])} |")

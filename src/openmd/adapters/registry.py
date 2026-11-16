@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from collections.abc import Callable, Iterable
 
-from openmd.core.detector import PLATFORM_IDS, detect_platform
+from openmd.core.detector import detect_platform
+from openmd.core import plugins
 
 from .base import PlatformAdapter, StubPlatformAdapter
 from .opencli import OpenCliPlatformAdapter
@@ -33,7 +34,6 @@ OPENCLI_ADAPTER_PLATFORMS: frozenset[str] = frozenset(
 from openmd.routing.loader import default_backend_chains
 
 
-DEFAULT_BACKENDS: dict[str, tuple[str, ...]] = default_backend_chains(effective=False)
 
 @dataclass(frozen=True)
 class BackendSelection:
@@ -103,7 +103,7 @@ def create_default_registry(
 ) -> AdapterRegistry:
     registry = AdapterRegistry()
     load_factory = adapter_factory_loader or load_adapter_factory
-    for platform_id in PLATFORM_IDS:
+    for platform_id in (*plugins.BUILTIN_PLATFORM_IDS, *plugins.platform_ids()):
         backend = registry.backend_chain(platform_id)[0]
         registry.register(_create_platform_adapter(platform_id, backend, load_factory))
     return registry
@@ -134,15 +134,18 @@ def load_adapter_factory(platform_id: str) -> AdapterFactory | None:
     ``create_adapter(platform_id, default_backend)`` function. The core registry
     will pick it up without platform lanes editing this shared file.
     """
-    module_name = f"openmd.adapters.{platform_id}"
+    plugin_module = plugins.adapter_module(platform_id)
+    module_name = plugin_module or f"openmd.adapters.{platform_id}"
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
-        if exc.name == module_name:
+        if exc.name == module_name and plugin_module is None:
             return None
         raise
     factory = getattr(module, "create_adapter", None)
     if factory is None:
+        if plugin_module is not None:
+            raise TypeError(f"{module_name}.create_adapter is required")
         return None
     if not callable(factory):
         raise TypeError(f"{module_name}.create_adapter must be callable")

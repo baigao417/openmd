@@ -1,1 +1,1 @@
-Read AGENTS.md and LESSONS.md before working.
+Read [AGENTS.md](AGENTS.md) for contributor routing and canonical rule owners.

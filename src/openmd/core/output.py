@@ -21,26 +21,6 @@ _MARKDOWN_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^\s)]+)\)")
 _SAFE_EXTENSION_RE = re.compile(r"^[A-Za-z0-9]{2,5}$")
 
 
-def write_markdown_document(
-    document: MarkdownDocument,
-    out_dir: str | Path,
-    *,
-    platform: str,
-    item_id: str | None = None,
-    url: str | None = None,
-    overwrite: bool = False,
-    raw: bool = False,
-) -> Path:
-    platform_dir = Path(out_dir) / safe_filename(platform, fallback="unknown", max_length=80)
-    filename_base = filename_base_for_item(document.title, item_id=item_id, url=url)
-    output_path = unique_markdown_path(
-        platform_dir,
-        filename_base,
-        collision_key=url or item_id or document.title,
-        overwrite=overwrite,
-    )
-    output_path.write_text(render_document(document, raw=raw), encoding="utf-8", newline="\n")
-    return output_path
 
 
 def write_item_result(

@@ -219,6 +219,16 @@ def _load_backend_extension_modules(
     if extension_module_loader is not None:
         return tuple(extension_module_loader(platform))
 
+    from openmd.core.plugins import backend_module_names
+
+    declared = backend_module_names(platform)
+    if declared is not None:
+        modules = tuple(importlib.import_module(name) for name in declared)
+        for module in modules:
+            if not any(callable(getattr(module, callback, None)) for callback in ("register_backend_providers", "register_discovery_providers")):
+                raise TypeError(f"plugin_provider_registrar_missing: {module.__name__}")
+        return modules
+
     modules: list[object] = []
     for module_name in _backend_extension_module_names(platform):
         try:

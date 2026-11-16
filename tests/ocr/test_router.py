@@ -1,6 +1,7 @@
 """Offline regression protection; real CLI evidence is recorded separately."""
 
 from __future__ import annotations
+from tests.ocr.seam_chain import merge_texts
 
 import json
 import os
@@ -24,7 +25,7 @@ from openmd.ocr.layout import LayoutUnavailable
 from openmd.ocr.office import recover_office, suspected_loss
 from openmd.ocr.otsl import table_html
 from openmd.ocr.pipeline import LocalOCRBackend
-from openmd.ocr.tiling import merge_texts, plan_tiles
+from openmd.ocr.tiling import plan_tiles
 from openmd.runtime.gpu_lock import gpu_lock
 
 

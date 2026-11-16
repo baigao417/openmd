@@ -84,7 +84,7 @@ def worker_command(python: Path, *args: str, module: str = "openmd.runtime.asr_w
         "s.loader.exec_module(m); "
         f"runpy.run_module({module!r},run_name='__main__')"
     )
-    return [str(python), "-I", "-c", bootstrap, str(Path(__file__).resolve().parents[1] / "__init__.py"), *args]
+    return [str(python), "-I", "-B", "-c", bootstrap, str(Path(__file__).resolve().parents[1] / "__init__.py"), *args]
 
 
 class _ProcessGroup:

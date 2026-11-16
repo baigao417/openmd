@@ -12,6 +12,7 @@ from typing import Any
 
 from openmd.core.local_config import load_local_config, local_config_path
 from openmd.core.models import SOURCE_LEVEL_VALUES
+from openmd.core.plugins import routing_resources
 
 GATES = frozenset({"network", "browser", "media_download", "asr", "cloud", "account", "local_compute", "local_export"})
 READERS = frozenset({"markdown_file", "json_stdout", "json_file", "subtitle_dir", "media_dir"})
@@ -79,14 +80,26 @@ def validate_catalog(cards: list[dict[str, Any]], route_data: dict[str, Any]) ->
         for backend in chain:
             if backend not in capabilities or route["source"] not in capabilities[backend]["sources"]:
                 raise ValueError(f"route_backend_unknown: {backend}")
-    return Catalog(tools, capabilities, tuple(routes), route_data["version"], tuple(route_data.get("capabilities", [])))
+    metadata = route_data.get("capabilities", [])
+    source_ids = [record.get("source_id") for record in metadata]
+    if any(not isinstance(source, str) or not source for source in source_ids) or len(source_ids) != len(set(source_ids)):
+        raise ValueError("capability_metadata_invalid_or_duplicate")
+    return Catalog(tools, capabilities, tuple(routes), route_data["version"], tuple(metadata))
 
 
-@lru_cache(maxsize=1)
-def load_catalog() -> Catalog:
+@lru_cache(maxsize=2)
+def load_catalog(*, include_plugins: bool = True) -> Catalog:
     resource = files("openmd.routing")
     cards = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(resource.joinpath("cards").iterdir(), key=lambda p: p.name) if p.name.endswith(".json")]
-    return validate_catalog(cards, json.loads(resource.joinpath("routes.json").read_text(encoding="utf-8")))
+    route_data = json.loads(resource.joinpath("routes.json").read_text(encoding="utf-8"))
+    for plugin, extra, plugin_cards in routing_resources() if include_plugins else ():
+        cards.extend(plugin_cards)
+        route_data["routes"] = [*route_data["routes"], *extra.get("routes", [])]
+        route_data["capabilities"] = [*route_data.get("capabilities", []), *extra.get("capabilities", [])]
+        declared_providers = {cap["id"] for card in plugin_cards for cap in card["capabilities"]}
+        if any(provider not in declared_providers for provider, _ in plugin.collection_bindings().values()):
+            raise ValueError("plugin_collection_provider_undeclared")
+    return validate_catalog(cards, route_data)
 
 
 def overlay_file() -> Path:
@@ -119,8 +132,10 @@ def default_backend_chains(*, effective: bool = True) -> dict[str, tuple[str, ..
     return {source: tuple(chain) for source, chain in result.items()}
 
 
-def route_view(source: str | None = None, *, effective: bool = True) -> dict[str, Any]:
-    catalog = load_catalog()
+def route_view(source: str | None = None, *, effective: bool = True, include_plugins: bool = True) -> dict[str, Any]:
+    catalog = load_catalog(include_plugins=include_plugins)
+    if effective and not include_plugins:
+        raise ValueError("effective_routes_require_installed_catalog")
     routes = effective_routes(source) if effective else [{**r, "overlay_applied": False} for r in catalog.routes if source is None or r["source"] == source]
     backend_ids = {b for r in routes for b in r["chain"]}
     tool_ids = {catalog.capabilities[b]["card_id"] for b in backend_ids}

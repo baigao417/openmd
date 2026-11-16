@@ -103,14 +103,13 @@ def test_xiaoe_content_same_result_for_both_shapes():
     assert parse_xiaoe_content_result(wrapped) == expected
 
 
-def test_text_adapter_pins_table_format_instead_of_publishing_envelope():
-    from openmd.adapters import opencli as adapter
+def test_runtime_provider_requires_machine_json_instead_of_publishing_envelope():
+    from openmd.backends.xiaoe import build_opencli_xiaoe_play_url_args
 
-    with patch.object(adapter, "_run_command", return_value=(0, "", "")) as run:
-        adapter._run_opencli(["bilibili", "subtitle", "BV1"])
-        assert run.call_args.args[0][-2:] == ["-f", "table"]
-        adapter._run_opencli(["weixin", "download", "-f", "json"])
-        assert run.call_args.args[0].count("-f") == 1
+    args = build_opencli_xiaoe_play_url_args("https://example.invalid/video")
+    assert args[args.index("-f") + 1] == "json"
+    assert args.count("-f") == 1
+    assert load_opencli_json('{"ok":true,"data":[{"content":"source text"}]}') == [{"content":"source text"}]
 
 
 def test_empty_manifest_status_requires_complete_discovery():

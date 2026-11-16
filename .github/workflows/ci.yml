@@ -11,6 +11,8 @@ permissions:
 
 jobs:
   test:
+    env:
+      NODE_OPTIONS: --max-old-space-size=1536
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +39,17 @@ jobs:
       - name: Test
         # Offline regression only; real-sample evidence lives in the PR description.
         run: python -m pytest -q
+      - name: Check generated declarations
+        run: python -m openmd.routing.generate --check
+      - name: Build and consume wheel outside checkout
+        shell: bash
+        run: |
+          python -m pip wheel --no-deps . -w contract-dist
+          python scripts/verify_install_contract.py --wheel "$(find contract-dist -name 'openmd_cli-*.whl' -print -quit)"
+      - name: Prepare pinned protocol host
+        run: npm install --prefix .contract-host --ignore-scripts --no-audit --no-fund @jackwener/opencli@2.0.3
+      - name: Replay external protocol without network or accounts
+        run: python scripts/verify_external_contracts.py --offline --host .contract-host/node_modules/@jackwener/opencli
       - name: CLI smoke
         run: |
           openmd --help

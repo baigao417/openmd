@@ -92,3 +92,8 @@ docs/agent-runs/2026-10-25-wealth-course/*
 
 # Contributor virtualenv created by scripts/dev_setup.py
 .venv/
+
+# Local Node dependencies and isolated CI contract environments.
+node_modules/
+.contract-host/
+contract-dist/

@@ -257,6 +257,31 @@ def test_repeated_job_and_pipe_use_does_not_accumulate_handles():
     assert handles() <= before + 4
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows batch shim launch")
+def test_owned_launch_resolves_cmd_shim_and_preserves_ampersand_url(tmp_path, monkeypatch):
+    child_script = tmp_path / "capture_args.py"
+    child_script.write_text(
+        "import json,sys;print(json.dumps(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+    shim = tmp_path / "opencli.cmd"
+    shim.write_text(
+        f'@echo off\r\n"{sys.executable}" "{child_script}" %*\r\n',
+        encoding="utf-8",
+    )
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    path = os.pathsep.join((str(tmp_path), os.path.join(system_root, "System32")))
+    monkeypatch.setenv("PATH", path)
+    url = "https://example.test/watch?v=one&list=two"
+
+    result = runtime.run_interruptibly(
+        ["opencli", "wx", url], capture_output=True, text=True, timeout=10
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == ["wx", url]
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job synchronization")
 def test_job_close_waits_for_kernel_tree_termination(monkeypatch):
     from openmd.runtime import _windows_job as win

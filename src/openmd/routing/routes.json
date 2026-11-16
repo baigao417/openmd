@@ -40,20 +40,6 @@
       ]
     },
     {
-      "source": "wechat_group",
-      "capability": "content",
-      "chain": [
-        "opencli.wx.history"
-      ]
-    },
-    {
-      "source": "wechat_moments",
-      "capability": "content",
-      "chain": [
-        "opencli.wx.sns-feed"
-      ]
-    },
-    {
       "source": "qq_group",
       "capability": "content",
       "chain": [
@@ -453,38 +439,6 @@
       ],
       "route_source": "screenshot",
       "runtime_binding": "route"
-    },
-    {
-      "source_id": "wechat_moments",
-      "tier": "B",
-      "state": "partial",
-      "input_kinds": [
-        "collection"
-      ],
-      "source_exhausted_kinds": [
-        "collection"
-      ],
-      "profiles": [
-        "conversation"
-      ],
-      "route_source": "wechat_moments",
-      "runtime_binding": null
-    },
-    {
-      "source_id": "wechat_group",
-      "tier": "B",
-      "state": "partial",
-      "input_kinds": [
-        "collection"
-      ],
-      "source_exhausted_kinds": [
-        "collection"
-      ],
-      "profiles": [
-        "conversation"
-      ],
-      "route_source": "wechat_group",
-      "runtime_binding": null
     },
     {
       "source_id": "qq_group",

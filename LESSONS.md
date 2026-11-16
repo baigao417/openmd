@@ -17,6 +17,27 @@
 
 ---
 
+## 2026-11-17 发布：PyPI 成功不代表 GitHub Release 已创建
+- 现象：两个已发布版本有 tag 和 PyPI 文件，但 GitHub Release 页为空。
+- 原因：release.yml 只构建并发布 PyPI，没有创建 GitHub Release 的步骤。
+- 规则：GitHub Release 必须依赖成功的 PyPI 发布，使用同一次构建的 wheel/sdist，并校验已有 tag；补发附件须与 PyPI 的 SHA256 一致。
+- 证据：tests/test_release_workflow.py；.github/workflows/release.yml。
+- 同类出现：2026-11-17
+
+## 2026-11-17 媒体传输：协议白名单须覆盖现有代理传输
+- 现象：最终真实短样本发现媒体成功，FFmpeg 下载因 httpproxy 不在白名单而失败。
+- 原因：HTTP/HTTPS 资源可能经调用者已有的 HTTP 代理连接，底层额外需要 httpproxy 协议。
+- 规则：允许已有网络传输所需的明确协议，同时保持远端播放列表不能启用 file/concat/data；不输出可能含签名地址的 FFmpeg 原始错误流。
+- 证据：tests/test_runtime_media.py::test_media_download_supports_proxy_transport_without_local_protocols；真实样本诊断只保存错误类别与被拒协议。
+- 同类出现：2026-11-17
+
+## 2026-11-17 声明生成：生成器与运行视图必须共用渲染边界
+- 现象：路由声明生成检查通过，但全量测试发现生成文档与运行时路由视图不同。
+- 原因：声明源虽已统一，生成器和运行视图仍分别维护 Markdown 渲染逻辑。
+- 规则：声明与运行时共用投影函数；保留生成漂移检查和运行视图相等检查。
+- 证据：tests/test_tool_registry.py::test_declarative_default_projection_and_generated_document；tests/test_prevention_contracts.py::test_generated_declarations_match_runtime_projections。
+- 同类出现：2026-11-17
+
 ## 2026-11-15 验证环境：开发机的全局工具掩盖了"装完即用"的真实状态
 - 现象：干净 venv 里网页、B 站、YouTube 都"成功"，但把 PATH 收窄到只剩系统目录后全部失败：成功全靠开发机全局安装的 opencli。
 - 原因：venv 只隔离 Python 包，不隔离 PATH 上的 Node 工具、ffmpeg、Ollama 和代理。

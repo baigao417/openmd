@@ -10,6 +10,7 @@ from __future__ import annotations
 import ctypes as C
 from ctypes import wintypes as W
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -151,6 +152,14 @@ class JobPopen(subprocess.Popen):
                        *unused, **unused_kwargs):
         if pass_fds:
             raise ValueError("pass_fds not supported on Windows")
+        if isinstance(args, str | bytes):
+            command_items = None
+        elif isinstance(args, os.PathLike):
+            command_items = [args]
+        else:
+            command_items = list(args)
+        if command_items is not None:
+            args = command_items
         if isinstance(args, (bytes, os.PathLike)):
             if shell:
                 raise TypeError("bytes/path-like args is not allowed with shell")
@@ -173,6 +182,21 @@ class JobPopen(subprocess.Popen):
             native.StartupInfo.hStdError = int(errwrite)
             handles += [int(p2cread), int(c2pwrite), int(errwrite)]
         handles = self._filter_handle_list(handles)
+        if not shell and command_items:
+            batch_candidate = executable or os.fsdecode(command_items[0])
+            if not os.path.splitext(batch_candidate)[1]:
+                batch_candidate = shutil.which(batch_candidate) or batch_candidate
+            if os.path.splitext(batch_candidate)[1].lower() in {".cmd", ".bat"}:
+                comspec = os.environ.get("ComSpec") or os.path.join(
+                    os.environ.get("SystemRoot", "C:\\Windows"), "System32", "cmd.exe"
+                )
+                batch_path = os.path.abspath(batch_candidate)
+                batch_args = command_items[1:] if executable is None else command_items
+                quoted = " ".join(_quote_cmd_batch_arg(os.fsdecode(arg)) for arg in [batch_path, *batch_args])
+                # /s removes the outermost quote pair after /c; inner quotes keep
+                # shell metacharacters such as URL query '&' inside one argument.
+                args = f'"{comspec}" /d /s /c "{quoted}"'
+                executable = comspec
         if shell:
             native.StartupInfo.dwFlags |= 1
             native.StartupInfo.wShowWindow = 0
@@ -232,3 +256,10 @@ class JobPopen(subprocess.Popen):
         except BaseException:
             self._openmd_owner.close()
             raise
+
+
+def _quote_cmd_batch_arg(value: str) -> str:
+    """Quote one batch argument so cmd.exe does not split shell metacharacters."""
+    if "\0" in value:
+        raise ValueError("embedded null character")
+    return '"' + value.replace('"', '""') + '"'

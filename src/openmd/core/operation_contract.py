@@ -6,8 +6,6 @@ An approved product goal is not permission to run an unsupported operation.
 
 from __future__ import annotations
 
-from openmd.adapters.wechat_group.wx_cli import OPENCLI_WX_HISTORY_DISCOVERY_BACKEND
-from openmd.adapters.wechat_moments.wx_cli import OPENCLI_WX_SNS_FEED_DISCOVERY_BACKEND
 from openmd.adapters.weixin.discovery import WECHAT_ARTICLE_EXPORTER_HTTP_DISCOVERY_BACKEND
 from openmd.backends.bilibili import BILIBILI_NATIVE_DISCOVERY_BACKEND
 from openmd.backends.douyin import DOUYIN_OPENCLI_USER_VIDEOS_BACKEND, DOUYIN_OPENMD_CREATOR_VIDEOS_BACKEND
@@ -17,6 +15,7 @@ from openmd.backends.xiaohongshu import (
     OPENCLI_XIAOHONGSHU_USER_DISCOVERY_BACKEND,
 )
 from openmd.backends.xiaoyuzhou import OPENCLI_XIAOYUZHOU_EPISODES_DISCOVERY_BACKEND
+from openmd.core import plugins
 from openmd.backends.youtube_discovery import (
     YOUTUBE_DATA_API_DISCOVERY_BACKEND,
     YOUTUBE_DATA_API_PLAYLIST_DISCOVERY_BACKEND,
@@ -47,14 +46,10 @@ def collect_all_allowed(
 
 
 # These are discovery IDs, deliberately separate from extraction bindings.
+from openmd.routing.generate import declarations
+
 COLLECTION_BINDINGS: dict[str, tuple[str, tuple[str, ...]]] = {
-    "bilibili": (BILIBILI_NATIVE_DISCOVERY_BACKEND, ("network",)),
-    "youtube": (YOUTUBE_DATA_API_DISCOVERY_BACKEND, ("network", "account")),
-    "weixin": (WECHAT_ARTICLE_EXPORTER_HTTP_DISCOVERY_BACKEND, ("browser",)),
-    "xiaoyuzhou": (OPENCLI_XIAOYUZHOU_EPISODES_DISCOVERY_BACKEND, ("browser",)),
-    "douyin": (DOUYIN_OPENCLI_USER_VIDEOS_BACKEND, ("browser",)),
-    "xiaoe": (OPENCLI_XIAOE_CATALOG_DISCOVERY_BACKEND, ("browser",)),
-    "xiaohongshu_creator": (OPENCLI_XIAOHONGSHU_USER_DISCOVERY_BACKEND, ("browser",)),
-    "wechat_group": (OPENCLI_WX_HISTORY_DISCOVERY_BACKEND, ("browser",)),
-    "wechat_moments": (OPENCLI_WX_SNS_FEED_DISCOVERY_BACKEND, ("browser",)),
+    source: (binding[0], tuple(binding[1]))
+    for source, binding in declarations()["collection_bindings"].items()
 }
+COLLECTION_BINDINGS.update(plugins.collection_bindings())

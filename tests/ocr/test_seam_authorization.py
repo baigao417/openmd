@@ -1,3 +1,4 @@
+from tests.ocr.seam_chain import merge_texts
 """Literal deletion proofs and image-band arbitration, with no model loads."""
 import time
 from pathlib import Path
@@ -8,7 +9,7 @@ from PIL import Image
 
 from openmd.ocr.config import settings
 from openmd.ocr.pipeline import LocalOCRBackend, seam_geometry
-from openmd.ocr.tiling import deletion_proof, literal_view, merge_pair, merge_texts
+from openmd.ocr.tiling import deletion_proof, literal_view, merge_pair
 
 
 @pytest.mark.parametrize("symbol", [">", "_", "*", "`", "|", "#"])

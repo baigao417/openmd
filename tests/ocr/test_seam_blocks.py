@@ -1,8 +1,9 @@
+from tests.ocr.seam_chain import merge_texts
 """T5 regressions: seam markers stay outside Markdown block structure."""
 
 import pytest
 
-from openmd.ocr.tiling import _html_blocks, _markdown_block_range, merge_pair, merge_texts
+from openmd.ocr.tiling import _html_blocks, _markdown_block_range, merge_pair
 
 
 def _full_band():

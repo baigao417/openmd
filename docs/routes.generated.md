@@ -8,8 +8,6 @@ Generated from bundled cards and routes, version `2026-11-10.1`.
 | bilibili | media | yutto.bilibili.media-asr |
 | youtube | transcript | opencli.youtube.transcript → youtube-transcript-api → yt-dlp.youtube → asr.fallback |
 | weixin | content | opencli.weixin.download → defuddle.web.content → weixin.article.local → opencli.web.read |
-| wechat_group | content | opencli.wx.history |
-| wechat_moments | content | opencli.wx.sns-feed |
 | qq_group | content | qq_group.export |
 | xiaoyuzhou | transcript | opencli.xiaoyuzhou.transcript |
 | xiaoyuzhou | media | xyz-dl.xiaoyuzhou.media-asr |

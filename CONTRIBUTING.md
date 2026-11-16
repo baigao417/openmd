@@ -70,3 +70,14 @@ Openmd 只做一件事：**把链接变成干净的 Markdown 原文 / 逐字稿*
 ## 行为准则
 
 就事论事，对人友善。维护者有权关闭长期无回应的 issue / PR（会先提醒）。
+
+## 维护者发布
+
+本仓库 `main` 是唯一公开代码主干；直接在这里维护代码、README、资源和 CI。
+独立平台包通过 [平台插件合同](docs/adding-a-platform.md#5-independently-installed-platform-packages-contract-v1)
+叠加安装。个人工作区、历史运行证据与凭证不属于发布输入。
+
+发布前完成贡献者安装路径、全量 `python -m pytest`、构建包内容检查和本次授权范围内的真实样本回读，
+再将已审核分支合并到 `main`。维护者明确批准后，从该提交打与包版本匹配的 `vX.Y.Z` tag，
+由 `.github/workflows/release.yml` 构建、验证并发布。发布不经过私仓导出或中转仓库。
+不要重写已发布 tag；失败时保留回执、修复后发布新版本。

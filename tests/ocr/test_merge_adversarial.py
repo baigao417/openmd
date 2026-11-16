@@ -1,3 +1,4 @@
+from tests.ocr.seam_chain import merge_texts
 """Synthetic regressions for lossless, seam-anchored overlap merging."""
 from unittest.mock import patch
 
@@ -5,7 +6,7 @@ from PIL import Image
 
 from openmd.ocr.config import settings
 from openmd.ocr.pipeline import LocalOCRBackend
-from openmd.ocr.tiling import merge_pair, merge_texts
+from openmd.ocr.tiling import merge_pair
 
 
 def assert_preserved(a, b, **kwargs):

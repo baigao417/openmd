@@ -52,10 +52,13 @@ version = { attr = "openmd.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-"openmd.routing" = ["routes.json", "cards/*.json"]
+"openmd.routing" = ["routes.json", "declarations.json", "cards/*.json"]
 "openmd" = ["browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
 "openmd.ocr" = ["settings.json", "ovis-prompt.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.setuptools.data-files]
+"share/openmd/opencli/xiaoe" = ["integrations/opencli/xiaoe/play-url.js", "integrations/opencli/xiaoe/catalog.js", "integrations/opencli/xiaoe/content.js", "integrations/opencli/xiaoe/dispatch.js"]

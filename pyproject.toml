@@ -59,3 +59,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.setuptools.data-files]
+"share/openmd/opencli/xiaoe" = ["integrations/opencli/xiaoe/play-url.js", "integrations/opencli/xiaoe/catalog.js", "integrations/opencli/xiaoe/content.js", "integrations/opencli/xiaoe/dispatch.js"]

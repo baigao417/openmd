@@ -1,6 +1,0 @@
-{
-  "name": "xiaoe-transcript",
-  "version": "0.1.0",
-  "description": "XiaoeTong video to Markdown transcript automation for OpenCLI",
-  "opencli": ">=1.6.1"
-}

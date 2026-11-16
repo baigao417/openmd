@@ -233,6 +233,11 @@ def sanitize_asr_execution(value: Any) -> dict[str, Any]:
     keys = {"elapsed_seconds", "inference_seconds", "batch_size_requested", "batch_size_effective",
             "batch_oom_retries", "torch_peak_allocated_bytes", "torch_peak_reserved_bytes"}
     result = {key: value[key] for key in keys if key in value and number(value[key])}
+    stages = value.get("stage_seconds")
+    if isinstance(stages, dict):
+        result["stage_seconds"] = {key: stages[key] for key in ("media_discovery", "download_audio", "asr") if key in stages and number(stages[key])}
+    if number(value.get("navigation_seconds")):
+        result["navigation_seconds"] = value["navigation_seconds"]
     for key in ("duration", "segment_count"):
         if key in value and number(value[key]):
             result[key] = value[key]

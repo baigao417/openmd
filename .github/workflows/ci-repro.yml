@@ -1,0 +1,46 @@
+name: process-identity-validation
+on:
+  push:
+    branches: ["ci-debug/pid-identity-0.1.1-20261116"]
+permissions:
+  contents: read
+jobs:
+  matrix:
+    uses: ./.github/workflows/ci.yml
+  repeated-cancellation:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: python scripts/dev_setup.py --no-venv
+      - name: Run 25 consecutive pipe-sigint regressions
+        shell: python
+        run: |
+          import json, os, pathlib, subprocess, sys
+          log = pathlib.Path(os.environ["RUNNER_TEMP"]) / "pipe-sigint.jsonl"
+          for index in range(25):
+              result = subprocess.run([sys.executable, "tests/process_ownership_scenarios.py", "pipe-sigint"], capture_output=True, text=True, timeout=12)
+              with log.open("a", encoding="utf-8") as output:
+                  output.write(json.dumps({"iteration": index + 1, "returncode": result.returncode, "stdout": result.stdout, "stderr": result.stderr}) + "\n")
+              assert result.returncode == 0, result.stdout + result.stderr
+              record = json.loads(result.stdout)
+              assert not any(record["alive_after"].values()), record
+              assert "external_rescue_required" not in record, record
+              assert record["extra_io_threads"] == [], record
+              assert record["pipe_handles_closed"], record
+              assert record["elapsed_s"] < 4, record
+              print(f"pipe-sigint {index + 1}/25 passed", flush=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipe-sigint-${{ matrix.python }}
+          path: ${{ runner.temp }}/pipe-sigint.jsonl

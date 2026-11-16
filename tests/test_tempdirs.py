@@ -11,12 +11,15 @@ import pytest
 from openmd.runtime import tempdirs
 
 
-def directory(root, name, *, old=False, pid=None):
+def directory(root, name, *, old=False, pid=None, start_time=None):
     path = root / name
     path.mkdir()
     (path / "payload").write_bytes(b"test data")
     if pid is not None:
-        (path / tempdirs.OWNER_FILE).write_text(json.dumps({"pid": pid}))
+        owner = {"pid": pid}
+        if start_time is not None:
+            owner["start_times"] = {str(pid): start_time}
+        (path / tempdirs.OWNER_FILE).write_text(json.dumps(owner))
     if old:
         stamp = time.time() - 25 * 3600
         os.utime(path, (stamp, stamp))
@@ -44,9 +47,23 @@ def test_sweep_age_owner_prefix_and_sizes(monkeypatch, tmp_path):
 def test_markers_are_written_for_both_creation_paths(tmp_path):
     with tempdirs.owned_temporary_directory(prefix="openmd-test-", dir=tmp_path) as name:
         from pathlib import Path
-        assert json.loads((Path(name) / tempdirs.OWNER_FILE).read_text())["pid"] == os.getpid()
+        owner = json.loads((Path(name) / tempdirs.OWNER_FILE).read_text())
+        assert owner["pid"] == os.getpid()
+        start_time = tempdirs.pid_start_time(os.getpid())
+        if start_time is not None:
+            assert owner["start_times"] == {str(os.getpid()): start_time}
     path = tempdirs.owned_mkdtemp(prefix="openmd-test-", dir=tmp_path)
     assert json.loads((Path(path) / tempdirs.OWNER_FILE).read_text())["pid"] == os.getpid()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc start time is Linux-specific")
+def test_sweep_rejects_reused_pid_from_owner_start_time(monkeypatch, tmp_path):
+    monkeypatch.setattr(tempdirs.tempfile, "gettempdir", lambda: str(tmp_path))
+    start_time = tempdirs.pid_start_time(os.getpid())
+    assert start_time is not None
+    recycled = directory(tmp_path, "openmd-recycled", old=True, pid=os.getpid(), start_time=start_time + 1)
+    report = tempdirs.sweep_tempdirs()
+    assert report["deleted"] == 1 and not recycled.exists()
 
 
 def test_live_worker_keeps_directory_after_controller_dies(monkeypatch, tmp_path):
@@ -149,7 +166,7 @@ def test_marker_supports_160_simultaneous_lifetimes_beyond_old_read_limit(monkey
     monkeypatch.setattr(tempdirs.tempfile, "gettempdir", lambda: str(tmp_path))
     path = Path(tempdirs.owned_mkdtemp(prefix="openmd-many-", dir=tmp_path))
     active = {os.getpid(), *range(2000000000, 2000000160)}
-    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid: pid in active)
+    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid, *, start_time=None: pid in active)
     for pid in range(2000000000, 2000000160):
         tempdirs.note_process_owner(SimpleNamespace(pid=pid))
     marker = path / tempdirs.OWNER_FILE
@@ -168,10 +185,26 @@ def test_marker_supports_160_simultaneous_lifetimes_beyond_old_read_limit(monkey
     assert not path.exists()
 
 
+def test_start_times_fit_the_maximum_owner_record(monkeypatch, tmp_path):
+    monkeypatch.setattr(tempdirs, "_owned_directories", set())
+    active = {os.getpid()}
+    monkeypatch.setattr(tempdirs, "pid_start_time", lambda pid: pid * 10 + 123)
+    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid, *, start_time=None: pid in active)
+    path = Path(tempdirs.owned_mkdtemp(prefix="openmd-max-owner-", dir=tmp_path))
+    for pid in range(3000000000, 3000000255):
+        active.add(pid)
+        tempdirs.note_process_owner(SimpleNamespace(pid=pid))
+    marker = path / tempdirs.OWNER_FILE
+    owner = tempdirs._read_owner(marker)
+    assert len(owner["pids"]) == tempdirs.MAX_OWNER_PIDS
+    assert len(owner["start_times"]) == tempdirs.MAX_OWNER_PIDS
+    assert marker.stat().st_size <= tempdirs.MAX_OWNER_BYTES
+
+
 def test_dead_pid_registration_prunes_even_when_input_is_already_recorded(monkeypatch, tmp_path):
     monkeypatch.setattr(tempdirs, "_owned_directories", set())
     active = {os.getpid(), 12345}
-    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid: pid in active)
+    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid, *, start_time=None: pid in active)
     path = Path(tempdirs.owned_mkdtemp(prefix="openmd-prune-", dir=tmp_path))
     tempdirs.note_process_owner(SimpleNamespace(pid=12345))
     active.remove(12345)
@@ -183,7 +216,7 @@ def test_simultaneous_owner_overflow_is_bounded_and_unknown_is_preserved(monkeyp
     monkeypatch.setattr(tempdirs, "_owned_directories", set())
     path = Path(tempdirs.owned_mkdtemp(prefix="openmd-overflow-", dir=tmp_path))
     active = True
-    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid: active)
+    monkeypatch.setattr(tempdirs, "pid_alive", lambda pid, *, start_time=None: active)
     for pid in range(2000000000, 2000000000 + tempdirs.MAX_OWNER_PIDS + 2):
         tempdirs.note_process_owner(SimpleNamespace(pid=pid))
     marker = path / tempdirs.OWNER_FILE
@@ -200,7 +233,7 @@ def test_simultaneous_owner_overflow_is_bounded_and_unknown_is_preserved(monkeyp
     assert tempdirs.sweep_tempdirs()["retained"] == 1 and path.exists()
 
 
-@pytest.mark.parametrize("content", ['{"pid":true}', '[1]', '{"pid":1,"pids":"unknown"}', '{"pid":1,"incomplete":"maybe"}', 'x' * (tempdirs.MAX_OWNER_BYTES + 1)])
+@pytest.mark.parametrize("content", ['{"pid":true}', '[1]', '{"pid":1,"pids":"unknown"}', '{"pid":1,"pids":[[]]}', '{"pid":1,"start_times":{"2":1}}', '{"pid":1,"start_times":{"1":true}}', '{"pid":1,"incomplete":"maybe"}', 'x' * (tempdirs.MAX_OWNER_BYTES + 1)])
 def test_unknown_markers_are_never_overwritten_or_swept(monkeypatch, tmp_path, content):
     monkeypatch.setattr(tempdirs, "_owned_directories", set())
     monkeypatch.setattr(tempdirs.tempfile, "gettempdir", lambda: str(tmp_path))
@@ -262,3 +295,11 @@ def test_zombie_process_is_not_alive():
         assert not tempdirs.pid_alive(child.pid)
     finally:
         child.wait()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc start time is Linux-specific")
+def test_pid_liveness_can_reject_a_reused_process_identity():
+    start_time = tempdirs.pid_start_time(os.getpid())
+    assert start_time is not None
+    assert tempdirs.pid_alive(os.getpid(), start_time=start_time)
+    assert not tempdirs.pid_alive(os.getpid(), start_time=start_time + 1)

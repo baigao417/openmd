@@ -15,13 +15,25 @@ from pathlib import Path
 OWNER_FILE = ".openmd-owner.json"
 MAX_AGE_S = 24 * 60 * 60
 MAX_OWNER_PIDS = 256
-MAX_OWNER_BYTES = 4096
+MAX_OWNER_BYTES = 16 * 1024
 _startup_report = None
 _owned_directories: set[Path] = set()
 _owner_lock = threading.RLock()
 
 
-def pid_alive(pid: int) -> bool:
+def pid_start_time(pid: int) -> int | None:
+    """Return the Linux start tick that distinguishes a recycled PID."""
+    if pid <= 0 or os.name == "nt":
+        return None
+    try:
+        with open(f"/proc/{pid}/stat", encoding="ascii", errors="replace") as stat_file:
+            fields = stat_file.read().rsplit(")", 1)[1].split()
+        return int(fields[19])
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def pid_alive(pid: int, *, start_time: int | None = None) -> bool:
     """Treat inaccessible process state as live. Never use Windows os.kill(pid, 0)."""
     if pid <= 0:
         return False
@@ -46,15 +58,35 @@ def pid_alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError:
-        return True
+        if start_time is None:
+            return True
+        current_start_time = pid_start_time(pid)
+        return current_start_time is None or current_start_time == start_time
     # A killed-but-unreaped (zombie) process still answers signal 0, yet holds
     # no files and never runs again; orphans wait for init to reap them.
     try:
         with open(f"/proc/{pid}/stat", encoding="ascii", errors="replace") as stat:
-            state = stat.read().rsplit(")", 1)[1].split()[0]
+            fields = stat.read().rsplit(")", 1)[1].split()
     except (OSError, IndexError):
         return True  # no /proc (macOS) or vanished mid-read: keep the safe answer
+    if start_time is not None:
+        try:
+            if int(fields[19]) != start_time:
+                return False
+        except (IndexError, ValueError):
+            return True
+    state = fields[0]
     return state not in {"Z", "X"}
+
+
+def _owner_start_times(owner: dict) -> dict[int, int]:
+    return {int(pid): start for pid, start in owner.get("start_times", {}).items()}
+
+
+def _pid_alive_with_start(pid: int, start_time: int | None) -> bool:
+    if start_time is None:
+        return pid_alive(pid)
+    return pid_alive(pid, start_time=start_time)
 
 
 def _read_owner(marker: Path) -> dict:
@@ -66,11 +98,27 @@ def _read_owner(marker: Path) -> dict:
     if len(data) > MAX_OWNER_BYTES:
         raise ValueError("oversized owner marker")
     owner = json.loads(data)
+    if not isinstance(owner, dict):
+        raise ValueError("invalid owner marker")
     pid, pids = owner.get("pid"), owner.get("pids", [])
     if not isinstance(pids, list) or len(pids) > MAX_OWNER_PIDS or not all(
         isinstance(p, int) and not isinstance(p, bool) and 0 < p <= 0xFFFFFFFF
         for p in [pid, *pids]
     ) or not isinstance(owner.get("incomplete", False), bool):
+        raise ValueError("invalid owner marker")
+    valid_pids = {pid, *pids}
+    starts = owner.get("start_times", {})
+    if not isinstance(starts, dict) or len(starts) > MAX_OWNER_PIDS or not all(
+        isinstance(key, str)
+        and key.isascii()
+        and key.isdecimal()
+        and str(int(key)) == key
+        and int(key) in valid_pids
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+        and 0 <= value <= 0xFFFFFFFFFFFFFFFF
+        for key, value in starts.items()
+    ):
         raise ValueError("invalid owner marker")
     return owner
 
@@ -94,7 +142,11 @@ def _write_owner(marker: Path, owner: dict) -> None:
 
 def _mark(directory) -> None:
     try:
-        _write_owner(Path(directory) / OWNER_FILE, {"pid": os.getpid()})
+        pid = os.getpid()
+        owner = {"pid": pid}
+        if (start_time := pid_start_time(pid)) is not None:
+            owner["start_times"] = {str(pid): start_time}
+        _write_owner(Path(directory) / OWNER_FILE, owner)
         with _owner_lock:
             _owned_directories.add(Path(directory).resolve())
     except OSError:
@@ -134,10 +186,19 @@ def note_process_owner(process) -> None:
                     _owned_directories.discard(directory)
                     continue
                 owner = _read_owner(marker)
-                candidates = dict.fromkeys([owner["pid"], *owner.get("pids", []), os.getpid(), pid])
-                pids = [p for p in candidates if pid_alive(p)]
+                starts = _owner_start_times(owner)
+                controller_pid = os.getpid()
+                for current_pid in (controller_pid, pid):
+                    if (current_start := pid_start_time(current_pid)) is not None:
+                        starts[current_pid] = current_start
+                candidates = dict.fromkeys([owner["pid"], *owner.get("pids", []), controller_pid, pid])
+                pids = [p for p in candidates if _pid_alive_with_start(p, starts.get(p))]
                 incomplete = owner.get("incomplete", False) or len(pids) > MAX_OWNER_PIDS
-                updated = {"pid": os.getpid(), "pids": pids[:MAX_OWNER_PIDS]}
+                pids = pids[:MAX_OWNER_PIDS]
+                updated = {"pid": controller_pid, "pids": pids}
+                current_starts = {str(p): starts[p] for p in pids if p in starts}
+                if current_starts:
+                    updated["start_times"] = current_starts
                 if incomplete:
                     # Never silently drop untracked live ownership. Such rare
                     # overflow stays unknown until an explicit manual cleanup.
@@ -185,7 +246,11 @@ def sweep_tempdirs(*, include_sizes: bool = True) -> dict:
                         # Invalid/unreadable markers are unknown ownership, so retain.
                         try:
                             owner = _read_owner(marker)
-                            retain = owner.get("incomplete", False) or any(pid_alive(p) for p in [owner["pid"], *owner.get("pids", [])])
+                            starts = _owner_start_times(owner)
+                            retain = owner.get("incomplete", False) or any(
+                                _pid_alive_with_start(p, starts.get(p))
+                                for p in [owner["pid"], *owner.get("pids", [])]
+                            )
                         except (OSError, ValueError, AttributeError):
                             retain = True
                     if retain:

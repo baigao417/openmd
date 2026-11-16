@@ -28,6 +28,89 @@ def until(predicate, budget=5):
         time.sleep(.01)
 
 
+def proc_process_snapshot(pid, expected_start_time_ticks=None):
+    """Best-effort Linux process identity and ownership fields for a failure."""
+    if os.name == "nt" or not Path("/proc").is_dir():
+        return {"available": False, "reason": "procfs unavailable"}
+    stat_path = Path(f"/proc/{int(pid)}/stat")
+    status_path = Path(f"/proc/{int(pid)}/status")
+    item = {"pid": int(pid), "stat_path": str(stat_path), "status_path": str(status_path)}
+    try:
+        raw = stat_path.read_text(encoding="ascii", errors="replace")
+        fields = raw.rsplit(")", 1)[1].split()
+        item["stat"] = {
+            "state": fields[0],
+            "ppid": int(fields[1]),
+            "pgid": int(fields[2]),
+            "sid": int(fields[3]),
+            "start_time_ticks": int(fields[19]),
+        }
+        item["expected_start_time_ticks"] = expected_start_time_ticks
+        item["identity_matches"] = (
+            None if expected_start_time_ticks is None
+            else item["stat"]["start_time_ticks"] == expected_start_time_ticks
+        )
+    except (OSError, IndexError, ValueError) as exc:
+        item["stat_error"] = repr(exc)
+    try:
+        item["status"] = status_path.read_text(encoding="ascii", errors="replace")
+    except OSError as exc:
+        item["status_error"] = repr(exc)
+    item["alive"] = tempdirs.pid_alive(int(pid), start_time=expected_start_time_ticks)
+    return item
+
+
+def proc_group_members(pgid):
+    """List current members of a process group without relying on external tools."""
+    if os.name == "nt" or not Path("/proc").is_dir():
+        return {"available": False, "reason": "procfs unavailable"}
+    members = []
+    errors = []
+    try:
+        entries = tuple(Path("/proc").iterdir())
+    except OSError as exc:
+        return {"available": False, "reason": repr(exc)}
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            raw = (entry / "stat").read_text(encoding="ascii", errors="replace")
+            fields = raw.rsplit(")", 1)[1].split()
+            if int(fields[2]) == int(pgid):
+                members.append({"pid": int(entry.name), "state": fields[0], "ppid": int(fields[1]), "sid": int(fields[3])})
+        except (OSError, IndexError, ValueError) as exc:
+            errors.append({"pid": entry.name, "error": repr(exc)})
+    result = {"available": True, "pgid": int(pgid), "members": members}
+    if errors:
+        result["errors"] = errors
+    return result
+
+
+def process_snapshot(pids, start_times=None):
+    start_times = start_times or {}
+    return {name: proc_process_snapshot(pid, start_times.get(name)) for name, pid in pids.items()}
+
+
+def posix_process_diagnostics(pids, start_times, killpg_calls):
+    """Capture enough state to distinguish group races, session changes and D state."""
+    if os.name == "nt":
+        return {"available": False, "reason": "non-Windows diagnostics only"}
+    snapshot = process_snapshot(pids, start_times)
+    last_target = killpg_calls[-1].get("target") if killpg_calls else None
+    for item in snapshot.values():
+        stat = item.get("stat")
+        if stat is not None and last_target is not None:
+            item["matches_last_killpg_group"] = stat["pgid"] == last_target
+    return {
+        "available": Path("/proc").is_dir(),
+        "controller": proc_process_snapshot(os.getpid()),
+        "processes": snapshot,
+        "current_group": proc_group_members(last_target) if last_target is not None else None,
+        "killpg_calls": killpg_calls,
+    }
+
+
+
 def process_ownership_diagnostics(pids, created):
     """Capture Windows process/job state before TemporaryDirectory cleanup.
 
@@ -166,7 +249,17 @@ def run_case(case, root):
     marker = root / "pids.json"
     record = {"case": case}
     created = []
+    killpg_calls = []
+    known_pids = {}
+    known_start_times = {}
     launch = runtime.owned_popen
+    original_killpg = os.killpg if os.name != "nt" else None
+
+    def remember_pids(pids):
+        known_pids.update(pids)
+        for name, pid in pids.items():
+            known_start_times.setdefault(name, tempdirs.pid_start_time(pid))
+        return {name: known_start_times[name] for name in pids}
 
     def record_launch(*args, **kwargs):
         child = launch(*args, **kwargs)
@@ -177,7 +270,31 @@ def run_case(case, root):
             record.setdefault("owned_jobs_at_launch", []).append({"pid": child.pid, **flags})
         return child
 
+    def record_killpg(pgid, sig):
+        call = {
+            "target": pgid,
+            "signal": sig,
+            "before": process_snapshot(known_pids, known_start_times),
+            "group_before": proc_group_members(pgid),
+            "started_at": time.monotonic(),
+        }
+        try:
+            result = original_killpg(pgid, sig)
+        except BaseException as exc:
+            call["exception"] = repr(exc)
+            raise
+        else:
+            call["return_value"] = repr(result)
+            return result
+        finally:
+            call["after"] = process_snapshot(known_pids, known_start_times)
+            call["group_after"] = proc_group_members(pgid)
+            call["elapsed_s"] = time.monotonic() - call["started_at"]
+            killpg_calls.append(call)
+
     runtime.owned_popen = record_launch
+    if original_killpg is not None:
+        os.killpg = record_killpg
     interrupt_errors = []
     before_threads = set(threading.enumerate())
     is_file = case.startswith("file-")
@@ -194,10 +311,11 @@ def run_case(case, root):
         try:
             until(marker.exists)
             pids = json.loads(marker.read_text())
+            start_times = remember_pids(pids)
             if not leader_wait:
-                until(lambda: not tempdirs.pid_alive(pids["root"]))
-            record["root_dead_before_interrupt"] = not tempdirs.pid_alive(pids["root"])
-            record["alive_before_interrupt"] = {k: tempdirs.pid_alive(p) for k, p in pids.items()}
+                until(lambda: not tempdirs.pid_alive(pids["root"], start_time=start_times["root"]))
+            record["root_dead_before_interrupt"] = not tempdirs.pid_alive(pids["root"], start_time=start_times["root"])
+            record["alive_before_interrupt"] = {k: tempdirs.pid_alive(p, start_time=start_times[k]) for k, p in pids.items()}
             record["signal_at"] = time.monotonic()
             signal.raise_signal(signal.SIGINT)
         except BaseException as exc:
@@ -213,9 +331,10 @@ def run_case(case, root):
                 try:
                     until(marker.exists)
                     pids = json.loads(marker.read_text())
-                    until(lambda: not tempdirs.pid_alive(pids["root"]))
+                    start_times = remember_pids(pids)
+                    until(lambda: not tempdirs.pid_alive(pids["root"], start_time=start_times["root"]))
                     record["root_dead_before_cancel"] = True
-                    record["alive_before_cancel"] = {k: tempdirs.pid_alive(p) for k, p in pids.items()}
+                    record["alive_before_cancel"] = {k: tempdirs.pid_alive(p, start_time=start_times[k]) for k, p in pids.items()}
                     browser_host._write_status(root, {**status, "state": "cancelled"})
                 except BaseException as exc:
                     interrupt_errors.append(repr(exc))
@@ -278,13 +397,17 @@ def run_case(case, root):
         record["elapsed_s"] = time.monotonic() - started
         assert record["elapsed_s"] < 4
         pids = json.loads(marker.read_text())
+        start_times = remember_pids(pids)
         deadline = time.monotonic() + 2
-        while any(tempdirs.pid_alive(p) for p in pids.values()) and time.monotonic() < deadline:
+        while any(tempdirs.pid_alive(p, start_time=start_times[k]) for k, p in pids.items()) and time.monotonic() < deadline:
             time.sleep(.01)
         record["pids"] = pids
-        record["alive_after"] = {k: tempdirs.pid_alive(p) for k, p in pids.items()}
+        record["alive_after"] = {k: tempdirs.pid_alive(p, start_time=start_times[k]) for k, p in pids.items()}
+        if os.name != "nt":
+            record["process_diagnostics"] = posix_process_diagnostics(pids, start_times, killpg_calls)
         if any(record["alive_after"].values()):
-            record["process_diagnostics"] = process_ownership_diagnostics(pids, created)
+            if os.name == "nt":
+                record["process_diagnostics"] = process_ownership_diagnostics(pids, created)
             print(json.dumps(record, ensure_ascii=False), flush=True)
             assert not any(record["alive_after"].values()), record["process_diagnostics"]
         if interrupter:
@@ -299,6 +422,8 @@ def run_case(case, root):
         return record
     finally:
         runtime.owned_popen = launch
+        if original_killpg is not None:
+            os.killpg = original_killpg
 
 
 def marker_lifecycle(root):

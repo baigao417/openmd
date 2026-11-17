@@ -16,6 +16,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     cleanup = sweep_tempdirs()
     profile = getattr(args, "profile", "core")
     try:
+        managed_tools = managed_tools_status()
         diagnostics = build_doctor_report(profile)
         from openmd.routing.loader import effective_routes
 
@@ -27,6 +28,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             diagnostics["ready"] = bool(diagnostics.get("ready") and diagnostics["tools"]["ok"])
     except (OSError, ValueError) as exc:
         diagnostics = {"profile": profile, "ready": False, "error_code": "local_configuration_invalid", "error_summary": sanitize_error_summary(exc), "next_action": "Repair the explicitly selected local position configuration or route overlay; no source extraction was started."}
+        managed_tools = {"opencli": "unavailable", "error_code": "local_configuration_invalid"}
     ready = diagnostics.get("ready", diagnostics.get("manifest_valid", True))
     payload = {
         "ok": ready,
@@ -57,7 +59,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         ),
         "profile": profile,
         "profile_diagnostics": diagnostics,
-        "managed_tools": managed_tools_status(),
+        "managed_tools": managed_tools,
     }
     if not getattr(args, "json", False) and sys.stdout.isatty():
         from openmd.doctor_view import render

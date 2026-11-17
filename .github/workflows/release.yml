@@ -87,7 +87,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          sed "s/VERSION/${GITHUB_REF_NAME#v}/g" .github/release-notes.md > release-notes.md
+          python scripts/generate_release_notes.py --version "${GITHUB_REF_NAME#v}" --output release-notes.md
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag --notes-file release-notes.md --title "Openmd $GITHUB_REF_NAME" \
             dist/*.whl dist/*.tar.gz extension-dist/*.zip

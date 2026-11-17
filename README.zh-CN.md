@@ -99,6 +99,8 @@ platform: "bilibili"
 
 有些网站只对已登录的浏览器显示内容。Openmd 插件（Chrome、Edge，目前支持 Windows）让 Openmd 借用你自己的浏览器读取这些页面。
 
+也可从 [Release](https://github.com/baigao417/openmd/releases) 下载扩展 zip，运行 `openmd browser-setup` 后解压并加载该文件夹。
+
 1. 运行 `openmd browser-setup`，它会注册本机连接，并打开插件所在文件夹。
 2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`），打开右上角的**开发者模式**，点**加载已解压的扩展程序**，选择那个文件夹。
 3. 在任意页面点 Openmd 图标即可保存。按住 Ctrl 多选几个标签页可以一次全存；在页面上选中一段内容后右键，可以保存其中所有链接。

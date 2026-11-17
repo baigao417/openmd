@@ -99,6 +99,8 @@ The first prototype was too bright at night so we added a second light source un
 
 Some sites only show their content to a logged-in browser. The Openmd extension (Chrome and Edge; Windows for now) lets Openmd read those pages through your own browser profile.
 
+You can also download the extension ZIP from [Releases](https://github.com/baigao417/openmd/releases), unzip it and load the unpacked folder after running `openmd browser-setup`.
+
 1. Run `openmd browser-setup`. It registers the local connection and opens the extension folder.
 2. Open `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**, click **Load unpacked**, and choose that folder.
 3. Click the Openmd icon on any page to save it. Select several tabs to save them all, or right-click a selection to save every link in it.

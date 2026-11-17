@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -10,6 +11,13 @@ import pytest
 from openmd import browser_host
 from openmd.browser_setup import EXTENSION_DIR, extension_id, write_host_files
 from openmd.cli import main
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Actual non-Windows CLI path runs on macOS/Linux CI')
+def test_browser_setup_reports_unsupported_without_writes(tmp_path, capsys):
+    assert main(['browser-setup']) == 2
+    assert '目前只支持 Windows' in capsys.readouterr().err
+    assert not (tmp_path / 'data').exists()
 
 
 @pytest.fixture(autouse=True)

@@ -38,10 +38,17 @@ jobs:
           /tmp/smoke/bin/pip install dist/*.whl
           /tmp/smoke/bin/openmd --help
           /tmp/smoke/bin/python -c "import importlib.resources as r; assert r.files('openmd').joinpath('browser_extension/vendor/opencli-bridge/background.js').is_file()"
+      - name: Package browser extension separately from PyPI distributions
+        run: python scripts/package_extension.py --output-dir extension-dist
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: extension-dist/
 
   publish:
     needs: build
@@ -64,15 +71,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: extension
+          path: extension-dist/
       - name: Publish GitHub Release with the same distributions
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          sed "s/VERSION/${GITHUB_REF_NAME#v}/g" .github/release-notes.md > release-notes.md
           gh release create "$GITHUB_REF_NAME" \
-            --verify-tag --generate-notes --title "Openmd $GITHUB_REF_NAME" \
-            dist/*.whl dist/*.tar.gz
+            --verify-tag --notes-file release-notes.md --title "Openmd $GITHUB_REF_NAME" \
+            dist/*.whl dist/*.tar.gz extension-dist/*.zip

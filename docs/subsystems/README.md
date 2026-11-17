@@ -69,18 +69,23 @@ doctor / runlog 提示准备命令，不自动写入多 GB 副本。
 runlog 的 `asr_execution.model_origin` 为 `prepared` / `original`，并提供
 `prepare_recommended` 与内存门槛数值；不输出模型绝对路径。
 
-Qwen3 在导入推理依赖前比较可用物理内存与预计峰值加余量。默认 prepared 峰值
-至少 2304 MiB、原模型至少 5632 MiB（均随最大分片增加），余量 1024 MiB；这些基于
-Windows 加载实测，是保守估计，不能保证所有设备/驱动/音频均不超限。
+Qwen3 在导入推理依赖前比较可用物理内存与预计峰值，只有低于峰值才拒绝。
+默认 prepared 峰值至少 2304 MiB、原模型至少 5632 MiB（均随最大分片增加）。
+余量默认 1024 MiB，仅在可用内存低于峰值加余量时给出 `asr_memory_tight` 警告，
+不会阻断；runlog 保留硬门槛 `memory_required_bytes`、警告门槛
+`memory_warning_threshold_bytes` 与警告代码。估计来源与实测回执见
+[本地 ASR 内存测量](../benchmarks/asr/local-memory.md)；不能保证所有设备/驱动/音频均不超限。
 `asr_insufficient_memory` 表示应关闭其他程序或明确选择云端；不会自动上传音频，
 `asr.auto` 遇到该错误不会再回退加载 Whisper。可用上面的本机配置，或
 `OPENMD_ASR_ORIGINAL_PEAK_MB` / `OPENMD_ASR_PREPARED_PEAK_MB` /
 `OPENMD_ASR_MARGIN_MB` 覆盖估计与余量（正整数 MiB）。Linux / Windows 使用本机
 系统接口测可用内存；其他系统需要 ASR extra 中的 psutil，探测失败也拒绝加载。
 
-`asr.auto` 的语言识别预加载也先守门：默认预计峰值至少 2560 MiB，加同一余量，
+`asr.auto` 用 Whisper `large-v3-turbo` 做语言识别，预加载也先守门：默认预计峰值
+至少 2496 MiB，同一余量仅警告，
 并随该语言模型二进制大小增加；可由 `asr_memory.language_probe_peak_mb` 或
-`OPENMD_ASR_LANGUAGE_PROBE_PEAK_MB` 调整。语言识别阶段的内存拒绝同样是终止错误。
+`OPENMD_ASR_LANGUAGE_PROBE_PEAK_MB` 调整。语言识别阶段的内存拒绝同样是终止错误；
+它的数值及警告独立保存在 runlog `asr_execution.language_probe_memory`，不会被后续 Qwen3 数值覆盖。
 
 入口：`runtime/prepared_models.py`、`runtime/asr_memory.py`；回归：
 `python -m pytest tests/test_prepared_models.py tests/test_runtime_models.py tests/test_asr_execution_metrics.py`。

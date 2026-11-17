@@ -23,7 +23,7 @@ from openmd.core.secrets import sanitize_error_summary
 from openmd.runtime.models import ModelNotFoundError, model_label, offline_model_loading, require_model, resolve_model
 from openmd.runtime.tempdirs import owned_temporary_directory
 from openmd.runtime.interpreters import run_interruptibly
-from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory
+from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory, memory_warning_notes
 from openmd.runtime.prepared_models import preparation_status, select_model
 
 DEFAULT_MODEL = "Qwen/Qwen3-ASR-1.7B"
@@ -107,6 +107,7 @@ class Qwen3ASRBackend(ASRBackend):
             source_level="asr",
             backend=self.name,
             source_notes=[
+                *memory_warning_notes(self._run_metadata),
                 "Qwen3-ASR transcribed a local audio file in VAD-bounded chunks.",
                 "Each timestamp is the start of a chunk, not of a sentence.",
                 "Raw audio file was referenced, not copied into the package.",

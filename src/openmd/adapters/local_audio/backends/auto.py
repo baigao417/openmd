@@ -29,7 +29,7 @@ from openmd.adapters.local_audio.backends.faster_whisper import (
 from openmd.adapters.local_audio.backends.qwen3_asr import Qwen3ASRBackend
 from openmd.core.models import TranscriptResult
 from openmd.runtime.models import ModelNotFoundError, model_label, offline_model_loading, require_model, resolve_model
-from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory
+from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory, memory_warning_notes
 
 DEFAULT_ENGLISH_MODEL = "large-v3-turbo"
 DEFAULT_GENERAL_MODEL = "large-v3"
@@ -43,6 +43,7 @@ class AutoASRBackend(ASRBackend):
         self.general_model = os.getenv("OPENMD_FASTER_WHISPER_MODEL") or DEFAULT_GENERAL_MODEL
         self.chinese_engine = os.getenv("OPENMD_ASR_AUTO_ZH_ENGINE") or "qwen3"
         self._qwen3 = qwen3
+        self._probe_memory: dict[str, Any] = {}
 
     def execution_config(self) -> dict[str, Any]:
         return {
@@ -60,6 +61,7 @@ class AutoASRBackend(ASRBackend):
         return importlib.util.find_spec("faster_whisper") is not None
 
     def transcribe(self, path: Path) -> TranscriptResult:
+        self._probe_memory = {}
         source_path = path.expanduser()
         if not source_path.is_file() or not self.is_available():
             return MissingASRBackend(self.name).transcribe(source_path)
@@ -70,6 +72,7 @@ class AutoASRBackend(ASRBackend):
 
             result = failed_result(self.name, "asr_insufficient_memory", exc)
             result.metadata.update(exc.metrics)
+            result.metadata["language_probe_memory"] = exc.metrics
             return result
         except ModelNotFoundError as exc:
             from openmd.runtime.asr import failed_result
@@ -108,7 +111,7 @@ class AutoASRBackend(ASRBackend):
     def detect_language(self, path: Path) -> tuple[str | None, float | None]:
         model_path = require_model(self.english_model, family="whisper")
         largest = max((p.stat().st_size for p in model_path.glob("model.bin")), default=0)
-        check_memory("language_probe", largest_shard_bytes=largest)
+        self._probe_memory = check_memory("language_probe", largest_shard_bytes=largest)
         _load_torch_first()
         _prepare_windows_dll_paths()
         from faster_whisper import WhisperModel
@@ -146,8 +149,9 @@ class AutoASRBackend(ASRBackend):
         }
         return replace(
             result,
-            source_notes=[*result.source_notes, f"asr.auto routed this audio: {reason}."],
-            metadata={**result.metadata, "asr_route": route},
+            source_notes=[*result.source_notes, *["Language probe: " + note for note in memory_warning_notes(self._probe_memory)],
+                          f"asr.auto routed this audio: {reason}."],
+            metadata={**result.metadata, "asr_route": route, "language_probe_memory": self._probe_memory},
         )
 
 

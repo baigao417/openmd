@@ -176,11 +176,12 @@ def test_memory_configuration_validation(tmp_path, monkeypatch):
 def test_memory_guard_reports_boundaries(monkeypatch):
     from openmd.runtime import asr_memory
     monkeypatch.setattr(asr_memory, "available_memory_bytes", lambda: 3328 * 1024**2)
-    assert asr_memory.check_memory("prepared")["memory_required_bytes"] == 3328 * 1024**2
+    assert asr_memory.check_memory("prepared")["memory_required_bytes"] == 2304 * 1024**2
     monkeypatch.setenv("OPENMD_ASR_MARGIN_MB", "2048")
-    with pytest.raises(asr_memory.InsufficientASRMemory) as error:
-        asr_memory.check_memory("prepared")
-    assert error.value.metrics["memory_required_bytes"] == 4352 * 1024**2
+    report = asr_memory.check_memory("prepared")
+    assert report["memory_required_bytes"] == 2304 * 1024**2
+    assert report["memory_warning_threshold_bytes"] == 4352 * 1024**2
+    assert report["memory_warning"] == "asr_memory_tight"
 
 
 def test_larger_prepared_shards_raise_memory_estimate(monkeypatch):

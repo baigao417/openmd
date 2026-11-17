@@ -232,8 +232,16 @@ def sanitize_asr_execution(value: Any) -> dict[str, Any]:
 
     keys = {"elapsed_seconds", "inference_seconds", "batch_size_requested", "batch_size_effective",
             "batch_oom_retries", "torch_peak_allocated_bytes", "torch_peak_reserved_bytes",
-            "memory_available_bytes", "memory_required_bytes", "memory_estimated_peak_bytes", "memory_margin_bytes"}
+            "memory_available_bytes", "memory_required_bytes", "memory_estimated_peak_bytes", "memory_margin_bytes",
+            "memory_warning_threshold_bytes"}
     result = {key: value[key] for key in keys if key in value and number(value[key])}
+    if value.get("memory_warning") == "asr_memory_tight":
+        result["memory_warning"] = "asr_memory_tight"
+    probe = value.get("language_probe_memory")
+    if isinstance(probe, dict):
+        safe_probe = sanitize_asr_execution({key: probe[key] for key in (*keys, "memory_warning") if key in probe and key.startswith("memory_")})
+        if safe_probe:
+            result["language_probe_memory"] = safe_probe
     if value.get("model_origin") in {"prepared", "original"}:
         result["model_origin"] = value["model_origin"]
     if type(value.get("prepare_recommended")) is bool:

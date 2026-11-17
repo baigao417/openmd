@@ -27,7 +27,7 @@ flowchart LR
 | `core/detector.py` / `adapters/registry.py` | 识别输入，解析 `ContentItem`；平台 adapter 负责解析，runtime provider 负责网络提取 |
 | `routing/declarations.json` / `routing/loader.py` | bundled 路由、卡片、能力、合集默认声明的唯一源 / 校验与有效投影；本机 overlay 只调整用户配置 |
 | `backends/registry.py` / `backends/executor.py` | 按 gates 构造 provider、执行 fallback；每次失败留证据，内容结论优先于工具缺失 |
-| `runtime/media.py` / `runtime/asr.py` / `ocr/` | 临时媒体下载、本机模型工作进程、OCR；不自动下载模型，不自动开启云服务 |
+| `runtime/media.py` / `runtime/asr.py` / `runtime/tingwu.py` / `ocr/` | 临时媒体下载、本机模型工作进程、显式授权的听悟音频后端、OCR；不自动下载模型，不自动开启云服务 |
 | `core/content_validation.py` | 拒收错误页、空壳、元数据冒充正文；合法引用必须有近邻正例 |
 | `core/renderer.py` / `output.py` / `package_writer.py` / `runlog.py` | 统一原文渲染、落盘与身份/恢复记录；`--package` 才输出结构化包 |
 

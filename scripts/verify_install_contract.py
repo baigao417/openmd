@@ -14,7 +14,7 @@ import zipfile
 
 from openmd.runtime.interpreters import run_interruptibly
 
-REQUIRED = {'openmd/cli.py', 'openmd/cli_items.py', 'openmd/core/plugins.py', 'openmd/routing/declarations.json', 'openmd/routing/routes.json', 'openmd/routing/cards/builtin.json', 'openmd/runtime/opencli_adapters.py'}
+REQUIRED = {'openmd/cli.py', 'openmd/cli_items.py', 'openmd/core/plugins.py', 'openmd/routing/declarations.json', 'openmd/routing/routes.json', 'openmd/routing/cards/builtin.json', 'openmd/runtime/opencli_adapters.py', 'openmd/runtime/tingwu.py', 'openmd/runtime/tingwu_bridge.mjs'}
 
 
 def verify(wheel: Path, wheelhouse: Path | None = None) -> dict:
@@ -58,7 +58,7 @@ def verify(wheel: Path, wheelhouse: Path | None = None) -> dict:
             if done.returncode or not payload.get('ok') or not artifacts or not all(p.is_relative_to(output) and 'Mock' in p.read_text(encoding='utf-8-sig') for p in artifacts):
                 raise ValueError('wheel_final_artifact_contract_failed')
             # Verify adapter resources from the installed wheel, not the checkout.
-            script = 'from openmd.runtime.opencli_adapters import install_xiaoe_adapters; p=install_xiaoe_adapters(); assert (p/"play-url.js").is_file()'
+            script = 'from openmd.runtime.opencli_adapters import install_xiaoe_adapters; from importlib.resources import files; p=install_xiaoe_adapters(); assert (p/"play-url.js").is_file(); assert files("openmd.runtime").joinpath("tingwu_bridge.mjs").is_file()'
             done = run_interruptibly([str(python), '-I', '-c', script], cwd=cwd, env=env, capture_output=True, timeout=30)
             if done.returncode:
                 raise ValueError('wheel_adapter_resources_missing')

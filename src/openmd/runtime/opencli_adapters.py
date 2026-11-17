@@ -69,3 +69,23 @@ def run_xiaoe(args: list[str], *, timeout: int = 300) -> tuple[int, str, str]:
         return done.returncode, done.stdout, done.stderr
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         return 1, "", f"xiaoe_dispatch_failed: {type(exc).__name__}"
+
+
+def run_tingwu(audio: Path, *, duration: float, timeout: int = 1800) -> tuple[int, str, str]:
+    """Run only the packaged cloud audio bridge; never discover legacy plugins."""
+    try:
+        host = Path(os.environ['OPENMD_XIAOE_HOST']) if os.environ.get('OPENMD_XIAOE_HOST') else managed_package_root()
+        if json.loads((host / 'package.json').read_text(encoding='utf-8'))['version'] != OPENCLI_VERSION:
+            return 1, '{"ok":false,"error_code":"tingwu_protocol_invalid"}', ''
+        node = node_dir()
+        if node is None:
+            return 1, '{"ok":false,"error_code":"tingwu_browser_unavailable"}', ''
+        env = {**os.environ, 'NODE_OPTIONS': '--max-old-space-size=1536',
+               'OPENCLI_CONFIG_DIR': str(data_directory() / 'opencli'), 'OPENCLI_CLOSE_OWNED_TAB': '1'}
+        command = [str(node / ('node.exe' if os.name == 'nt' else 'node')),
+            str(Path(__file__).with_name('tingwu_bridge.mjs')), str(host), str(audio), str(duration), str(timeout)]
+        done = run_interruptibly(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout + 30, env=env)
+        # Third-party diagnostic streams are intentionally never returned.
+        return done.returncode, done.stdout, ''
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return 1, '{"ok":false,"error_code":"tingwu_browser_unavailable"}', ''

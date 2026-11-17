@@ -27,7 +27,7 @@ transcripts and machine paths are not included in the public package.
 | --- | ---: | ---: | --- |
 | Original Qwen3-ASR-1.7B | 5632 | 5389.684 | Round7 `short-receipt.json`, historical short real CLI. New original attempts were refused, so this is a historical baseline. |
 | Prepared Qwen3-ASR-1.7B | 2304 | 2223.660 | Round8 `long-prepared-receipt.json`, 35-minute real CLI; `clip-prepared-fixed-receipt.json` observed 1889.301 MiB. |
-| Automatic language probe | 2496 | 2248.270 full probe; 2264.098 earlier model load | Round8 `samples/rework-auto-clip/phases.jsonl` (`language_probe_full`), and earlier `samples/auto-prepared/phases.jsonl` (`load_whisper`). Estimate is the higher observation plus about 10%, rounded up to 64 MiB. |
+| Automatic language probe | 2496 | 2248.270 initial full probe; 2311.344 committed-code full probe | Round8 `samples/rework-auto-clip/phases.jsonl` and `samples/rework-auto-clip-final/phases.jsonl` (`language_probe_full`). The first estimate used the earlier 2264.098 MiB load observation plus about 10%, rounded up to 64 MiB; the later full phase retains about 8% headroom. |
 
 The probe loads **faster-whisper / CTranslate2 `large-v3-turbo`**, uses CUDA
 `int8_float16` on this machine, calls `transcribe(vad_filter=True, beam_size=1)`
@@ -37,7 +37,7 @@ includes torch/CTranslate2 imports, construction, language detection and model
 release. The Qwen3 part then uses the existing FunASR VAD and prepared weights.
 
 The earlier 2560 MiB probe floor was conservative relative to the 2264 MiB load
-measurement; the full phase measurement supports a 2496 MiB floor. Earlier
+measurement; the full phase measurements support a 2496 MiB floor. Earlier
 peak+1024 hard refusal was an availability regression and is superseded by the
 peak-only rule above. A normal-memory default auto run succeeded starting with
 3003.875 MiB available, without closing programs or overriding estimates.

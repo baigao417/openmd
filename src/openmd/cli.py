@@ -259,7 +259,6 @@ def main(argv: list[str] | None = None) -> int:
         return int(exc.code) if isinstance(exc.code, int) else 1
     from openmd.runtime.managed_tools import activate as activate_managed_tools
 
-    activate_managed_tools()  # put Openmd's own opencli/node on PATH if it was installed
     if getattr(args, "command", None) != "doctor":
         from openmd.runtime.tempdirs import sweep_at_startup
 
@@ -289,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     try:
+        if getattr(args, "command", None) != "doctor":
+            activate_managed_tools()  # activate within the normal CLI error boundary
         return args.func(args)
     except (Exception, KeyboardInterrupt) as exc:
         if isinstance(exc, KeyboardInterrupt):

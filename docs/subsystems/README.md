@@ -41,6 +41,12 @@
 - 入口：`src/openmd/runtime/asr.py`、`asr_worker.py`、`src/openmd/ocr/`；体检 `src/openmd/core/doctor.py`，人话视图 `src/openmd/doctor_view.py`。
 - 合同：模型缺失时明确提示，不自动从网络下载模型。
 
+托管 OpenCLI 可通过本机位置配置 `tools.opencli.root` 放到其他目录。
+该值指向包含 `node_modules` 的安装根目录；未配置时仍使用
+`<data>/tools/opencli`。偏好文件和浏览器会话位置保持各自的数据目录。
+移动已有安装后须校验文件并运行 doctor；本配置不会自动迁移、删除或更新工具。
+模型副本的位置另由下面的 `asr_models.prepared_root` 配置，不依赖工具根目录。
+
 ### 本地 Qwen3 模型准备与内存守门
 
 `openmd asr prepare-models` 只处理已安装模型，默认将大于 512 MiB 的 safetensors

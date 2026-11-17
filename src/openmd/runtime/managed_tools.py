@@ -22,6 +22,7 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
+from openmd.core.local_config import load_local_config
 from openmd.core.preferences import data_directory
 from openmd.runtime.interpreters import run_interruptibly
 
@@ -48,6 +49,13 @@ def _npm_cli(node: Path) -> Path | None:
 
 
 def managed_root() -> Path:
+    tools = load_local_config().get("tools", {})
+    if "opencli" in tools:
+        setting = tools["opencli"]
+        if (not isinstance(setting, dict) or set(setting) != {"root"}
+                or not isinstance(setting["root"], str) or not setting["root"].strip()):
+            raise ValueError("managed_opencli_location_invalid")
+        return Path(setting["root"]).expanduser().resolve()
     return data_directory() / "tools" / "opencli"
 
 

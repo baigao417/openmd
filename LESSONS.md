@@ -17,6 +17,13 @@
 
 ---
 
+## 2026-11-17 测试隔离：临时数据目录仍会被本机工具位置覆盖
+- 现象：全量 pytest 在保留本机配置的开发 checkout 中失败，托管工具测试尝试创建真实运行时目录。
+- 原因：测试只设置临时 OPENMD_DATA_DIR，本机 tools.opencli.root 优先级更高；外部隔离环境下的全绿掩盖了默认测试入口的问题。
+- 规则：测试收集和每个测试默认隔离配置、用户目录、运行时与缓存；配置测试显式使用临时 JSON；验收须从普通 shell 运行并比较真实运行时的修改时间与哈希。
+- 证据：tests/test_machine_isolation.py；tests/conftest.py；tests/test_open_source_ux.py。
+- 同类出现：2026-11-15, 2026-11-17
+
 ## 2026-11-17 发布：PyPI 成功不代表 GitHub Release 已创建
 - 现象：两个已发布版本有 tag 和 PyPI 文件，但 GitHub Release 页为空。
 - 原因：release.yml 只构建并发布 PyPI，没有创建 GitHub Release 的步骤。

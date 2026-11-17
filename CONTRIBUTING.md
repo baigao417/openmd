@@ -40,6 +40,11 @@ Openmd 只做一件事：**把链接变成干净的 Markdown 原文 / 逐字稿*
 3. 按 [PR 模板](.github/PULL_REQUEST_TEMPLATE.md) 填写：改了什么、先失败的测试、真实样本证据、没验证什么。
 4. CI 会在 Windows、macOS、Linux × Python 3.10 / 3.13 上跑全量 `pytest`。CI 不联网抓取真实平台，所以真实样本证据需要你在 PR 描述里贴出来。
 
+测试在收集阶段和每个测试中自动使用临时配置、用户目录、运行时与模型缓存，
+不会读取 checkout 的 `out/local-config.json`。需要配置的测试应在 `tmp_path` 下
+创建合法的 `openmd.local/v1` JSON，再用 `monkeypatch.setenv("OPENMD_CONFIG", str(path))`
+显式选择它；不要把测试指向真实用户配置或运行时目录。
+
 ### 跨平台约定
 
 - 换行统一 LF（`.gitattributes` 已配置；只有 `.ps1/.cmd/.bat` 是 CRLF），编辑器设置见 `.editorconfig`。

@@ -100,6 +100,7 @@ def register_backend_providers(registry: Any, options: Any) -> None:
             OpenCliXiaoeTranscriptProvider(
                 allow_local_asr=bool(getattr(options, "enable_asr_backends", False)),
                 allow_media_download=bool(getattr(options, "enable_media_download_backends", False)),
+                allow_cloud=bool(getattr(options, "enable_cloud_backends", False)),
             ),
         )
     if requested in {None, OPENCLI_XIAOE_CONTENT_BACKEND}:
@@ -171,17 +172,18 @@ class OpenCliXiaoeTranscriptProvider:
 
     def __init__(self, *, runner: OpenCliRunner | None = None, timeout: int = XIAOE_TRANSCRIPT_TIMEOUT,
                  allow_local_asr: bool = False, allow_media_download: bool = False,
-                 local_asr: Any | None = None, downloader: Any | None = None) -> None:
+                 local_asr: Any | None = None, downloader: Any | None = None, allow_cloud: bool = False) -> None:
         self._runner = runner or _run_xiaoe
         self.timeout = timeout
         self.allow_local_asr = allow_local_asr
         self.allow_media_download = allow_media_download
         self._local_asr = local_asr
         self._downloader = downloader or download_audio
+        self.allow_cloud = allow_cloud
 
     def descriptor(self) -> BackendDescriptor:
         return BackendDescriptor(name=self.name, layer="media ASR", provider="opencli.xiaoe",
-            description="Xiaoe media discovery only; Openmd owns download and local ASR. Openmd does not own or store credentials. Cloud services are never selected automatically.",
+            description="Xiaoe media discovery; core download and ASR. Openmd does not own or store credentials. Tingwu requires explicit cloud permission or local long-course opt-in; public default remains local.",
             capabilities=(BackendCapability(platforms=("xiaoe",), source_types=("video", "audio"), input_types=("single",), source_levels=("media_asr",), requires_network=True, requires_credentials=False,
                 optional_config=("opencli", "browser_session", "user_accessible_session", "timeout")),))
 
@@ -213,22 +215,29 @@ class OpenCliXiaoeTranscriptProvider:
             locator = record.get("m3u8_url", "")
             if not isinstance(locator, str) or not locator.startswith(("https://", "http://")):
                 return _failed(self.name, item, "media_not_found", "No media found for this resource; check access in the browser.")
-            backend = self._local_asr
-            if backend is None:
-                from openmd.runtime.asr import get_asr_backend
-                backend = get_asr_backend("asr.auto")
+            from openmd.core.local_config import load_local_config
+            from openmd.runtime.tingwu import TingwuASRBackend, probe_audio_duration, select_xiaoe_asr
+            setting = load_local_config().get('xiaoe_long_asr', {})
             with owned_temporary_directory(prefix="openmd-xiaoe-") as directory:
                 audio = Path(directory) / "audio.mp3"
                 start = time.monotonic()
                 origin = urlsplit(item.url)
-                self._downloader(locator, audio, referer=f"{origin.scheme}://{origin.netloc}/", timeout=min(self.timeout, 600))
+                transport = self._downloader(locator, audio, referer=f"{origin.scheme}://{origin.netloc}/", timeout=min(self.timeout, 600))
                 stages["download_audio"] = round(time.monotonic() - start, 3)
+                # Catalogue durations can describe a removed full lesson while
+                # the actual media is a five-second notice. Probe downloaded audio.
+                selection = select_xiaoe_asr(probe_audio_duration(audio), setting, allow_cloud=self.allow_cloud)
+                if selection['selected_backend'] == 'asr.tingwu':
+                    backend = TingwuASRBackend(allow_cloud=True, timeout=min(self.timeout, 1800))
+                else:
+                    from openmd.runtime.asr import get_asr_backend
+                    backend = self._local_asr or get_asr_backend('asr.auto')
                 start = time.monotonic()
                 result = backend.transcribe(audio)
                 stages["asr"] = round(time.monotonic() - start, 3)
             return validate_extraction_content(replace(result, backend=self.name, source_level="media_asr" if result.has_usable_text else result.source_level, title=record.get("title") or item.title,
-                source_notes=[*result.source_notes, "Openmd downloaded temporary audio and used local ASR; no cloud service was invoked."],
-                metadata={**sanitize_asr_execution(result.metadata), "asr_backend": result.backend, "transcript_provider": result.backend, "stage_seconds": stages,
+                source_notes=[*result.source_notes, f"ASR selection: {selection['selected_backend']} ({selection['reason']})."],
+                metadata={**sanitize_asr_execution(result.metadata), **sanitize_asr_execution({'media_transport':transport}), "asr_selection": selection, "asr_backend": result.backend, "transcript_provider": result.backend, "stage_seconds": stages,
                           "media_method": record.get("method") if record.get("method") in {"api_direct", "alive_lookback_api", "perf_api", "vue_search"} else "unknown",
                           "navigation_seconds": record.get("navigation_seconds") if isinstance(record.get("navigation_seconds"), (int, float)) else None}))
         except (ValueError, TypeError, KeyError, IndexError, RuntimeError, OSError) as exc:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -58,8 +59,16 @@ def load_local_config() -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
         raise ValueError("local_config_schema: expected openmd.local/v1")
     _check_keys(value)
-    if set(value) - {"schema", "asr_python", "qwen3_batch_size", "ocr_python", "ollama_url", "ocr", "soffice", "model_roots", "tools", "route_overlay"}:
+    if set(value) - {"schema", "asr_python", "qwen3_batch_size", "ocr_python", "ollama_url", "ocr", "soffice", "model_roots", "tools", "route_overlay", "xiaoe_long_asr"}:
         raise ValueError("local_config_unknown_field")
+    if "xiaoe_long_asr" in value:
+        setting = value["xiaoe_long_asr"]
+        if (not isinstance(setting, dict) or set(setting) - {"enabled", "threshold_seconds"}
+                or type(setting.get("enabled")) is not bool
+                or type(setting.get("threshold_seconds", 600)) not in (int, float)
+                or not math.isfinite(setting.get("threshold_seconds", 600))
+                or not 0 < setting.get("threshold_seconds", 600) <= 86400):
+            raise ValueError("local_config_xiaoe_long_asr_invalid")
     if "qwen3_batch_size" in value:
         if type(value["qwen3_batch_size"]) is not int:
             raise ValueError("local_config_qwen3_batch_size_invalid: expected an integer")

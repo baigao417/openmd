@@ -336,6 +336,10 @@ def _compact_execution_fingerprint(
     modalities_value = raw_meta.get("modalities")
     modalities = tuple(str(value) for value in modalities_value) if isinstance(modalities_value, list) else (item.source_type,)
     effective_config: dict[str, object] = {}
+    if item.platform == 'xiaoe':
+        from openmd.core.local_config import load_local_config
+        effective_config['xiaoe_long_asr'] = load_local_config().get('xiaoe_long_asr', {'enabled': False})
+        effective_config['explicit_cloud_gate'] = bool(getattr(args, 'enable_cloud_backends', False))
     if item.platform in {"pdf", "screenshot"} and any(backend.startswith(("ocr.", "pdf.")) for backend in provider_chain):
         from openmd.ocr.config import settings
 

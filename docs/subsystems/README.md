@@ -41,6 +41,34 @@
 - 入口：`src/openmd/runtime/asr.py`、`asr_worker.py`、`src/openmd/ocr/`；体检 `src/openmd/core/doctor.py`，人话视图 `src/openmd/doctor_view.py`。
 - 合同：模型缺失时明确提示，不自动从网络下载模型。
 
+### 小鹅通长课程的显式听悟授权
+
+公开默认仍使用本地 ASR。用户可以在当前有效的本机位置配置中加入一个键
+（通常为 `~/.openmd/local.json`；开发 checkout 的 `out/local-config.json` 优先）：
+
+```json
+"xiaoe_long_asr": {"enabled": true, "threshold_seconds": 600}
+```
+
+这是一项持续的 **cloud 上传授权**，只适用于小鹅通已由 core 下载的音频。
+设置 `enabled: false` 或移除该键即可撤销；单次 `--enable-cloud-backends` 也是明确授权。
+音频经 ffprobe 实测时长达到阈值才选择 `asr.tingwu`；短音频、未知时长或未授权时使用本地。
+目录时长不参与选择，因为已删除的长课可能实际只返回 5 秒提示音。
+runlog 的 `asr_execution.asr_selection` 给出后端、理由、实测时长与阈值；
+compact package 的配置指纹包含该授权设置和单次 cloud gate。
+
+入口：`runtime/tingwu.py`、打包的 `runtime/tingwu_bridge.mjs`；经 pinned OpenCLI
+Browser Bridge 会话上传、查询唯一上传名的记录、导出原文 API 段落，并核对至少 98% 音频覆盖。
+不读取或保存凭证，不启用旧转录插件；失败返回明确错误，后端内部不回退到其他云或本地 ASR。
+需要浏览器已登录听悟；登录缺失或 Bridge 不可达会失败，不代表其他平台不可达。
+
+Xiaoe 媒体下载的简单有限 MPEG-TS HLS 使用最多 4 个网络请求并发预取，然后串行抽音频；
+ASR 在下载完成后开始。AES-128 内容密钥仅在内存，core 生成的离线播放列表经 stdin
+传给禁用网络协议的 FFmpeg。复杂 HLS（变体、fMP4、byte range、discontinuity 等）保留原 FFmpeg 路线。
+该优化不修改系统代理；原始远端播放列表始终不能调用本机文件协议。
+
+验证：`python -m pytest tests/test_tingwu_asr.py tests/test_runtime_media.py tests/test_xiaoe_media.py tests/test_local_config.py`。
+
 ## 9. 浏览器插件
 - 入口：`src/openmd/browser_extension/`（MV3 插件）、`browser_setup.py`（注册 Native Messaging、复制插件到 `~/.openmd/browser/extension`）、`browser_host.py`（后台队列）。
 - 合同：不开本地端口，只有固定插件 ID 能连；目前仅 Windows。

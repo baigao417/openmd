@@ -238,7 +238,7 @@ def sanitize_asr_execution(value: Any) -> dict[str, Any]:
         result["stage_seconds"] = {key: stages[key] for key in ("media_discovery", "download_audio", "asr") if key in stages and number(stages[key])}
     if number(value.get("navigation_seconds")):
         result["navigation_seconds"] = value["navigation_seconds"]
-    for key in ("duration", "segment_count"):
+    for key in ("duration", "segment_count", "coverage_end_seconds"):
         if key in value and number(value[key]):
             result[key] = value[key]
     for key in ("model", "model_size", "device", "language", "detected_language"):
@@ -247,8 +247,26 @@ def sanitize_asr_execution(value: Any) -> dict[str, Any]:
                                        or (key == "model" and label == "Qwen/Qwen3-ASR-1.7B")):
             result[key] = label
     backend = value.get("asr_backend")
-    if backend in {"asr.auto", "asr.qwen3", "asr.faster_whisper"}:
+    if backend in {"asr.auto", "asr.qwen3", "asr.faster_whisper", "asr.tingwu"}:
         result["asr_backend"] = backend
+    selection = value.get('asr_selection')
+    if isinstance(selection, dict):
+        selected = selection.get('selected_backend')
+        reason = selection.get('reason')
+        if selected in {'asr.auto', 'asr.tingwu'} and reason in {'cloud_not_authorized', 'duration_unknown', 'below_threshold', 'explicit_cloud_gate', 'local_long_course_opt_in'}:
+            result['asr_selection'] = {'selected_backend': selected, 'reason': reason}
+            for key in ('duration_seconds', 'threshold_seconds'):
+                if number(selection.get(key)):
+                    result['asr_selection'][key] = selection[key]
+    transport = value.get('media_transport')
+    if isinstance(transport, dict) and transport.get('method') in {'hls_prefetch', 'ffmpeg'}:
+        result['media_transport'] = {'method':transport['method']}
+        for key in ('segments', 'concurrency', 'network_bytes', 'network_seconds', 'decode_seconds'):
+            if number(transport.get(key)):
+                result['media_transport'][key] = transport[key]
+    phases = value.get('cloud_phase_seconds')
+    if isinstance(phases, dict):
+        result['cloud_phase_seconds'] = {key:phases[key] for key in ('navigate','open_upload','upload_file','submit','poll') if number(phases.get(key))}
     route = value.get("asr_route")
     if isinstance(route, dict):
         result.update(sanitize_asr_execution({

@@ -22,6 +22,7 @@ def _module_available(name: str) -> bool:
 def _media_diagnostics() -> dict[str, Any]:
     from openmd.runtime.interpreters import select_asr_runtime
     from openmd.runtime.models import configured_models
+    from openmd.runtime.prepared_models import preparation_status
 
     runtime = select_asr_runtime()
     ffmpeg_available = shutil.which("ffmpeg") is not None
@@ -29,11 +30,17 @@ def _media_diagnostics() -> dict[str, Any]:
     next_action = "Local CUDA ASR runtime and models are ready" if ready else runtime.reason
     if not ffmpeg_available:
         next_action = "Install ffmpeg and make it available on PATH, then rerun openmd doctor --profile media"
+    models = configured_models()
+    qwen = models.get("qwen3-asr-1.7b")
+    preparation = preparation_status(qwen.path, "qwen3-asr-1.7b") if qwen and qwen.path else {}
+    if preparation.get("prepare_recommended"):
+        next_action += "; reduce local model loading memory: openmd asr prepare-models (writes a separate copy)"
     return {
         "ffmpeg_on_path": ffmpeg_available,
         "local_asr_dependency": _module_available("faster_whisper"),
         "asr_runtime": runtime.as_dict(),
-        "models": {key: model.as_dict() for key, model in configured_models().items()},
+        "models": {key: model.as_dict() for key, model in models.items()},
+        "model_preparation": preparation,
         "ready": ready,
         "next_action": next_action,
     }

@@ -231,8 +231,15 @@ def sanitize_asr_execution(value: Any) -> dict[str, Any]:
         return type(v) in (int, float) and math.isfinite(v) and v >= 0
 
     keys = {"elapsed_seconds", "inference_seconds", "batch_size_requested", "batch_size_effective",
-            "batch_oom_retries", "torch_peak_allocated_bytes", "torch_peak_reserved_bytes"}
+            "batch_oom_retries", "torch_peak_allocated_bytes", "torch_peak_reserved_bytes",
+            "memory_available_bytes", "memory_required_bytes", "memory_estimated_peak_bytes", "memory_margin_bytes"}
     result = {key: value[key] for key in keys if key in value and number(value[key])}
+    if value.get("model_origin") in {"prepared", "original"}:
+        result["model_origin"] = value["model_origin"]
+    if type(value.get("prepare_recommended")) is bool:
+        result["prepare_recommended"] = value["prepare_recommended"]
+        if value["prepare_recommended"]:
+            result["prepare_command"] = "openmd asr prepare-models"
     stages = value.get("stage_seconds")
     if isinstance(stages, dict):
         result["stage_seconds"] = {key: stages[key] for key in ("media_discovery", "download_audio", "asr") if key in stages and number(stages[key])}

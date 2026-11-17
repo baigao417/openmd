@@ -23,6 +23,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
+    from openmd.runtime.prepared_models import cmd_prepare_models
+    asr = subparsers.add_parser("asr", description="Prepare existing local ASR weights without downloading models")
+    asr_commands = asr.add_subparsers(dest="asr_command", required=True)
+    prepare = asr_commands.add_parser("prepare-models", description="Write a verified small-shard copy; originals are preserved")
+    prepare.add_argument("--model", help="existing model directory or model ID; defaults to OPENMD_QWEN3_MODEL or Qwen/Qwen3-ASR-1.7B")
+    prepare.add_argument("--max-shard-mb", type=int, default=512, help="maximum file size in MiB, including header (default 512)")
+    prepare.add_argument("--prepared-root", help="prepared model root; configure asr_models.prepared_root to load it later")
+    prepare.set_defaults(func=cmd_prepare_models)
+
     # Advanced commands are registered without help text so the daily help stays short;
     # they keep working exactly as before.
     ingest = subparsers.add_parser("ingest", description="ingest one input")

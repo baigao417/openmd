@@ -65,4 +65,7 @@ def render(payload: dict[str, Any]) -> str:
     lines += ["", "日常使用：openmd \"链接\"     脚本 / Agent：openmd \"链接\" -o <目录>"]
     if missing:
         lines.append(f"{missing} 项可选能力未就绪；不装也能用，遇到对应内容时会提示。机器可读结果：openmd doctor --json")
+    preparation = (payload.get("profile_diagnostics") or {}).get("model_preparation") or {}
+    if preparation.get("prepare_recommended"):
+        lines.append("本机模型大分片会增加加载内存；运行 openmd asr prepare-models 准备独立小分片副本（原模型保留）。")
     return "\n".join(lines)

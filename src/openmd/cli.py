@@ -87,7 +87,7 @@ class OutputWriteResult:
     package_operation: str | None = None
 
 
-ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup")
+ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr")
 GO_DAILY_OPTIONS = {"help", "url", "save_to", "video", "raw", "json", "verbose"}
 
 
@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_interactive():
             actual = ["go"]
-    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup"} and not actual[0].startswith("-"):
+    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "asr"} and not actual[0].startswith("-"):
         actual.insert(0, "go")
     parser = build_parser()
     try:

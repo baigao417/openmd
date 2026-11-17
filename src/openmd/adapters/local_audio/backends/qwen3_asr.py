@@ -23,6 +23,8 @@ from openmd.core.secrets import sanitize_error_summary
 from openmd.runtime.models import ModelNotFoundError, model_label, offline_model_loading, require_model, resolve_model
 from openmd.runtime.tempdirs import owned_temporary_directory
 from openmd.runtime.interpreters import run_interruptibly
+from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory
+from openmd.runtime.prepared_models import preparation_status, select_model
 
 DEFAULT_MODEL = "Qwen/Qwen3-ASR-1.7B"
 DEFAULT_VAD_MODEL = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
@@ -51,9 +53,10 @@ class Qwen3ASRBackend(ASRBackend):
         self._run_metadata: dict[str, Any] = {}
 
     def execution_config(self) -> dict[str, Any]:
+        resolved = resolve_model(self.model, family="qwen3")
         return {
             "model": model_label(self.model),
-            "model_origin": resolve_model(self.model, family="qwen3").origin,
+            "model_origin": preparation_status(resolved.path, "qwen3-asr-1.7b")["model_origin"] if resolved.path else "original",
             "vad_model": model_label(self.vad_model),
             "vad_origin": resolve_model(self.vad_model, family="vad").origin,
             "local_files_only": True,
@@ -79,6 +82,9 @@ class Qwen3ASRBackend(ASRBackend):
             lines, languages, duration = self._run(source_path)
         except ModelNotFoundError as exc:
             failure = _failed(self.name, "asr_model_missing", exc)
+        except InsufficientASRMemory as exc:
+            failure = _failed(self.name, "asr_insufficient_memory", exc)
+            self._run_metadata.update(exc.metrics)
         except Exception as exc:  # pragma: no cover - dependency/model safety net
             failure = _failed(self.name, "asr_extraction_failed", exc)
         if failure is not None:
@@ -123,6 +129,11 @@ class Qwen3ASRBackend(ASRBackend):
         started = time.monotonic()
         model_path = require_model(self.model, family="qwen3")
         vad_path = require_model(self.vad_model, family="vad")
+        model_path, origin = select_model(model_path, "qwen3-asr-1.7b")
+        largest = max((p.stat().st_size for p in model_path.glob("*.safetensors")), default=0)
+        self._run_metadata.update({"model_origin": origin,
+                                   "prepare_recommended": origin == "original" and largest > 512 * 1024**2})
+        self._run_metadata.update(check_memory(origin, largest_shard_bytes=largest))
         import soundfile
         import torch
         from funasr import AutoModel

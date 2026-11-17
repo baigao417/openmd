@@ -41,6 +41,50 @@
 - 入口：`src/openmd/runtime/asr.py`、`asr_worker.py`、`src/openmd/ocr/`；体检 `src/openmd/core/doctor.py`，人话视图 `src/openmd/doctor_view.py`。
 - 合同：模型缺失时明确提示，不自动从网络下载模型。
 
+### 本地 Qwen3 模型准备与内存守门
+
+`openmd asr prepare-models` 只处理已安装模型，默认将大于 512 MiB 的 safetensors
+权重流式写成独立副本，目录为 `~/.openmd/models/prepared/<label>-<source-id>-v1/`。
+每个文件大小包含 header；名称、shape、dtype 和逐张量 SHA256 校验完成后才原子发布。
+重跑已验证副本不重写；失败、中断或失效副本不会被加载，也不会覆盖现有目录。
+原模型始终保留。单张量无法在标准 safetensors 索引中拆成多个文件；如果某张量
+超过上限，命令会失败并提示所需最小值。部分 Qwen3-ASR-1.7B 权重含约 593.5 MiB
+的单张量，此时可用 `openmd asr prepare-models --max-shard-mb 640`。
+
+可用 `--model <已有目录>` 指定来源，`--prepared-root <目录>` 指定本次输出根目录。
+持续加载自定义位置须同时配置 `asr_models.prepared_root` 或环境变量
+`OPENMD_PREPARED_MODEL_ROOT`；准备命令不会自动改写配置。配置示例：
+
+```json
+{
+  "schema": "openmd.local/v1",
+  "asr_models": {"prepared_root": "~/.openmd/models/prepared"},
+  "asr_memory": {"original_peak_mb": 5632, "prepared_peak_mb": 2304, "margin_mb": 1024}
+}
+```
+
+prepared 副本须通过 receipt、来源文件指纹、tensor 元数据和字节哈希检查才可用于
+实际转录。doctor 的只读提示只检查结构和文件指纹；失效或缺失时沿用原模型，
+doctor / runlog 提示准备命令，不自动写入多 GB 副本。
+runlog 的 `asr_execution.model_origin` 为 `prepared` / `original`，并提供
+`prepare_recommended` 与内存门槛数值；不输出模型绝对路径。
+
+Qwen3 在导入推理依赖前比较可用物理内存与预计峰值加余量。默认 prepared 峰值
+至少 2304 MiB、原模型至少 5632 MiB（均随最大分片增加），余量 1024 MiB；这些基于
+Windows 加载实测，是保守估计，不能保证所有设备/驱动/音频均不超限。
+`asr_insufficient_memory` 表示应关闭其他程序或明确选择云端；不会自动上传音频，
+`asr.auto` 遇到该错误不会再回退加载 Whisper。可用上面的本机配置，或
+`OPENMD_ASR_ORIGINAL_PEAK_MB` / `OPENMD_ASR_PREPARED_PEAK_MB` /
+`OPENMD_ASR_MARGIN_MB` 覆盖估计与余量（正整数 MiB）。Linux / Windows 使用本机
+系统接口测可用内存；其他系统需要 ASR extra 中的 psutil，探测失败也拒绝加载。
+
+`asr.auto` 的语言识别预加载也先守门：默认预计峰值至少 2560 MiB，加同一余量，
+并随该语言模型二进制大小增加；可由 `asr_memory.language_probe_peak_mb` 或
+`OPENMD_ASR_LANGUAGE_PROBE_PEAK_MB` 调整。语言识别阶段的内存拒绝同样是终止错误。
+
+入口：`runtime/prepared_models.py`、`runtime/asr_memory.py`；回归：
+`python -m pytest tests/test_prepared_models.py tests/test_runtime_models.py tests/test_asr_execution_metrics.py`。
+
 ### 小鹅通长课程的显式听悟授权
 
 公开默认仍使用本地 ASR。用户可以在当前有效的本机位置配置中加入一个键

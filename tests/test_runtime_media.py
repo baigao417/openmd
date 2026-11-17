@@ -8,6 +8,9 @@ from openmd.runtime import media
 
 def test_prefetch_rewrites_only_core_owned_locators_and_keeps_key_in_memory(tmp_path, monkeypatch):
     import io
+    # macOS temporary roots contain /private/var; this is a legitimate path.
+    tmp_path = tmp_path / 'private'
+    tmp_path.mkdir()
     playlist = '#EXTM3U\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:10\n#EXT-X-KEY:METHOD=AES-128,URI="key?sign=private",IV=0x0000000000000000000000000000000a\n#EXTINF:2,\na.ts?sign=private\n#EXTINF:2,\nb.ts?sign=private\n#EXT-X-ENDLIST\n'
     data = {'https://example.invalid/p.m3u8': playlist.encode(), 'https://example.invalid/key?sign=private': b'x'*16,
             'https://example.invalid/a.ts?sign=private': b'a'*16, 'https://example.invalid/b.ts?sign=private': b'b'*16}
@@ -15,7 +18,7 @@ def test_prefetch_rewrites_only_core_owned_locators_and_keeps_key_in_memory(tmp_
         def geturl(self): return 'https://example.invalid/p.m3u8'
     monkeypatch.setattr(media, 'urlopen', lambda request, **kw: Response(data[request.full_url]))
     payload = media.prefetch_hls('https://example.invalid/p.m3u8', tmp_path, referer='https://example.invalid/', timeout=10)
-    assert 'private' not in payload and 'https://' not in payload
+    assert '?sign=private' not in payload and 'https://' not in payload
     assert 'data:application/octet-stream;base64,' in payload
     # FFmpeg's file protocol expects a native absolute path after file:, not
     # percent-encoded file:///C:/... URLs (which break Windows crypto inputs).
@@ -104,6 +107,10 @@ def test_media_download_supports_proxy_transport_without_local_protocols(monkeyp
     target = tmp_path / 'audio.mp3'
     monkeypatch.setattr(media, 'prefetch_hls', lambda *a, **k: None)
     monkeypatch.setattr(media.shutil, 'which', lambda name: 'ffmpeg')
+    # The HLS probe consumes the same overall deadline. Use a deterministic
+    # elapsed interval instead of assuming the host clock cannot advance.
+    clock = iter((100.0, 101.5))
+    monkeypatch.setattr(media, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
 
     def run(command, **kwargs):
         protocols = set(command[command.index('-protocol_whitelist') + 1].split(','))
@@ -111,7 +118,7 @@ def test_media_download_supports_proxy_transport_without_local_protocols(monkeyp
         # Local file/concat/data protocols stay unavailable to remote playlists.
         assert protocols == {'http', 'https', 'tcp', 'tls', 'crypto', 'httpproxy'}
         assert command[command.index('-i') + 1] == 'https://media.example/audio.m3u8?sign=dummy'
-        assert kwargs['capture_output'] and kwargs['timeout'] == 60
+        assert kwargs['capture_output'] and kwargs['timeout'] == 58.5
         target.write_bytes(b'fixture audio')
         return SimpleNamespace(returncode=0)
 

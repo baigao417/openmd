@@ -146,7 +146,11 @@ class LocalAudioAdapterTests(unittest.TestCase):
 
             with (
                 patch.dict(sys.modules, {"faster_whisper": fake_module}),
-                patch.dict(os.environ, {}, clear=True),
+                # Reset backend options while retaining the test machine sandbox.
+                patch.dict(os.environ, {
+                    key: value for key, value in os.environ.items()
+                    if not key.startswith(("OPENMD_FASTER_WHISPER_", "OPENMD_ASR_CHINESE_SCRIPT"))
+                }, clear=True),
                 patch("openmd.adapters.local_audio.backends.faster_whisper.require_model", return_value=audio_path.parent),
             ):
                 result = FasterWhisperASRBackend(

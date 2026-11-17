@@ -29,6 +29,7 @@ from openmd.adapters.local_audio.backends.faster_whisper import (
 from openmd.adapters.local_audio.backends.qwen3_asr import Qwen3ASRBackend
 from openmd.core.models import TranscriptResult
 from openmd.runtime.models import ModelNotFoundError, model_label, offline_model_loading, require_model, resolve_model
+from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory
 
 DEFAULT_ENGLISH_MODEL = "large-v3-turbo"
 DEFAULT_GENERAL_MODEL = "large-v3"
@@ -64,6 +65,12 @@ class AutoASRBackend(ASRBackend):
             return MissingASRBackend(self.name).transcribe(source_path)
         try:
             language, probability = self.detect_language(source_path)
+        except InsufficientASRMemory as exc:
+            from openmd.runtime.asr import failed_result
+
+            result = failed_result(self.name, "asr_insufficient_memory", exc)
+            result.metadata.update(exc.metrics)
+            return result
         except ModelNotFoundError as exc:
             from openmd.runtime.asr import failed_result
 
@@ -74,7 +81,7 @@ class AutoASRBackend(ASRBackend):
 
         backend, reason = self.choose(language)
         result = backend.transcribe(source_path)
-        if result.status != "verified" and isinstance(backend, Qwen3ASRBackend):
+        if result.status != "verified" and result.error_code != "asr_insufficient_memory" and isinstance(backend, Qwen3ASRBackend):
             fallback = FasterWhisperASRBackend(model_size=self.general_model, language="zh", **self._whisper_device())
             result = fallback.transcribe(source_path)
             reason += f"; Qwen3-ASR failed, fell back to Whisper {model_label(self.general_model)}"
@@ -100,6 +107,8 @@ class AutoASRBackend(ASRBackend):
 
     def detect_language(self, path: Path) -> tuple[str | None, float | None]:
         model_path = require_model(self.english_model, family="whisper")
+        largest = max((p.stat().st_size for p in model_path.glob("model.bin")), default=0)
+        check_memory("language_probe", largest_shard_bytes=largest)
         _load_torch_first()
         _prepare_windows_dll_paths()
         from faster_whisper import WhisperModel

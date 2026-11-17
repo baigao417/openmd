@@ -25,6 +25,7 @@ USER_RESOLVABLE_ERROR_TERMS: tuple[str, ...] = (
     "refresh_needed",
     "export_required",
     "target_missing",
+    "asr_insufficient_memory",
 )
 SOURCE_UNAVAILABLE_ERROR_TERMS: tuple[str, ...] = (
     "source_unavailable",

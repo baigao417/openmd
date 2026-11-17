@@ -48,12 +48,12 @@ def display_path(path: Path | None) -> str | None:
 
 def worker_environment() -> dict[str, str]:
     """Only local-runtime settings cross the process boundary; no cloud credentials."""
-    keep = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "CUDA_PATH", "CUDA_VISIBLE_DEVICES", "OPENMD_CONFIG", "OPENMD_MODEL_ROOTS", "OPENMD_ASR_CHINESE_SCRIPT", "OPENMD_RUNTIME_DIR", "OPENMD_GPU_LOCK_TIMEOUT"}
-    prefixes = ("OPENMD_FASTER_WHISPER_", "OPENMD_ASR_AUTO_", "OPENMD_QWEN3_", "OMP_", "MKL_", "KMP_")
+    keep = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "CUDA_PATH", "CUDA_VISIBLE_DEVICES", "OPENMD_CONFIG", "OPENMD_MODEL_ROOTS", "OPENMD_PREPARED_MODEL_ROOT", "OPENMD_ASR_CHINESE_SCRIPT", "OPENMD_RUNTIME_DIR", "OPENMD_GPU_LOCK_TIMEOUT"}
+    prefixes = ("OPENMD_FASTER_WHISPER_", "OPENMD_ASR_AUTO_", "OPENMD_ASR_ORIGINAL_PEAK_", "OPENMD_ASR_PREPARED_PEAK_", "OPENMD_ASR_LANGUAGE_PROBE_PEAK_", "OPENMD_ASR_MARGIN_", "OPENMD_QWEN3_", "OMP_", "MKL_", "KMP_")
     env = {key: value for key, value in os.environ.items() if (key.upper() in keep or key.upper().startswith(prefixes)) and not re.search(r"TOKEN|COOKIE|SECRET|PASSWORD|CREDENTIAL|API.?KEY", key, re.I)}
     # The worker cwd is deliberately unrelated to the caller. Resolve caller-owned
     # relative locations before crossing that boundary; repository IDs stay IDs.
-    for key in ("OPENMD_CONFIG", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "OPENMD_RUNTIME_DIR"):
+    for key in ("OPENMD_CONFIG", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "OPENMD_RUNTIME_DIR", "OPENMD_PREPARED_MODEL_ROOT"):
         if env.get(key):
             env[key] = str(Path(env[key]).expanduser().resolve())
     if env.get("OPENMD_MODEL_ROOTS"):

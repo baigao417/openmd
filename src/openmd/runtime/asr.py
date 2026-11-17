@@ -63,8 +63,8 @@ def backend_execution_config(name: str) -> dict[str, Any]:
         identities.append({"path": str(candidate.resolve()), "mtime_ns": stamp})
     # Hash locations/settings for resume identity without publishing machine paths
     # or starting a GPU probe during argument parsing.
-    settings = {key: value for key, value in os.environ.items() if key.startswith(("OPENMD_FASTER_WHISPER_", "OPENMD_ASR_AUTO_", "OPENMD_QWEN3_")) or key in {"OPENMD_MODEL_ROOTS", "OPENMD_ASR_CHINESE_SCRIPT", "CUDA_VISIBLE_DEVICES", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE"}}
-    identity = {"interpreters": identities, "model_roots": local.get("model_roots", []), "settings": settings, "backend": config}
+    settings = {key: value for key, value in os.environ.items() if key.startswith(("OPENMD_FASTER_WHISPER_", "OPENMD_ASR_", "OPENMD_QWEN3_")) or key in {"OPENMD_MODEL_ROOTS", "OPENMD_PREPARED_MODEL_ROOT", "CUDA_VISIBLE_DEVICES", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE"}}
+    identity = {"interpreters": identities, "model_roots": local.get("model_roots", []), "asr_models": local.get("asr_models", {}), "asr_memory": local.get("asr_memory", {}), "settings": settings, "backend": config}
     config_id = hashlib.sha256(json.dumps(identity, sort_keys=True, ensure_ascii=True).encode()).hexdigest()
     return {**config, "runtime_policy": "local_worker_v2", "runtime_configured": bool(explicit), "runtime_source": "explicit" if explicit else "checkout" if root else "current_interpreter", "runtime_config_id": config_id}
 

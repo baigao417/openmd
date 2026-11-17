@@ -59,8 +59,18 @@ def load_local_config() -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
         raise ValueError("local_config_schema: expected openmd.local/v1")
     _check_keys(value)
-    if set(value) - {"schema", "asr_python", "qwen3_batch_size", "ocr_python", "ollama_url", "ocr", "soffice", "model_roots", "tools", "route_overlay", "xiaoe_long_asr"}:
+    if set(value) - {"schema", "asr_python", "qwen3_batch_size", "ocr_python", "ollama_url", "ocr", "soffice", "model_roots", "tools", "route_overlay", "xiaoe_long_asr", "asr_models", "asr_memory"}:
         raise ValueError("local_config_unknown_field")
+    if "asr_models" in value:
+        setting = value["asr_models"]
+        if (not isinstance(setting, dict) or set(setting) - {"prepared_root"}
+                or not isinstance(setting.get("prepared_root"), str) or not setting["prepared_root"].strip()):
+            raise ValueError("local_config_asr_models_invalid")
+    if "asr_memory" in value:
+        setting = value["asr_memory"]
+        if (not isinstance(setting, dict) or set(setting) - {"original_peak_mb", "prepared_peak_mb", "language_probe_peak_mb", "margin_mb"}
+                or any(type(v) is not int or v <= 0 for v in setting.values())):
+            raise ValueError("local_config_asr_memory_invalid")
     if "xiaoe_long_asr" in value:
         setting = value["xiaoe_long_asr"]
         if (not isinstance(setting, dict) or set(setting) - {"enabled", "threshold_seconds"}

@@ -137,6 +137,11 @@ def test_batch_metadata_and_numerical_source_note_reach_transcript(tmp_path, mon
 @pytest.mark.parametrize("fails", [False, True])
 def test_loaded_model_is_released_before_return_without_real_gpu(tmp_path, monkeypatch, fails):
     import openmd.adapters.local_audio.backends.qwen3_asr as module
+    from openmd.runtime import asr_memory
+
+    # This tests fake model lifetime, so host memory must be as deterministic as
+    # the fake GPU. The guard itself remains exercised by dedicated regressions.
+    monkeypatch.setattr(asr_memory, "available_memory_bytes", lambda: 16 * 1024**3)
 
     refs = []
     cache_model_alive = []

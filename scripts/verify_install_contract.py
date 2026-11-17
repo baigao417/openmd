@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 import venv
@@ -14,7 +15,7 @@ import zipfile
 
 from openmd.runtime.interpreters import run_interruptibly
 
-REQUIRED = {'openmd/cli.py', 'openmd/cli_items.py', 'openmd/core/plugins.py', 'openmd/routing/declarations.json', 'openmd/routing/routes.json', 'openmd/routing/cards/builtin.json', 'openmd/runtime/opencli_adapters.py', 'openmd/runtime/tingwu.py', 'openmd/runtime/tingwu_bridge.mjs'}
+REQUIRED = {'openmd/cli.py', 'openmd/cli_items.py', 'openmd/core/plugins.py', 'openmd/routing/declarations.json', 'openmd/routing/routes.json', 'openmd/routing/cards/builtin.json', 'openmd/runtime/opencli_adapters.py', 'openmd/runtime/tingwu.py', 'openmd/runtime/tingwu_bridge.mjs', 'openmd/runtime/prepared_models.py', 'openmd/runtime/asr_memory.py'}
 
 
 def verify(wheel: Path, wheelhouse: Path | None = None) -> dict:
@@ -40,6 +41,15 @@ def verify(wheel: Path, wheelhouse: Path | None = None) -> dict:
         home.mkdir()
         config = root / 'empty.json'
         config.write_text('{"schema":"openmd.local/v1"}', encoding='utf-8')
+        model = cwd / 'synthetic model'
+        model.mkdir()
+        for name in ('config.json', 'tokenizer_config.json', 'preprocessor_config.json', 'tokenizer.json', 'chat_template.json'):
+            (model / name).write_text('{}', encoding='utf-8')
+        header = json.dumps({'one': {'dtype': 'U8', 'shape': [600000], 'data_offsets': [0, 600000]},
+                             'two': {'dtype': 'U8', 'shape': [600000], 'data_offsets': [600000, 1200000]}}).encode()
+        header += b' ' * (-len(header) % 8)
+        original = struct.pack('<Q', len(header)) + header + b'x' * 1200000
+        (model / 'model.safetensors').write_bytes(original)
         for encoding in ('utf-8', 'cp936', 'cp1252'):
             output = cwd / encoding
             env = {**os.environ, 'HOME': str(home), 'USERPROFILE': str(home), 'OPENMD_CONFIG': str(config),
@@ -62,7 +72,16 @@ def verify(wheel: Path, wheelhouse: Path | None = None) -> dict:
             done = run_interruptibly([str(python), '-I', '-c', script], cwd=cwd, env=env, capture_output=True, timeout=30)
             if done.returncode:
                 raise ValueError('wheel_adapter_resources_missing')
-            matrix.append({'encoding': encoding, 'outside_cwd': True, 'empty_config': True, 'narrow_path': True, 'installed_import': True, 'artifact_readback': True, 'adapter_install': True})
+            done = run_interruptibly([str(python), '-I', '-m', 'openmd', 'asr', 'prepare-models', '--model', str(model), '--prepared-root', str(cwd / ('prepared-' + encoding)), '--max-shard-mb', '1'], cwd=cwd, env=env, capture_output=True, timeout=30)
+            prepared = json.loads(done.stdout.decode(encoding))
+            destination = Path(prepared.get('destination') or cwd / 'missing')
+            if (done.returncode or prepared.get('status') != 'prepared'
+                    or not (destination / 'chat_template.json').is_file()
+                    or len(list(destination.glob('*.safetensors'))) != 2
+                    or any(p.stat().st_size > 1024**2 for p in destination.glob('*.safetensors'))
+                    or (model / 'model.safetensors').read_bytes() != original):
+                raise ValueError('wheel_prepared_model_contract_failed')
+            matrix.append({'encoding': encoding, 'outside_cwd': True, 'empty_config': True, 'narrow_path': True, 'installed_import': True, 'artifact_readback': True, 'adapter_install': True, 'prepared_model': True})
     return {'ok': True, 'wheel_sha256': hashlib.sha256(wheel.read_bytes()).hexdigest(), 'matrix': matrix,
             'real_network': False, 'backend': 'mock', 'scope': 'offline installed consumer contract; not live platform availability'}
 

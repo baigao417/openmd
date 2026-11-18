@@ -180,7 +180,8 @@ async function main() {
   const {executeCommand} = await import(moduleUrl('execution.js'));
   const title = 'openmd-' + randomUUID();
   const uploaded = join(dirname(audio), title + '.mp3');
-  cli({site:'openmd-tingwu', name:'audio', access:'write', domain:'tingwu.aliyun.com',
+  const site = process.env.OPENMD_TINGWU_SITE || 'openmd-tingwu';
+  cli({site, name:'audio', access:'write', domain:'tingwu.aliyun.com',
     strategy:Strategy.COOKIE, browser:true, navigateBefore:false,
     args:[{name:'timeout',type:'int',default:timeout}],
     async func(page) {
@@ -200,12 +201,13 @@ async function main() {
         await page.evaluate('window.__openmdReleaseUploadGuard?.()').catch(() => {});
         await page.evaluate('window.__openmdReleaseUploadTimeout?.()').catch(() => {});
         await unlink(uploaded).catch(() => {});
+        await page.closeWindow();
       }
     }
   });
   // Same pinned dispatcher ABI as the working Xiaoe adapters, including the
   // persistent write lease, context routing and owned-tab cleanup. No plugins.
-  return executeCommand(getRegistry().get('openmd-tingwu/audio'), {}, false,
+  return executeCommand(getRegistry().get(`${site}/audio`), {}, false,
     {windowMode:'background',siteSession:'persistent',keepTab:false,trace:'off'});
 }
 

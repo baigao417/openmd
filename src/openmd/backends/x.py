@@ -401,7 +401,7 @@ def _browser_options() -> list[str]:
         "--window",
         "background",
         "--site-session",
-        "persistent",
+        "ephemeral",
         "--keep-tab",
         "false",
     ]

@@ -763,7 +763,11 @@ def _run_asset_command(
     timeout: int,
     selector: str | None,
 ) -> tuple[int, str, str]:
-    resolved = [_resolve_executable(command[0]), *command[1:]]
+    if Path(command[0]).name.lower() in {"opencli", "opencli.cmd", "opencli.exe"}:
+        from openmd.runtime.managed_tools import managed_command
+        resolved = managed_command(command[1:])
+    else:
+        resolved = [_resolve_executable(command[0]), *command[1:]]
     popen_args: list[str] | str = resolved
     if _is_windows_batch_file(resolved[0]):
         popen_args = _windows_batch_command_line(resolved)

@@ -126,7 +126,7 @@ def register_discovery_providers(
 
 
 def build_opencli_xiaoe_play_url_args(url: str) -> list[str]:
-    return ["opencli", "xiaoe", "play-url", url, "-f", "json", "--window", "background", "--site-session", "persistent", "--keep-tab", "false"]
+    return ["opencli", "xiaoe", "play-url", url, "-f", "json", "--window", "background", "--site-session", "ephemeral", "--keep-tab", "false"]
 
 
 def build_opencli_xiaoe_catalog_args(url: str) -> list[str]:
@@ -141,7 +141,7 @@ def build_opencli_xiaoe_catalog_args(url: str) -> list[str]:
         "--window",
         "background",
         "--site-session",
-        "persistent",
+        "ephemeral",
         "--keep-tab",
         "false",
     ]
@@ -159,7 +159,7 @@ def build_opencli_xiaoe_content_args(url: str) -> list[str]:
         "--window",
         "background",
         "--site-session",
-        "persistent",
+        "ephemeral",
         "--keep-tab",
         "false",
     ]

@@ -44,6 +44,14 @@ PODWISE_TRANSCRIPT_BACKEND = "podwise.transcript"
 OPENCLI_WEB_READ_BACKEND = "opencli.web.read"
 
 XIAOYUZHOU_CREDENTIALS_PATH = Path.home() / ".opencli" / "xiaoyuzhou.json"
+
+
+def credential_file() -> Path:
+    from openmd.runtime.managed_tools import config_directory
+    selected = config_directory() / "xiaoyuzhou.json"
+    return selected if selected.is_file() else XIAOYUZHOU_CREDENTIALS_PATH
+
+
 XIAOYUZHOU_ANDROID_DEVICE_PROPERTY_KEYS = frozenset(
     {"uuid", "android_id", "oaid", "vaid", "aaid"}
 )
@@ -172,7 +180,7 @@ class OpenCliXiaoyuzhouTranscriptProvider:
         min_transcript_chars: int = DEFAULT_MIN_TRANSCRIPT_CHARS,
     ) -> None:
         self._runner = runner or _run_command
-        self.credential_path = credential_path or XIAOYUZHOU_CREDENTIALS_PATH
+        self.credential_path = credential_path or credential_file()
         self.timeout = timeout
         self.min_transcript_chars = max(0, min_transcript_chars)
 
@@ -531,13 +539,14 @@ class OpenCliXiaoyuzhouPodcastEpisodesProvider:
         )
 
 
-def check_xiaoyuzhou_credentials(path: Path = XIAOYUZHOU_CREDENTIALS_PATH) -> CredentialShapeCheck:
+def check_xiaoyuzhou_credentials(path: Path | None = None) -> CredentialShapeCheck:
     """Validate a local Xiaoyuzhou credential profile without exposing values."""
+    path = path or credential_file()
     if not path.exists():
         return CredentialShapeCheck(
             False,
             "xiaoyuzhou_credentials_missing",
-            "Missing Xiaoyuzhou credential file at ~/.opencli/xiaoyuzhou.json.",
+            "Missing Xiaoyuzhou credential file in tools.opencli.config_dir/xiaoyuzhou.json (legacy ~/.opencli fallback checked).",
         )
 
     try:

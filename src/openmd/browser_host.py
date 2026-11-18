@@ -420,7 +420,7 @@ def reveal(job_id: str) -> dict[str, Any]:
     if status.get("state") != "done" or not saved or not Path(saved).exists():
         raise ValueError("nothing_to_reveal")
     if os.name == "nt":
-        subprocess.Popen(["explorer", "/select,", str(Path(saved))])
+        subprocess.Popen(["explorer", "/select,", str(Path(saved))], **process_options())
     return {"ok": True}
 
 

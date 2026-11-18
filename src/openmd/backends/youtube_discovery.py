@@ -328,7 +328,11 @@ def _run_opencli(
     """Run OpenCLI without printing or persisting raw command output."""
     process: subprocess.Popen[str] | None = None
     try:
-        command = [_resolve_executable(args[0]), *args[1:]]
+        if Path(args[0]).name.lower() in {"opencli", "opencli.cmd", "opencli.exe"}:
+            from openmd.runtime.managed_tools import managed_command
+            command = managed_command(args[1:])
+        else:
+            command = [_resolve_executable(args[0]), *args[1:]]
         popen_args: list[str] | str = command
         if _is_windows_batch_file(command[0]):
             popen_args = _windows_batch_command_line(command)

@@ -63,3 +63,6 @@ pythonpath = ["src"]
 
 [tool.setuptools.data-files]
 "share/openmd/opencli/xiaoe" = ["integrations/opencli/xiaoe/play-url.js", "integrations/opencli/xiaoe/catalog.js", "integrations/opencli/xiaoe/content.js", "integrations/opencli/xiaoe/dispatch.js"]
+
+"share/openmd/opencli/openmd-douyin" = ["integrations/opencli/openmd-douyin/package.json", "integrations/opencli/openmd-douyin/opencli-plugin.json", "integrations/opencli/openmd-douyin/creator-videos.ts"]
+"share/openmd/opencli/openmd-xiaohongshu" = ["integrations/opencli/openmd-xiaohongshu/package.json", "integrations/opencli/openmd-xiaohongshu/opencli-plugin.json", "integrations/opencli/openmd-xiaohongshu/creator-notes.ts", "integrations/opencli/openmd-xiaohongshu/note-assets.ts"]

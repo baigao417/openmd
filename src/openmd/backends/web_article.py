@@ -242,7 +242,7 @@ class OpenCliWebReadProvider:
             "false",
             "--window",
             "background",
-            "--keep-tab",
+            "--site-session", "ephemeral", "--keep-tab",
             "false",
             "-f",
             "md",

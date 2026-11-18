@@ -115,6 +115,18 @@ def owned_popen(*args, **kwargs):
     from .services import bridge_profile_env, ensure_opencli_daemon
 
     command = args[0] if args else kwargs.get("args")
+    from .managed_tools import command_environment, managed_command
+    if isinstance(command, (list, tuple)) and command:
+        name = Path(command[0]).name.lower()
+        if name in {"opencli", "opencli.cmd", "opencli.exe", "opencli.ps1", "opencli.bat"}:
+            command = managed_command(list(command[1:]))
+            if args:
+                args = (command, *args[1:])
+            else:
+                kwargs["args"] = command
+            kwargs["env"] = command_environment(kwargs.get("env"))
+        elif len(command) > 1 and Path(command[1]).as_posix().endswith("/@jackwener/opencli/dist/src/main.js"):
+            kwargs["env"] = command_environment(kwargs.get("env"))
     ensure_opencli_daemon(command, env=kwargs.get("env"), cwd=kwargs.get("cwd"))
     selected = bridge_profile_env(command, kwargs.get("env"))
     if selected is not None:
@@ -122,7 +134,7 @@ def owned_popen(*args, **kwargs):
     if os.name == "nt":
         from ._windows_job import JobPopen
 
-        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         process = JobPopen(*args, **kwargs)
     else:
         kwargs["start_new_session"] = True

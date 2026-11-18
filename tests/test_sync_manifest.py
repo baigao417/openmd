@@ -7,8 +7,8 @@ def test_sync_update_unchanged_conflict_and_restored(tmp_path):
     manifest = SyncManifest(tmp_path)
     first = manifest.write('fake:1', 'fake/title.md', 'one')
     assert first.operation == 'created'
-    assert manifest.write('fake:1', 'fake/renamed.md', 'one').operation == 'unchanged'
-    changed = manifest.write('fake:1', 'fake/renamed.md', 'two')
+    assert manifest.write('fake:1', 'fake/title.md', 'one').operation == 'unchanged'
+    changed = manifest.write('fake:1', 'fake/title.md', 'two')
     assert changed.path == first.path
     assert changed.operation == 'updated'
     first.path.write_text('user edit', encoding='utf-8')

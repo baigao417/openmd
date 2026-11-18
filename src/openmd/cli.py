@@ -93,6 +93,7 @@ class OutputWriteResult:
     path: Path
     package_id: str | None = None
     package_operation: str | None = None
+    renamed_from: str | None = None
 
 
 ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr", "mcp")

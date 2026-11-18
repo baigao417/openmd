@@ -84,6 +84,12 @@ removed; other small images and external image links retain existing behavior.
 
 Both routes share title cleanup: remove a recognized site suffix; for generic
 site titles use the current DOM/session title, then the first user message's
-first 30 characters. The existing sync manifest continues to retain filenames.
+first 30 characters. When the generated filename changes, sync atomically
+renames an unedited canonical file and updates its manifest path. The receipt's
+`sync.renamed_from` is the previous path relative to the save directory. An
+occupied name receives the usual numeric suffix; repeated saves reuse it.
+User edits retain the original canonical path and conflict protection. A missing
+canonical file is restored at its recorded path. Content operation values keep
+their existing meaning; a rename can accompany `unchanged` content.
 `TurnBlock` and legacy block projections normalize the four standard roles to
 `user`, `assistant`, `system`, `tool`; unknown speaker identities are preserved.

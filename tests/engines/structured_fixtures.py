@@ -6,7 +6,7 @@ def authored(path, empty=False, encrypted=False):
     if suffix in {'html', 'htm'}:
         path.write_text('<html><body>' + ('' if empty else '<h1>Original title</h1><p>Original 中文</p><table><tr><td>Name</td><td>Value</td></tr><tr><td>Apple</td><td>7</td></tr></table>') + '</body></html>', encoding='utf-8')
     elif suffix == 'rtf':
-        path.write_text(r'{\rtf1\ansi ' + ('' if empty else r'Original title\par Original \u20013?\u25991?\par Name\cell Value\row Apple\cell 7\row') + '}', encoding='utf-8')
+        path.write_text(r'{\rtf1\ansi ' + ('' if empty else r'Original title\par Original \u20013?\u25991?\par \trowd Name\cell Value\cell\row\trowd Apple\cell 7\cell\row') + '}', encoding='utf-8')
     elif suffix == 'fb2':
         path.write_text('<FictionBook><body>' + ('' if empty else '<section><title><p>Original title</p></title><p>Original 中文</p><section><title><p>Second</p></title><p>Second original</p></section></section>') + '</body></FictionBook>', encoding='utf-8')
     elif suffix == 'epub':
@@ -33,4 +33,3 @@ def authored(path, empty=False, encrypted=False):
     if encrypted and suffix in {'html', 'htm', 'rtf', 'fb2'}:
         path.write_bytes(b'-----BEGIN PGP MESSAGE-----\nENCRYPTED')
     return path
-

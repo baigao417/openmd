@@ -185,7 +185,7 @@ def render_markdown_document(
     completeness = _completeness_frontmatter(result)
     if completeness is not None:
         frontmatter["completeness"] = completeness
-    if item.platform == "page_snapshot":
+    if item.platform == "page_snapshot" or result.metadata.get("captured_from") == "browser_snapshot":
         frontmatter.update({
             "captured_from": "browser_snapshot",
             "coverage": "visible_only",

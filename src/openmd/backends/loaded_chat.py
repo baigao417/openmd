@@ -7,6 +7,8 @@ Both native extension snapshots and agent HTML use this parser.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
 import re
 from urllib.parse import urlsplit
 
@@ -39,6 +41,19 @@ def loaded_chat_site(url: str) -> str | None:
     if parsed.scheme not in {"http", "https"}:
         return None
     return HOSTS.get((parsed.hostname or "").lower())
+
+
+def snapshot_item(path: Path, url: str) -> ContentItem:
+    """Use detail's exact identity, with a local-only snapshot extraction route."""
+    site = loaded_chat_site(url)
+    metadata = {"snapshot_path": str(path), "captured_from": "browser_snapshot", "coverage": "visible_only"}
+    if site:
+        from openmd.adapters.ai_chat import AiChatAdapter
+        from openmd.backends.ai_chat import ai_chat_backend_for_site
+
+        item = AiChatAdapter("ai_chat", ai_chat_backend_for_site(site)).resolve_items(url)[0]
+        return replace(item, raw_meta={**item.raw_meta, **metadata, "chat_site": site})
+    return ContentItem(platform="page_snapshot", input_type="single", url=url, source_type="article", raw_meta=metadata)
 
 
 def _visible(node: Tag) -> bool:

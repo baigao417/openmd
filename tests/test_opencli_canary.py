@@ -70,6 +70,21 @@ def test_canary_does_not_prepare_missing_config_directory(tmp_path, monkeypatch)
     assert not config.exists()
 
 
+def test_candidate_location_config_preserves_other_tools_and_browser_policy(tmp_path):
+    from openmd.runtime.opencli_canary import location_config_for_host
+    original = {'schema': 'openmd.local/v1', 'tools': {
+        'opencli': {'root': 'original-host'}, 'defuddle': 'existing-defuddle', 'x-tweet-fetcher': 'existing-reader'},
+        'browser': {'window_strategy': 'existing-window'}, 'route_overlay': 'existing-overlay',
+        'xiaoe_long_asr': {'enabled': True}}
+    result = location_config_for_host(tmp_path / 'node_modules/@jackwener/opencli', tmp_path / 'config', original)
+    assert result['tools']['defuddle'] == 'existing-defuddle'
+    assert result['tools']['x-tweet-fetcher'] == 'existing-reader'
+    assert result['browser'] == original['browser']
+    assert result['route_overlay'] == original['route_overlay']
+    assert original['tools']['opencli']['root'] == 'original-host'
+    assert 'xiaoe_long_asr' not in result
+
+
 def test_canary_receipts_drop_private_text_urls_and_diagnostics():
     from openmd.runtime.opencli_canary import safe_probe
     source = {'completed': True, 'ok': True, 'configured_count': 1,

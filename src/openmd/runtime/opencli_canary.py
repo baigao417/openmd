@@ -134,6 +134,19 @@ function resolvePath(file) {return resolvePathNative(process.env.OPENMD_OPENCLI_
     return '--import=data:text/javascript,' + quote(bootstrap, safe='')
 
 
+def location_config_for_host(host: Path, config_dir: Path, original: dict | None = None) -> dict:
+    from openmd.core.local_config import load_local_config
+    from openmd.routing.loader import overlay_file
+    original = load_local_config() if original is None else original
+    # Location configuration rejects private fields at load time. Preserve the
+    # other read tools/policies so a baseline does not silently lose routes.
+    value = {key: json.loads(json.dumps(original[key])) for key in ('schema', 'tools', 'browser', 'route_overlay') if key in original}
+    value.setdefault('schema', 'openmd.local/v1')
+    value.setdefault('tools', {})['opencli'] = {'root': str(host.parents[2]), 'config_dir': str(config_dir)}
+    value.setdefault('route_overlay', str(overlay_file()))
+    return value
+
+
 def run_probe_pair(package: Path, staging: Path, *, config: Path | None, out: Path, timeout: int) -> tuple[dict, dict]:
     from openmd.probe import load_probe_samples
     from .services import daemon_status
@@ -152,8 +165,7 @@ def run_probe_pair(package: Path, staging: Path, *, config: Path | None, out: Pa
     receipts = []
     for label, host in (('baseline', managed_tools.managed_package_root()), ('candidate', package)):
         local = staging / (label + '-local.json')
-        local.write_text(json.dumps({'schema': 'openmd.local/v1', 'tools': {'opencli': {
-            'root': str(host.parents[2]), 'config_dir': str(config_dir)}}}), encoding='utf-8')
+        local.write_text(json.dumps(location_config_for_host(host, config_dir)), encoding='utf-8')
         env = {**os.environ, 'PYTHONPATH': str(ROOT / 'src'), 'OPENMD_CONFIG': str(local),
                'OPENMD_DATA_DIR': str(staging / 'data'), 'OPENMD_AUTO_INSTALL_TOOLS': '0',
                'OPENMD_OPENCLI_CANARY': '1', 'OPENMD_OPENCLI_CANARY_PACKAGE': str(host),

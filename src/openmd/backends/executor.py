@@ -377,6 +377,10 @@ class BackendExecutor:
 
             result = replace(result, metadata={**result.metadata, **route_trace(request.item.platform, result.backend)})
 
+            if result.error_code == "login_required":
+                attempts.append({"backend": backend, "error_code": result.error_code})
+                return _with_attempt_notes(replace(result, metadata={**result.metadata, "fallback_attempts": attempts}), attempt_notes)
+
             if result.has_usable_text or (result.status == "partial" and result.metadata.get("terminal_partial") is True):
                 if self._result_enricher is not None:
                     result = self._result_enricher(request.item, result)

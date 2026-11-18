@@ -192,6 +192,8 @@ def _emit_result(
             requires_fresh_stdin=bool(getattr(args, "_compact_requires_fresh_stdin", False)),
             failed=bool(getattr(args, "_compact_execution_failed", False)),
         )
+        if result.next_action:
+            payload.update(error_code=result.error_code, login=result.login, next_action=result.next_action, paused_count=result.paused_count)
         lock = getattr(args, "_compact_output_lock", None)
         if lock is not None:
             lock.release()

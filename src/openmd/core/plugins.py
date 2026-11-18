@@ -15,7 +15,7 @@ from typing import Callable, Mapping
 BUILTIN_PLATFORM_IDS = (
     "bilibili", "youtube", "weixin", "qq_group", "xiaoyuzhou", "douyin",
     "tiktok", "xiaohongshu", "xiaoe", "x", "feishu", "web_article",
-    "generic_media", "pdf", "screenshot",
+    "generic_media", "pdf", "screenshot", "page_snapshot", "ai_chat",
 )
 
 

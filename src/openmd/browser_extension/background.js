@@ -73,6 +73,68 @@ function fail(title, message) {
   notify(title, message);
 }
 
+async function notifyLogin(job, meta) {
+  const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
+  // Persist callbacks across service-worker restarts; one notice per site.
+  const existing = Object.keys(loginNotices).find((id) => loginNotices[id].login.url === job.login.url);
+  const id = existing || `openmd-login:${job.id}`;
+  const notice = loginNotices[id] || { login: job.login, groups: {} };
+  // A site notice can cover multiple batches; each retry retains its own host
+  // batch so it cannot accidentally resume historical failures from that site.
+  notice.groups[job.batch || job.id] = { jobId: job.id, location: meta.location || "默认", snapshot: job.snapshot, tabId: meta.tabId };
+  loginNotices[id] = notice;
+  await chrome.storage.local.set({ loginNotices });
+  if (existing) return;
+  await flash("!", "#b3261e");
+  chrome.notifications.create(id, {
+    type: "basic", iconUrl: "icons/icon-128.png", title: `需要登录 ${job.login.site}`,
+    message: `请在浏览器登录 ${job.login.url}，同站点任务已暂停。`,
+    buttons: [{ title: "去登录" }, { title: "已登录，重试" }],
+    requireInteraction: true,
+  });
+}
+
+chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
+  const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
+  const notice = loginNotices[id];
+  if (!notice) return;
+  if (buttonIndex === 0 && isWeb(notice.login.url)) {
+    await chrome.tabs.create({ url: notice.login.url });
+  } else if (buttonIndex === 1) {
+    const jobs = [];
+    const pending = {};
+    for (const [batch, group] of Object.entries(notice.groups)) {
+      try {
+        const snapshot = group.snapshot ? await captureSnapshot(group.tabId) : undefined;
+        const reply = await native({ type: "retry_login", id: group.jobId, snapshot });
+        if (reply.ok) jobs.push(...(reply.jobs || []).map((job) => ({ ...job, tabId: group.tabId })));
+        else pending[batch] = group;
+      } catch {
+        pending[batch] = group;
+      }
+    }
+    if (Object.keys(pending).length) {
+      notice.groups = pending;
+      loginNotices[id] = notice;
+    } else {
+      delete loginNotices[id];
+      await chrome.notifications.clear(id);
+    }
+    await chrome.storage.local.set({ loginNotices });
+    if (jobs.length) await track(jobs, crypto.randomUUID(), "原保存位置");
+    if (Object.keys(pending).length) fail("部分任务没能重试", "请在扩展中检查任务状态。");
+  }
+});
+
+chrome.notifications.onClosed.addListener(async (id, byUser) => {
+  if (!byUser) return;
+  const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
+  if (loginNotices[id]) {
+    delete loginNotices[id];
+    await chrome.storage.local.set({ loginNotices });
+  }
+});
+
 async function locationFor(locationId) {
   const settings = await getSettings();
   return settings.locations.find((l) => l.id === (locationId || settings.defaultId)) || settings.locations[0];
@@ -80,8 +142,8 @@ async function locationFor(locationId) {
 
 async function track(jobs, batch, location) {
   const state = await tracked();
-  for (const job of jobs) state.jobs[job.id] = { title: job.title || job.url, batch };
-  state.batches[batch] = { total: jobs.length, failed: [], location };
+  for (const job of jobs) state.jobs[job.id] = { title: job.title || job.url, batch, tabId: job.tabId };
+  state.batches[batch] = { total: jobs.length, failed: [], location, loginPaused: false };
   await chrome.storage.local.set(state);
   await showRunning(state.jobs);
   poll();
@@ -107,6 +169,38 @@ async function saveMany(items, locationId, video) {
   const jobs = (reply.jobs || [reply.job]).map((job) => ({ ...job, title: titles[job.url] }));
   await track(jobs, reply.batch || jobs[0].id, location.name);
   return { ok: true, count: jobs.length, location: location.name };
+}
+
+async function captureSnapshot(tabId) {
+  const [{ result } = {}] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => ({
+      html: document.documentElement?.outerHTML || "",
+      url: location.href,
+      title: document.title || location.href,
+    }),
+  });
+  return result;
+}
+
+async function saveSnapshot(tabId, locationId) {
+  const location = await locationFor(locationId);
+  if (!location) {
+    chrome.runtime.openOptionsPage();
+    return fail("先设置一个保存位置", "已打开设置页。");
+  }
+  try {
+    const result = await captureSnapshot(tabId);
+    if (!result?.html || !/^https?:\/\//.test(result.url || "")) {
+      return fail("没法保存当前页", "当前页面不是可保存的 http(s) 页面。");
+    }
+    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path });
+    if (!reply.ok) return fail("没能保存当前页", reply.error);
+    await track([{ ...reply.job, tabId }], reply.job.id, location.name);
+    return { ok: true, count: 1, location: location.name };
+  } catch (err) {
+    return fail("读不到这个页面", String(err?.message || err));
+  }
 }
 
 async function highlightedTabs(tab) {
@@ -149,18 +243,21 @@ async function poll() {
       if (reply.ok) {
         for (const id of ids) {
           const job = reply.jobs[id] || { state: "unknown" };
-          if (!["done", "failed", "cancelled", "unknown"].includes(job.state)) continue;
+          if (!["done", "failed", "paused", "cancelled", "unknown"].includes(job.state)) continue;
           const meta = state.jobs[id];
           delete state.jobs[id];
           const batch = state.batches[meta.batch];
-          if (batch && job.state !== "done" && job.state !== "cancelled") batch.failed.push(`${meta.title}：${job.error || "状态未知"}`);
+          if (job.error_code === "login_required" && job.login) {
+            if (batch) batch.loginPaused = true;
+            await notifyLogin(job, { ...meta, location: batch?.location });
+          } else if (batch && job.state !== "done" && job.state !== "cancelled") batch.failed.push(`${meta.title}：${job.error || "状态未知"}`);
           const remaining = Object.values(state.jobs).some((m) => m.batch === meta.batch);
           if (batch && !remaining) {
             delete state.batches[meta.batch];
             if (batch.failed.length) {
               const head = batch.total > 1 ? `${batch.total} 个里有 ${batch.failed.length} 个没保存成功` : "没能保存";
               fail(head, batch.failed.slice(0, 3).join("\n"));
-            } else {
+            } else if (!batch.loginPaused) {
               await flash("✓", "#2c8a5f");
             }
           }
@@ -222,6 +319,7 @@ chrome.storage.onChanged.addListener((changes) => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.cmd === "save") { saveMany(msg.items, msg.locationId).then(reply); return true; }
+  if (msg?.cmd === "snapshot") { chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => saveSnapshot(tab?.id, msg.locationId)).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
   return false;
 });

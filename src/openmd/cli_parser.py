@@ -55,6 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
     go.add_argument("--json", action="store_true", help="输出机器可读的 JSON 结果")
     go.add_argument("--verbose", action="store_true", help="显示用了哪条工具路线和诊断信息")
     go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频时（目前 X）：note 只注明有视频（默认）；text 附上视频逐字稿；file 再保留视频文件")
+    go.add_argument("--as-snapshot", action="store_true", help="把本地 HTML 当作浏览器当前页快照处理")
+    go.add_argument("--url", dest="snapshot_url", help="快照对应的原始 http(s) URL")
     for action in go._actions:
         if action.dest == "raw":
             action.help = "保留原始逐行时间戳 / 表格，不合并段落"

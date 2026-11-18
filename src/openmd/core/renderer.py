@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
-from .models import ContentItem, MarkdownDocument, TranscriptResult
+from .models import ContentItem, MarkdownDocument, TranscriptResult, block_as_dict
 from .readable import format_transcript, markdown_label
 from .secrets import sanitize_error_summary, sanitize_url_text
 
@@ -21,6 +21,8 @@ FRONTMATTER_FIELDS: tuple[str, ...] = (
     "platform",
     "format",
     "completeness",
+    "captured_from",
+    "coverage",
 )
 
 _SOURCE_LABELS = {
@@ -37,6 +39,25 @@ _SOURCE_LABELS = {
     "live_capture_asr": "实时语音识别",
     "partial_extraction": "部分提取",
 }
+
+_COVERAGE_LABELS = {
+    "provider_declared_complete": "提供方声明完整",
+    "visible_branch": "当前可见分支",
+    "visible_only": "当前可见页面",
+}
+_LEGACY_COVERAGE_VALUES = {
+    "当前可见分支": "visible_branch",
+    "提供方声明完整": "provider_declared_complete",
+}
+
+
+def coverage_machine_value(value: object) -> str:
+    machine = str(value or "visible_branch")
+    return _LEGACY_COVERAGE_VALUES.get(machine, machine)
+
+
+def coverage_label(value: object) -> str:
+    return _COVERAGE_LABELS.get(coverage_machine_value(value), str(value or "visible_branch"))
 
 
 def utc_now_iso() -> str:
@@ -164,10 +185,32 @@ def render_markdown_document(
     completeness = _completeness_frontmatter(result)
     if completeness is not None:
         frontmatter["completeness"] = completeness
+    if item.platform == "page_snapshot":
+        frontmatter.update({
+            "captured_from": "browser_snapshot",
+            "coverage": "visible_only",
+        })
+    if item.source_type == "conversation" or result.blocks:
+        frontmatter.update({
+            "coverage": coverage_machine_value(result.metadata.get("coverage")),
+        })
+        if result.blocks:
+            content = render_conversation_blocks(
+                result.blocks,
+                source_url=item.url,
+                platform=item.platform,
+                exported_at=captured_at or utc_now_iso(),
+                coverage=coverage_machine_value(result.metadata.get("coverage")),
+                title=str(title),
+            )
+        else:
+            content = result.text
+    else:
+        content = result.text
     return MarkdownDocument(
         frontmatter=frontmatter,
         title=title,
-        content=result.text,
+        content=content,
         source_notes=build_source_notes(result),
     )
 
@@ -182,6 +225,51 @@ def document_source_format(item: ContentItem, result: TranscriptResult) -> str |
     suffix = Path(str(raw)).suffix.lstrip(".").lower()
     value = suffix or str(result.metadata.get("source_format") or "").lower()
     return value if re.fullmatch(r"[a-z0-9]{1,12}", value) else None
+def render_conversation_blocks(
+    blocks: list[Any],
+    *,
+    source_url: str,
+    platform: str,
+    exported_at: str,
+    coverage: str = "visible_branch",
+    title: str = "对话",
+) -> str:
+    """Render each conversation turn without merging or summarizing it."""
+    lines: list[str] = []
+    turn_count = 0
+    for block in blocks:
+        value = block_as_dict(block)
+        kind = value.get("type")
+        if kind == "turn":
+            turn_count += 1
+            role = str(value.get("role") or "unknown")
+            timestamp = value.get("time")
+            heading = f"### {role}" + (f" · {timestamp}" if timestamp else "")
+            lines.extend([heading, "", str(value.get("text") or ""), ""])
+        elif kind == "cue":
+            lines.extend([f"[{value.get('start')}–{value.get('end')}]", "", str(value.get("text") or ""), ""])
+        elif kind == "table":
+            rows = value.get("rows") or []
+            valid_rows = [row for row in rows if isinstance(row, list)]
+            if valid_rows:
+                width = max(len(row) for row in valid_rows)
+                lines.extend(["| " + " | ".join(str(cell) for cell in valid_rows[0]) + " |", "| " + " | ".join("---" for _ in range(width)) + " |"])
+                lines.extend("| " + " | ".join(str(cell) for cell in row) + " |" for row in valid_rows[1:])
+                if value.get("merged_cells"):
+                    lines.extend(["", "> 表格合并单元格已降级为原始行列标注。"])
+                lines.append("")
+    lines.extend([
+        "---",
+        "",
+        "来源说明：",
+        f"- 平台：{platform}",
+        f"- 会话 URL：{sanitize_url_text(source_url)}",
+        f"- 导出时刻：{exported_at}",
+        f"- 范围：{coverage_label(coverage)}",
+        f"- 轮次数：{turn_count}",
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def _source_footer(document: MarkdownDocument) -> str:

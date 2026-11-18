@@ -27,7 +27,8 @@ from openmd.runtime.interpreters import owned_popen, communicate_interruptibly, 
 from openmd.runtime.services import ensure_opencli_daemon
 
 HOST_NAME = "com.openmd.host"
-MAX_MESSAGE = 1024 * 1024
+MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
+MAX_MESSAGE = MAX_SNAPSHOT_BYTES + 2 * 1024 * 1024
 RECENT_JOBS = 8
 GO_FLAGS = ["--yes", "--enable-network-backends", "--enable-browser-backends", "--enable-media-download", "--enable-asr", "--json"]
 
@@ -201,6 +202,48 @@ def start_job(url: object, save_to: object = None, *, video: object = None, spaw
     return status
 
 
+def start_snapshot_job(
+    html: object,
+    url: object,
+    title: object = None,
+    save_to: object = None,
+    *,
+    spawn=subprocess.Popen,
+) -> dict[str, Any]:
+    """Queue one user initiated current-page DOM snapshot without browser storage."""
+    source_url = _validate_url(url)
+    if not isinstance(html, str):
+        raise ValueError("invalid_snapshot_html")
+    payload = html.encode("utf-8")
+    if not payload:
+        raise ValueError("empty_snapshot_html")
+    if len(payload) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("snapshot_too_large")
+    destination = _validate_destination(save_to)
+    if title is not None and (not isinstance(title, str) or len(title) > 1000):
+        raise ValueError("invalid_snapshot_title")
+    job_id = uuid.uuid4().hex
+    job_dir = jobs_root() / job_id
+    job_dir.mkdir(parents=True, exist_ok=False)
+    snapshot_path = job_dir / "snapshot.html"
+    snapshot_path.write_bytes(payload)
+    status = {
+        "id": job_id,
+        "state": "queued",
+        "url": source_url,
+        "title": str(title or ""),
+        "snapshot_path": str(snapshot_path),
+        "save_to": str(destination),
+        "created": time.time(),
+        "seq": _next_seq(),
+        "attempts": 0,
+        "snapshot": True,
+    }
+    _write_status(job_dir, status)
+    _spawn_runner(spawn)
+    return status
+
+
 def start_batch(urls: object, save_to: object = None, *, video: object = None, spawn=subprocess.Popen) -> dict[str, Any]:
     """Queue several links; they run one after another so ASR never overloads the GPU."""
     if not isinstance(urls, list) or not urls:
@@ -330,7 +373,10 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
     status.update(state="running", started=time.time(), pid=os.getpid(), attempts=int(status.get("attempts", 0)) + 1)
     status.pop("note", None)
     _write_status(job_dir, status)
-    command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+    if status.get("snapshot"):
+        command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["snapshot_path"], "--as-snapshot", "--url", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+    else:
+        command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
     try:
         if runner is None:
             done = _run_openmd(command, job_dir, status)
@@ -347,13 +393,90 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
         else:
             hint = [line for line in (done.stderr or "").splitlines() if line.strip()]
             status.update(state="failed", error=sanitize_error_summary(result.get("error") or (hint[0] if hint else f"exit {done.returncode}")))
+            if result.get("error_code") == "login_required":
+                from openmd.core.login import login_for_url, login_hint
+
+                # Resolve from the source declaration, never trust an arbitrary
+                # child-provided browser destination.
+                login = login_for_url(status["url"])
+                status.update(error_code="login_required", login=login, error=login_hint(login))
+                _pause_login_jobs(status, login)
     except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
         status.update(state="failed", error=sanitize_error_summary(exc) or "job_failed")
     status["finished"] = time.time()
     status.pop("pid", None)
     status.pop("child_pid", None)
     _write_status(job_dir, status)
+    if status.get("snapshot") and status.get("error_code") != "login_required":
+        try:
+            snapshot_path = Path(str(status.get("snapshot_path") or "")).resolve()
+            if snapshot_path.parent == job_dir.resolve() and snapshot_path.name == "snapshot.html":
+                snapshot_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return status
+
+
+def _pause_login_jobs(failed: dict[str, Any], login: dict[str, str]) -> None:
+    from openmd.core.login import login_for_url
+
+    for path in jobs_root().glob("*/status.json"):
+        try:
+            other = json.loads(path.read_text(encoding="utf-8"))
+            if other.get("state") != "queued" or other.get("id") == failed["id"]:
+                continue
+            if login_for_url(str(other.get("url") or ""))["url"] != login["url"]:
+                continue
+            other.update(state="paused", error_code="login_required", login=login, blocked_by=failed["id"])
+            _write_status(path.parent, other)
+        except (OSError, ValueError):
+            continue
+
+
+def retry_login(job_id: str, snapshot: object = None) -> list[dict[str, Any]]:
+    from openmd.core.login import login_for_url
+
+    target = read_status(job_id)
+    if target.get("error_code") != "login_required" or target.get("state") not in {"failed", "paused"}:
+        raise ValueError("job_not_waiting_for_login")
+    if target.get("snapshot"):
+        if not isinstance(snapshot, dict):
+            raise ValueError("snapshot_refresh_required: 请返回原页面后重新读取当前页")
+        if _validate_url(snapshot.get("url")) != target["url"]:
+            raise ValueError("snapshot_url_changed: 请返回原页面再重试")
+        html = snapshot.get("html")
+        if not isinstance(html, str) or not html:
+            raise ValueError("invalid_snapshot_html")
+        if len(html.encode("utf-8")) > MAX_SNAPSHOT_BYTES:
+            raise ValueError("snapshot_too_large")
+        title = snapshot.get("title")
+        if title is not None and (not isinstance(title, str) or len(title) > 1000):
+            raise ValueError("invalid_snapshot_title")
+        job_dir = _status_path(job_id).parent
+        snapshot_path = job_dir / "snapshot.html"
+        snapshot_path.write_text(html, encoding="utf-8")
+        target.update(snapshot_path=str(snapshot_path), title=title or target.get("title", ""))
+        _write_status(job_dir, target)
+    key = login_for_url(target["url"])["url"]
+    resumed = []
+    for path in jobs_root().glob("*/status.json"):
+        try:
+            status = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if status.get("error_code") != "login_required" or status.get("state") not in {"paused", "failed"}:
+            continue
+        if login_for_url(str(status.get("url") or ""))["url"] != key:
+            continue
+        if (status.get("batch") or status["id"]) != (target.get("batch") or target["id"]):
+            continue
+        status.update(state="queued", attempts=0)
+        for field in ("error", "error_code", "login", "blocked_by", "finished"):
+            status.pop(field, None)
+        _write_status(path.parent, status)
+        resumed.append(status)
+    ensure_runner()
+    return sorted(resumed, key=lambda status: status.get("seq", 0))
 
 
 def recent_jobs() -> list[dict[str, Any]]:
@@ -386,7 +509,7 @@ def _prune_old_jobs(keep: int = 50) -> None:
 def cancel_job(job_id: str) -> dict[str, Any]:
     """Cancel one job. A running job loses only its own openmd tree; the queue keeps going."""
     status = read_status(job_id)
-    if status.get("state") not in {"queued", "running"}:
+    if status.get("state") not in {"queued", "running", "paused"}:
         return status
     status.update(state="cancelled", finished=time.time())
     status.pop("pid", None)
@@ -433,6 +556,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "version": 1, "save_to": str(default_save_directory())}
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
+        if kind == "save_snapshot":
+            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"))}
         if kind == "save_many":
             return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"))}
         if kind == "status":
@@ -456,6 +581,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "jobs": recent_jobs()}
         if kind == "cancel":
             return {"ok": True, "job": cancel_job(str(message.get("id", "")))}
+        if kind == "retry_login":
+            return {"ok": True, "jobs": retry_login(str(message.get("id", "")), message.get("snapshot"))}
         if kind == "reveal":
             return reveal(str(message.get("id", "")))
         if kind == "pick_folder":

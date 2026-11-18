@@ -39,6 +39,8 @@ ALLOWED_RUNLOG_FIELDS: frozenset[str] = frozenset(
         "source_scope",
         "completeness",
         "sync",
+        "login",
+        "original_error_code",
     }
 )
 

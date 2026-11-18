@@ -241,4 +241,6 @@ def _load_backend_extension_modules(
 
 
 def _backend_extension_module_names(platform: str) -> tuple[str, str]:
+    if platform == "page_snapshot":
+        return ("openmd.backends.snapshot",)
     return (f"openmd.backends.{platform}", f"openmd.backends.{platform}_providers")

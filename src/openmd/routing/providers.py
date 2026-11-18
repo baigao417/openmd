@@ -14,6 +14,7 @@ from typing import Any
 
 from openmd.backends.base import BackendCapability, BackendDescriptor, BackendHealth
 from openmd.core.local_config import load_local_config
+from openmd.core.login import structured_login_code
 from openmd.core.models import TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 
@@ -98,6 +99,9 @@ class CommandToolProvider:
                 metadata = {"tool_run": {"seconds": run.seconds, "exit_code": run.exit_code, "files": run.files, "card_id": self.card["id"], **identity}, **route_trace(request.item.platform, self.name)}
                 if self.card["id"] == "yutto":
                     metadata["tool_run"]["anonymous_notice"] = "未提供登录认证信息" in run.stdout + run.stderr
+                login_code = structured_login_code(run.stdout)
+                if login_code or run.exit_code == 77:
+                    return replace(self._failed(login_code or "backend_exit_77", "Tool requires login."), metadata=metadata)
                 if run.exit_code != 0:
                     return replace(self._failed("tool_backend_exit", f"Tool exited with code {run.exit_code}; raw logs were not retained."), metadata=metadata)
                 if self.capability.get("then"):

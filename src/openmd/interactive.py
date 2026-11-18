@@ -62,6 +62,8 @@ def _authorize(args: argparse.Namespace, url: str, *, tty: bool) -> bool:
     # Open-source ease of use (user decision 2026-11-15): a non-interactive run
     # that names a destination gets the same daily gates as the terminal flow.
     # Explicit capability flags stay a narrow grant; cloud is never implied.
+    if getattr(args, "as_snapshot", False):
+        return True
     _preview(args, url)
     explicit = [gate for gate, option in _GATE_OPTIONS.items() if getattr(args, option, False)]
     if getattr(args, "enable_cloud_backends", False):
@@ -244,6 +246,12 @@ def _source_summary(stage: Path, result) -> tuple[str, list[dict[str, object]]]:
 
 
 def _failure_hint(rows: list[dict[str, object]]) -> str:
+    from openmd.core.login import login_for_url, login_hint, is_login_code
+
+    for row in reversed(rows):
+        if is_login_code(row.get("error_code")):
+            login = row.get("login") or login_for_url(str(row.get("input_url") or ""), str(row.get("platform") or ""))
+            return login_hint(login)
     codes = " ".join(str(row.get("error_code") or "") for row in rows).lower()
     if "browser_challenge_page" in codes:
         return "被站点验证页拦截，未取得目标正文；请在浏览器中确认原链接可访问后重试。"
@@ -334,6 +342,11 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not url:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
+        if getattr(args, "as_snapshot", False):
+            source_url = str(getattr(args, "snapshot_url", "") or "").strip()
+            if not re.match(r"^https?://[^\s]+$", source_url):
+                print("openmd go: --as-snapshot 需要 --url <原始 http(s) URL>", file=sys.stderr)
+                return 2
         from openmd.core.input_validation import INPUT_HINT, network_preflight, valid_daily_input
 
         if not valid_daily_input(url):
@@ -347,7 +360,7 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not _authorize(args, url, tty=tty):
             _say(args, "已取消。")
             return 0
-        if args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
+        if not getattr(args, "as_snapshot", False) and args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
             failure = network_preflight(url)
             if failure:
                 print(failure, file=sys.stderr)
@@ -383,7 +396,8 @@ def cmd_go(args: argparse.Namespace) -> int:
                     if retained:
                         print(f"错误记录：{retained}", file=sys.stderr)
                     if getattr(args, "json", False):
-                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None}, ensure_ascii=True))
+                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None,
+                                          **({"error_code": result.error_code, "login": result.login, "next_action": result.next_action} if result.next_action else {})}, ensure_ascii=True))
                     return 1
                 for output in result.outputs:
                     if Path(output).is_dir():

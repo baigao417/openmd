@@ -1,6 +1,8 @@
 """CLI items responsibility; compatibility imports resolve at call time."""
 from __future__ import annotations
 
+from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields
+
 def _process_items(
     items: list[ContentItem],
     args: argparse.Namespace,
@@ -20,9 +22,13 @@ def _process_items(
     source_level_counts: dict[str, int] = {}
     failure_code_counts: dict[str, int] = {}
     coverage = CollectionCoverage()
+    paused_count = 0
 
     for index, item in enumerate(items, start=1):
         processed_count += 1
+        if paused_login(args, item.url):
+            paused_count += 1
+            continue
         selection = registry.select_backend(
             item.platform,
             _requested_backend(item.platform, args),
@@ -97,11 +103,7 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
-        result = executor.extract(
-            item,
-            selection.chain,
-            allow_fallback=args.fallback,
-        )
+        result = extract_with_login(executor, item, selection.chain, args)
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
@@ -162,7 +164,7 @@ def _process_items(
             _append_guardrail_stop_entry(args, command=command, index=index, total=len(items))
             break
 
-    ok = failed_count == 0 and bool(items)
+    ok = failed_count == 0 and paused_count == 0 and bool(items)
     return CliResult(
         ok=ok,
         command=command,
@@ -175,43 +177,69 @@ def _process_items(
         source_level_counts=source_level_counts,
         failure_code_counts=failure_code_counts,
         coverage=coverage.as_dict(),
+        paused_count=paused_count,
+        **recovery_fields(args),
         message="completed" if ok else ("guardrail stopped" if processed_count < len(items) else "completed with failures"),
     )
 
 
 def _process_input(input_url: str, args: argparse.Namespace, *, command: str) -> CliResult:
-    from .cli import CliResult, OutputWriteResult, PackageValidationError, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
+    from .cli import CliResult, OutputWriteResult, PackageValidationError, Path, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
 
     if getattr(args, "all", False):
         return _log_all_guard(input_url, args, command=command)
 
+    if login := paused_login(args, getattr(args, "snapshot_url", None) or input_url):
+        return paused_result(args, command, login)
+
     registry = create_default_registry()
-    adapter = registry.adapter_for(input_url)
-    selection = registry.select_backend(
-        adapter.id,
-        _requested_backend(adapter.id, args),
-        allow_fallback=args.fallback,
-    )
+    if getattr(args, "as_snapshot", False):
+        from openmd.core.models import ContentItem
+
+        snapshot_path = Path(input_url).expanduser().resolve()
+        original_url = str(getattr(args, "snapshot_url", None) or "https://snapshot.invalid/local")
+        item = ContentItem(
+            platform="page_snapshot",
+            input_type="single",
+            url=original_url,
+            title=None,
+            source_type="article",
+            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_only"},
+        )
+        adapter = None
+        selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)
+        items = [item]
+    else:
+        adapter = registry.adapter_for(input_url)
+        selection = registry.select_backend(
+            adapter.id,
+            _requested_backend(adapter.id, args),
+            allow_fallback=args.fallback,
+        )
+        items = [
+            apply_platform_extraction_contract(item)
+            for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
+        ]
     if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
         from openmd.runtime.managed_tools import ensure_opencli
 
         # One `pip install openmd-cli` is enough: fetch the pinned opencli on first need.
         ensure_opencli()
-    items = [
-        apply_platform_extraction_contract(item)
-        for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
-    ]
     if command == "ingest":
         items = _prepare_compact_collection(args, items)
     elif command == "batch":
         _register_resolved_batch_items(args, input_url, items)
-    executor = _build_backend_executor(args, platform=adapter.id)
+    executor = _build_backend_executor(args, platform="page_snapshot" if getattr(args, "as_snapshot", False) else adapter.id)
     outputs: list[str] = []
     success_count = 0
     failed_count = 0
     skipped_count = 0
 
+    paused_count = 0
     for item in items:
+        if paused_login(args, item.url):
+            paused_count += 1
+            continue
         identity = executor.resolve_item_identity(item, selection.chain)
         if not identity.ok:
             failed_count += 1
@@ -242,11 +270,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
-        result = executor.extract(
-            item,
-            selection.chain,
-            allow_fallback=args.fallback,
-        )
+        result = extract_with_login(executor, item, selection.chain, args)
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
@@ -274,7 +298,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         )
         _append_execution_entry(args, entry)
 
-    ok = failed_count == 0 and bool(items)
+    ok = failed_count == 0 and paused_count == 0 and bool(items)
     return CliResult(
         ok=ok,
         command=command,
@@ -283,6 +307,8 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         failed_count=failed_count,
         skipped_count=skipped_count,
         outputs=outputs,
+        paused_count=paused_count,
+        **recovery_fields(args),
         message="completed" if ok else "completed with failures",
     )
 

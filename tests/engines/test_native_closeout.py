@@ -1,13 +1,20 @@
 """Document migration boundaries that must hold outside the developer machine."""
 import builtins
 import importlib.util
-import json
 import os
 from pathlib import Path
 from types import SimpleNamespace
 
 from openmd.engines.base import EngineLimits
 from openmd.engines.native_common import Document
+
+
+def test_document_extra_has_no_classifier_or_onnx_dependency():
+    import re
+    source = (Path(__file__).resolve().parents[2] / 'pyproject.toml').read_text(encoding='utf-8')
+    extra = re.search(r'^document\s*=\s*\[(.*?)\]', source, re.M).group(1)
+    assert all(name not in extra for name in ('markitdown', 'magika', 'onnxruntime', 'rapidocr'))
+    assert all(name in extra for name in ('mammoth', 'python-pptx', 'openpyxl', 'xlrd', 'olefile', 'pdfminer.six'))
 
 
 def test_declared_chains_match_runtime():

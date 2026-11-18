@@ -1,4 +1,5 @@
 import copy
+import shutil
 from pathlib import Path
 
 import pytest
@@ -19,13 +20,7 @@ def test_inventory_covers_dynamic_commands_options_and_owned_columns():
 def contract_package(tmp_path):
     root = tmp_path / 'package'
     target = root / 'clis/example/detail.js'
-    target.parent.mkdir(parents=True)
-    target.write_text("""
-// cli({site:'wrong', name:'wrong', columns:['wrong']})
-cli({site:'example', name:'detail',
- args:[{name:'id', positional:true}, {name:'markdown', type:'boolean'}],
- columns:['Role', 'Text'], func: async () => []});
-""", encoding='utf-8')
+    shutil.copytree(Path(__file__).parent / 'fixtures/opencli-contract', root)
     return root, target
 
 
@@ -58,6 +53,36 @@ def test_contract_rejects_missing_arg_and_command(contract_package):
     assert any('arg_missing:--unknown' in f for f in check_contracts(data, package_root=root))
     data['commands'][0]['command'] = 'absent'
     assert any('command_missing' in f for f in check_contracts(data, package_root=root))
+
+
+def test_contract_rejects_wrong_site_and_dynamic_metadata(contract_package):
+    from openmd.runtime.opencli_inventory import check_contracts
+    root, target = contract_package
+    original = target.read_text(encoding='utf-8')
+    target.write_text(original.replace("site: 'example'", "site: 'other'"), encoding='utf-8')
+    assert check_contracts(sample_inventory(), package_root=root) == ['example/detail:metadata_invalid']
+    target.write_text(original.replace("['Role', 'Text']", 'UNKNOWN_COLUMNS'), encoding='utf-8')
+    assert check_contracts(sample_inventory(), package_root=root) == ['example/detail:metadata_invalid']
+
+
+def test_static_metadata_ignores_comments_and_arbitrary_function_body():
+    from openmd.runtime.opencli_inventory import cli_definitions
+    source = """
+// cli({site:'fake',name:'fake',columns:['fake']});
+/*
+cli({site:'fake',name:'fake',columns:['fake']});
+*/
+cli({site:'example',name:'detail',args:[],columns:['Text'],
+ async func(page) { return /[{}]/.test(`nested ${page.evaluate('anything')}`); }
+});
+"""
+    assert cli_definitions(source) == [{'site': 'example', 'command': 'detail', 'args': [], 'columns': ['Text']}]
+
+
+def test_dynamic_site_branch_does_not_require_grok_only_flags_on_deepseek():
+    from openmd.runtime.opencli_inventory import inventory
+    row = next(r for r in inventory()['commands'] if r['site'] == 'deepseek')
+    assert '--markdown' not in row['args']
 
 
 def test_inventory_is_in_declaration_drift_check():

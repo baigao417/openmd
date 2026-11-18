@@ -1,6 +1,7 @@
 """Offline tests use temporary machine state, including during collection."""
 
 import os
+from importlib import metadata
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -56,6 +57,59 @@ def pytest_configure(config):
     config._machine_sandbox = TemporaryDirectory(prefix="openmd-pytest-")
     config._machine_environment = pytest.MonkeyPatch()
     _isolate_machine(config._machine_environment, config._machine_sandbox.name)
+    _isolate_plugins(config._machine_environment)
+
+
+def _isolate_plugins(monkeypatch, entries=()):
+    """Hide external Openmd plugins, including during collection.
+
+    Contract tests explicitly supply synthetic entries via openmd_plugin_entries.
+    Other libraries' entry points (including pytest's) remain discoverable.
+    """
+    original = metadata.entry_points
+
+    def entry_points(**params):
+        group = params.get("group")
+        if group is not None and group.startswith("openmd."):
+            return [entry for entry in entries
+                    if getattr(entry, "group", "openmd.platforms") == group
+                    and ("name" not in params or entry.name == params["name"])]
+        discovered = original(**params)
+        if group is not None:
+            return discovered
+        if isinstance(discovered, dict):  # Python 3.10 SelectableGroups
+            return type(discovered)({key: value for key, value in discovered.items()
+                                     if not key.startswith("openmd.")})
+        return metadata.EntryPoints(entry for entry in discovered
+                                    if not entry.group.startswith("openmd."))
+
+    monkeypatch.setattr(metadata, "entry_points", entry_points)
+
+
+@pytest.fixture
+def openmd_plugin_entries(monkeypatch):
+    """Explicit opt-in: load only synthetic entries owned by this test."""
+    from openmd.core.plugins import load_plugins
+    from openmd.routing.loader import load_catalog
+
+    class SyntheticEntries(list):
+        def append(self, entry):
+            super().append(entry)
+            load_plugins.cache_clear()
+            load_catalog.cache_clear()
+
+        def extend(self, entries):
+            super().extend(entries)
+            load_plugins.cache_clear()
+            load_catalog.cache_clear()
+
+    entries = SyntheticEntries()
+    _isolate_plugins(monkeypatch, entries)
+    load_plugins.cache_clear()
+    load_catalog.cache_clear()
+    yield entries
+    load_plugins.cache_clear()
+    load_catalog.cache_clear()
 
 
 def pytest_unconfigure(config):

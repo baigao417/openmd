@@ -31,7 +31,7 @@ def settings() -> dict:
                 raise ValueError(f"ocr_setting_invalid: {key}")
         elif isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) or item <= 0:
             raise ValueError(f"ocr_setting_invalid: {key}")
-    for key in ("repeat_min_chars", "repeat_count", "num_predict", "num_ctx", "max_pixels", "tile_height", "pdf_dpi", "textlayer_min_chars", "office_sparse_chars"):
+    for key in ("repeat_min_chars", "repeat_count", "num_predict", "num_ctx", "max_pixels", "large_portrait_max_pixels", "tile_height", "pdf_dpi", "textlayer_min_chars", "office_sparse_chars"):
         if not isinstance(value[key], int):
             raise ValueError(f"ocr_setting_integer_required: {key}")
     if not 0 < value["tile_overlap"] < 0.5 or not 0 < value["tile_search"] < 0.5:

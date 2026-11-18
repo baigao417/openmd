@@ -52,3 +52,12 @@ def parse_json(d):
     d.add(fenced(text, 'json'))
 
 FORMATS.add('json')
+
+
+def parse_xml(d):
+    from .native_common import xml
+    data = d.path.read_bytes()
+    xml(data)
+    d.add(fenced(data.decode('utf-8-sig'), 'xml'))
+
+FORMATS.add('xml')

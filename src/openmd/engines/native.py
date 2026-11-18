@@ -14,7 +14,7 @@ from .sniff import signature, validate_document
 DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx'), 'xlsx': ('openpyxl', 'openpyxl')}
 DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
 # Promotion is explicit and follows a saved per-format benchmark.
-PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json'}
+PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml'}
 
 
 class NativeEngine(DocumentEngine):

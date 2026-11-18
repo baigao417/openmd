@@ -49,8 +49,11 @@ def html_markdown(d, text):
         replacements[key] = markdown
         table.replace_with(soup.new_string('\n\n' + key + '\n\n'))
     for image in soup.find_all('img'):
-        # Embedded images are handled from their original package bytes.
-        image.decompose()
+        token = image.get('alt', '')
+        if token in getattr(d, 'image_slots', {}):
+            image.replace_with(soup.new_string('\n\n' + token + '\n\n'))
+        else:
+            image.decompose()
     value = html_to_markdown(str(soup))
     for key, replacement in replacements.items():
         value = value.replace(key, replacement)
@@ -104,7 +107,11 @@ class Document:
 
     def image(self, data, label, mime='image/png'):
         digest = hashlib.sha256(data).hexdigest()
-        if any(i['sha256'] == digest for i in self.images):
+        previous = next((i for i in self.images if i['sha256'] == digest), None)
+        if previous is not None:
+            self.add(f'![Embedded image reference](data:{mime};base64,' + base64.b64encode(data).decode('ascii') + ')')
+            self.add('来源：OCR\n\n' + previous['_ocr_text'] if previous.get('_ocr_text') else '[图片文字缺口：OCR 未配置、未授权或不可用]')
+            self.meta.setdefault('image_occurrences', []).append({'part': label, 'sha256': digest, 'ocr_reused': bool(previous.get('_ocr_text'))})
             return
         self.images.append({'part': label, 'sha256': digest, 'bytes': len(data), 'mime': mime})
         # A data URI keeps original bytes available in both flat and package
@@ -113,22 +120,36 @@ class Document:
         if self.limits.allow_ocr:
             try:
                 from PIL import Image
-                from openmd.ocr.pipeline import LocalOCRBackend
+                from openmd.ocr.engine import OcrEngine
                 with Image.open(io.BytesIO(data)) as image:
-                    value = LocalOCRBackend().recognize_image(image.convert('RGB'), title=label)
+                    engine = OcrEngine()
+                    if engine.id == 'ocr.rapidocr':
+                        # The configured OCR environment may differ from the document worker.
+                        from openmd.runtime.tempdirs import owned_temporary_directory
+                        with owned_temporary_directory(prefix='openmd-office-ocr-') as root:
+                            source = Path(root) / 'embedded.png'
+                            image.convert('RGB').save(source)
+                            value = engine.convert(source, self.limits)
+                    else:
+                        value = engine.recognize_image(image.convert('RGB'), title=label, timeout_s=self.limits.remaining())
+                self.images[-1]['ocr'] = {'status': value.status, 'backend': value.backend, 'error_code': value.error_code, 'evidence': value.metadata}
                 self.components.extend(value.normalized_components)
                 if value.has_usable_text:
-                    self.add(value.text)
+                    self.images[-1]['_ocr_text'] = value.text
+                    self.add('来源：OCR\n\n' + value.text)
                     if value.status != 'verified':
                         self.gap('embedded_image_ocr_partial')
                     return
-            except (ImportError, OSError, ValueError):
+            except (ImportError, OSError, ValueError, TimeoutError):
                 pass
+        self.images[-1].setdefault('ocr', {'status': 'unavailable', 'error_code': 'embedded_image_ocr_unavailable'})
+        self.add('[图片文字缺口：OCR 未配置、未授权或不可用]')
         self.gap('embedded_image_ocr_unavailable', 'image-' + str(len(self.images)))
 
     def result(self):
         text = '\n\n'.join(self.parts)
-        result = success(self.id, self.path, text, tables=self.tables, images=self.images, gaps=self.gaps, **self.meta)
+        images = [{key: value for key, value in image.items() if key != '_ocr_text'} for image in self.images]
+        result = success(self.id, self.path, text, tables=self.tables, images=images, gaps=self.gaps, **self.meta)
         if not result.has_usable_text:
             return result
         return replace(result, status='partial' if self.gaps else 'verified', components=self.components,

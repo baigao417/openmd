@@ -11,15 +11,15 @@ from openmd.runtime.tempdirs import owned_temporary_directory
 from .base import ArchiveBudget, EngineError, EngineLimits
 
 
-def convert_in_worker(path: Path, limits: EngineLimits, *, mode: str = 'document') -> dict:
+def convert_in_worker(path: Path, limits: EngineLimits, *, mode: str = 'document', python: Path | None = None, ocr_engine: str | None = None) -> dict:
     from .tools import run_command
     with owned_temporary_directory(prefix='openmd-document-worker-') as owned_root:
         root = Path(owned_root)
         request = root / 'request.json'
         output = root / 'result.json'
-        request.write_text(json.dumps({'path': str(path.resolve()), 'limits': asdict(limits), 'mode': mode}), encoding='utf-8')
+        request.write_text(json.dumps({'path': str(path.resolve()), 'limits': asdict(limits), 'mode': mode, 'ocr_engine': ocr_engine}), encoding='utf-8')
         bootstrap = 'import sys; sys.path[:0] = ' + repr(sys.path) + '; from openmd.engines.worker import main; main()'
-        run_command([sys.executable, '-I', '-X', 'utf8', '-c', bootstrap, str(request), str(output)], root, limits)
+        run_command([str(python or sys.executable), '-I', '-X', 'utf8', '-c', bootstrap, str(request), str(output)], root, limits)
         if not output.is_file() or output.stat().st_size > limits.max_output_bytes * 2:
             raise EngineError('document_output_limit')
         value = json.loads(output.read_text(encoding='utf-8'))
@@ -36,7 +36,12 @@ def main():
     limits = EngineLimits(**settings)
     path = Path(value['path'])
     try:
-        if value['mode'] == 'legacy_pipeline':
+        if value['mode'] == 'ocr':
+            from openmd.ocr.engine import OcrEngine
+            if value['ocr_engine'] == 'ocr.rapidocr':
+                import rapidocr_onnxruntime  # fail once if the selected worker lacks the dependency
+            result = asdict(OcrEngine(value['ocr_engine']).convert(path, limits))
+        elif value['mode'] == 'legacy_pipeline':
             from .sniff import validate_document
             validate_document(path, limits)
             from openmd.adapters.registry import create_default_registry

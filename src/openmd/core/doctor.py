@@ -87,6 +87,9 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
     diagnostics['opencli_patches'] = patch_diagnostics()
     from openmd.routing.loader import route_verification_status
     diagnostics['route_verification'] = route_verification_status()
+    from openmd.runtime.recommendations import hardware, recommend
+    diagnostics['hardware'] = hardware()
+    diagnostics['model_recommendation'] = recommend(diagnostics['hardware'])
     if profile == "all":
         diagnostics.update(_media_diagnostics())
         diagnostics["openmd_on_path"] = shutil.which("openmd") is not None

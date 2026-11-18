@@ -1,4 +1,5 @@
 {
+  "engine": "ocr.chain",
   "ovis_model": "ovis3-bf16",
   "minicpm_model": "minicpm-ocr-f16",
   "repeat_min_chars": 15,

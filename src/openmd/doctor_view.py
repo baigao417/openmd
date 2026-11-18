@@ -79,6 +79,10 @@ def render(payload: dict[str, Any]) -> str:
     if missing:
         lines.append(f"{missing} 项可选能力未就绪；不装也能用，遇到对应内容时会提示。机器可读结果：openmd doctor --json")
     preparation = (payload.get("profile_diagnostics") or {}).get("model_preparation") or {}
+    recommendation = (payload.get('profile_diagnostics') or {}).get('model_recommendation') or {}
+    if recommendation:
+        lines += ['', f"本机建议：OCR {recommendation['ocr']}；ASR {recommendation['asr']}（{recommendation['validation']}）",
+                  '查看下载计划：openmd models install ' + recommendation['ocr'] + '；不会自动下载。']
     managed = payload.get("managed_tools") or {}
     if managed.get("executable"):
         lines += ["", f"OpenCLI: {managed['executable']}",

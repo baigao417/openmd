@@ -1,5 +1,26 @@
 # Local OCR router
 
+## Document engine adapter and Office images
+
+`openmd.ocr.engine.OcrEngine` implements `DocumentEngine` using the existing
+`TranscriptResult`, components, error codes and OCR block/evidence metadata.
+Local `ocr.engine` configuration selects `ocr.chain`, `ocr.ovis3`,
+`ocr.minicpm` or optional `ocr.rapidocr`. The chain retains its existing
+configurable breakers, GPU lease, quarantine and unload lifecycle.
+
+Native DOCX/PPTX/XLSX readers retain embedded images at their source
+paragraph, slide shape or worksheet row/column. With local OCR permission,
+recognized text is placed there with `来源：OCR`; unavailable OCR leaves an
+explicit image text gap and a partial receipt. Duplicate image bytes reuse
+recognition within the document while retaining each occurrence. Worksheet
+placement is based on package relationships and drawing anchors, not layout
+rendering; floating objects and paragraph/table geometry are not certified.
+
+See [the comparison procedure](benchmarks/ocr/README.md) for frozen benchmark
+and hardware plan boundaries.
+
+## Existing recognition routes
+
 The screenshot route is `ocr.chain → ocr.rapidocr → ocr.tesseract`. The chain
 uses Ovis3 for page recognition and switches to MiniCPM layout crops if a
 configured breaker trips. `ocr.ovis3` and `ocr.minicpm` are also explicit backend

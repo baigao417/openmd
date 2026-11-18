@@ -144,10 +144,19 @@ class LocalOCRBackend(OCRBackend):
     def failed(self, code: str, title: str, detail: str | None = None) -> TranscriptResult:
         return TranscriptResult(text="", status="failed", source_level="ocr", backend=self.name, title=title, error_code=code, error_summary=detail or code, source_notes=["No model installation/download or Ollama lifecycle action was attempted."], metadata={"profile": "document"})
 
-    def recognize_image(self, image, *, title: str, page: int = 1, tile: bool = True) -> TranscriptResult:
+    def recognize_image(self, image, *, title: str, page: int = 1, tile: bool = True, timeout_s: float | None = None) -> TranscriptResult:
         try:
             config = settings()
+            deadline = time.monotonic() + timeout_s if timeout_s is not None else None
+            if timeout_s is not None:
+                config['page_seconds'] = min(config['page_seconds'], max(0.01, timeout_s))
+                config['gpu_lock_seconds'] = min(config['gpu_lock_seconds'], max(0.01, timeout_s))
             with gpu_lock(timeout=config["gpu_lock_seconds"]):
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError('document_timeout: GPU wait exhausted OCR budget')
+                    config['page_seconds'] = min(config['page_seconds'], remaining)
                 return self._recognize_locked(image, title, page, tile, config)
         except (OSError, ValueError, TimeoutError, OllamaError, GPUQuarantined) as exc:
             code = getattr(exc, "code", None) or (str(exc).split(":", 1)[0] if isinstance(exc, (OllamaError, TimeoutError, GPUQuarantined)) else "ocr_runtime_unavailable")

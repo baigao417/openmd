@@ -17,7 +17,6 @@ from zipfile import BadZipFile, ZipFile
 from openmd.adapters.local_audio.adapter import local_path_from_input
 from openmd.adapters.pdf.parser import MissingPDFParser, PDFParser
 from openmd.core.models import TranscriptResult
-from openmd.core.detector import DOCUMENT_EXTENSIONS
 from openmd.core.secrets import sanitize_error_summary
 
 
@@ -28,6 +27,15 @@ class MarkItDownPDFParser(PDFParser):
         return importlib.util.find_spec("markitdown") is not None
 
     def parse(self, source_ref: str, *, title: str) -> TranscriptResult:
+        from openmd.engines.markitdown import MarkItDownEngine
+
+        path = _local_existing_path(source_ref)
+        if path is None or path.suffix.lower() not in {".pdf", ".docx", ".pptx", ".xlsx"}:
+            return self._parse_legacy(source_ref, title=title)
+        return MarkItDownEngine().convert(path, _legacy_parser=self, title=title)
+
+    def _parse_legacy(self, source_ref: str, *, title: str) -> TranscriptResult:
+        """Compatibility implementation owned by the document engine facade."""
         source_path = _local_existing_path(source_ref)
         if source_path is None:
             return _failed_result(
@@ -38,13 +46,18 @@ class MarkItDownPDFParser(PDFParser):
                 "MarkItDown document parsing requires a local file path or file:// reference.",
             )
 
-        if source_path.suffix.lower() not in DOCUMENT_EXTENSIONS:
+        # Detector additions must never enable MarkItDown media/ZIP fallbacks.
+        if source_path.suffix.lower() not in {".pdf", ".docx", ".pptx", ".xlsx"}:
             return _failed_result(
                 self.name, str(source_path), title, "document_format_unsupported",
                 "Supported local document formats are PDF, DOCX, PPTX and XLSX.",
             )
 
         source_format = source_path.suffix.lower().lstrip(".")
+        if source_format == "pdf":
+            with source_path.open("rb") as source:
+                if b"%PDF-" not in source.read(1024):
+                    return _failed_result(self.name, str(source_path), title, "document_invalid_content", "The input does not have a PDF signature.")
         office_parts = {"docx": "word/document.xml", "pptx": "ppt/presentation.xml", "xlsx": "xl/workbook.xml"}
         if source_format in office_parts:
             try:
@@ -69,10 +82,13 @@ class MarkItDownPDFParser(PDFParser):
                 # Do not let a broken Office file fall back to plain text or a
                 # ZIP file listing and become a falsely verified document.
                 converter = {"docx": DocxConverter, "pptx": PptxConverter, "xlsx": XlsxConverter}[source_format]
-                parser = MarkItDown(enable_builtins=False)
+                parser = MarkItDown(enable_builtins=False, enable_plugins=False)
                 parser.register_converter(converter())
             else:
-                parser = MarkItDown()
+                from markitdown.converters import PdfConverter
+
+                parser = MarkItDown(enable_builtins=False, enable_plugins=False)
+                parser.register_converter(PdfConverter())
             converted: Any = parser.convert(str(source_path))
             text = (getattr(converted, "text_content", None) or "").strip()
         except Exception as exc:  # pragma: no cover - dependency-specific safety net

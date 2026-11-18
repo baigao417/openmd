@@ -38,7 +38,7 @@ web = []  # kept for compatibility; trafilatura is now a core dependency
 pdf = ["markitdown[pdf]>=0.1.6"]
 ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
 ocr-router = ["Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]
-document = ["markitdown[pdf,docx,pptx,xlsx]>=0.1.6", "rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+document = ["markitdown[pdf,docx,pptx,xlsx,outlook]>=0.1.6", "rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
 # Contributors: pip install -e ".[dev]" then python -m pytest
 dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also need ffmpeg on PATH
 
@@ -56,6 +56,7 @@ where = ["src"]
 "openmd" = ["browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
 "openmd.ocr" = ["settings.json", "ovis-prompt.txt"]
 "openmd.runtime" = ["tingwu_bridge.mjs"]
+"openmd.engines" = ["local_html.cjs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

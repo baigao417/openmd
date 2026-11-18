@@ -41,6 +41,10 @@
 - 入口：`src/openmd/runtime/asr.py`、`asr_worker.py`、`src/openmd/ocr/`；体检 `src/openmd/core/doctor.py`，人话视图 `src/openmd/doctor_view.py`。
 - 合同：模型缺失时明确提示，不自动从网络下载模型。
 
+本地文档引擎、格式能力与 ZIP 容器见[文档子系统](documents.md)及
+[生成格式清单](document-formats.generated.md)。旧 PDF/Office/OCR 路线保留，附加格式
+只检测可选工具；ZIP 内媒体显式标记需要 Openmd ASR。
+
 托管 OpenCLI 可通过本机位置配置 `tools.opencli.root` 放到其他目录。
 该值指向包含 `node_modules` 的安装根目录；未配置时仍使用
 `<data>/tools/opencli`。偏好文件和浏览器会话位置保持各自的数据目录。

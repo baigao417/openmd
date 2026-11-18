@@ -37,6 +37,10 @@ def source_id_for(item) -> str:
     from .secrets import sanitize_url
 
     identifier = str(item.id).strip() if item.id else hashlib.sha256(sanitize_url(item.url).encode("utf-8")).hexdigest()
+    if item.platform == "ai_chat" and item.raw_meta.get("chat_site") == "chatgpt":
+        from openmd.backends.ai_chat import conversation_id_for_url
+
+        return "chatgpt:" + (conversation_id_for_url("chatgpt", item.url) or identifier)
     return f"{item.platform}:{identifier}"
 
 
@@ -141,7 +145,7 @@ class SyncManifest:
             counter += 1
         return candidate
 
-    def write(self, source_id: str, relative_path: str, content: str, *, cursor=None) -> SyncWriteResult:
+    def write(self, source_id: str, relative_path: str, content: str, *, cursor=None, content_identity: str | None = None) -> SyncWriteResult:
         proposed = self._target(relative_path)
         encoded = content.encode("utf-8")
         digest = _sha(encoded)
@@ -160,8 +164,9 @@ class SyncManifest:
                     # Retain the canonical path and last canonical hash: future
                     # runs must continue to protect the user's edited original.
                     return SyncWriteResult(update, "conflict_kept_user_edit")
-                elif digest == entry["content_sha256"]:
+                elif digest == entry["content_sha256"] or (content_identity is not None and content_identity == entry.get("content_identity")):
                     operation = "unchanged"
+                    digest = entry["content_sha256"]
                 else:
                     operation = "updated"
             if operation != "unchanged":
@@ -170,6 +175,7 @@ class SyncManifest:
                 "source_id": source_id, "path": target.relative_to(self.root).as_posix(),
                 "content_sha256": digest, "cursor": cursor,
                 "last_synced": datetime.now(timezone.utc).isoformat(), "schema": SCHEMA,
+                **({"content_identity": content_identity} if content_identity is not None else {}),
             }
             _atomic_write(self.path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
             return SyncWriteResult(target, operation)

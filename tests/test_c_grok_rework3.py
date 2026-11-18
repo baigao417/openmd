@@ -127,11 +127,11 @@ def test_grok_runtime_uses_scoped_loading_patch(monkeypatch):
     assert "--import=data:" in seen[0][1]["env"]["NODE_OPTIONS"]
     assert "NODE_OPTIONS" not in os.environ or seen[0][1]["env"]["NODE_OPTIONS"] != os.environ["NODE_OPTIONS"]
     ai_chat._run_command(build_opencli_detail_args("chatgpt", "synthetic"), 180)
-    assert "env" not in seen[1][1]
+    assert "--import=data:" in seen[1][1]["env"]["NODE_OPTIONS"]
 
 
 @pytest.mark.parametrize("mode", ["hydrated", "never_hydrates", "source_drift"])
-def test_grok_loading_patch_waits_for_assistants_and_stable_turns(tmp_path, mode):
+def test_grok_loading_patch_waits_for_assistants_and_stable_turns(tmp_path, pinned_ai_package, mode):
     from openmd.backends import ai_chat
     node = shutil.which("node")
     if not node:
@@ -140,7 +140,9 @@ def test_grok_loading_patch_waits_for_assistants_and_stable_turns(tmp_path, mode
     module.parent.mkdir(parents=True)
     (tmp_path / "package.json").write_text('{"type":"module","version":"2.0.3"}', encoding="utf-8")
     module.write_text('''
-export async function detail(page) {
+import { cli, Strategy } from '@jackwener/opencli/registry';
+export const command = cli({site: 'grok',
+    func: async (page, kwargs) => {
 let bubbles = [];
 const POLL_DEADLINE_MS = 20_000;
 const startedAt = Date.now();
@@ -151,15 +153,16 @@ while (Date.now() - startedAt < POLL_DEADLINE_MS) {
 }
 if (!bubbles.length) { throw new Error('empty'); }
 return bubbles;
-}
+    },
+});
 ''', encoding="utf-8")
     probe = tmp_path / "probe.mjs"
     probe.write_text('''
-import {detail} from './clis/grok/detail.js';
+import {command} from './clis/grok/detail.js';
 let tick=0;
-Date.now=()=>tick*1000;
-const page={ getMessages: async()=>tick<3 ? [{role:'User',text:'fixture',html:''}] : [{role:'User',text:'fixture',html:''},{role:'Assistant',text:'answer',html:'<p>answer</p>'}], wait:async()=>{tick++;} };
-const turns=await detail(page);
+Date.now=()=>tick*1000; globalThis.setTimeout=(fn)=>{tick++;fn();};
+const page={ evaluate:async(code)=>code.includes('.length')?2:false, getMessages: async()=>tick<3 ? [{role:'User',text:'fixture',html:''}] : [{role:'User',text:'fixture',html:''},{role:'Assistant',text:'answer',html:'<p>answer</p>'}], wait:async()=>{throw Error("page timer used");} };
+const turns=await command.func(page,{});
 if(turns.length!==2 || tick<5) throw new Error('returned before assistant hydration/stability');
 console.log(JSON.stringify({turns:turns.length,tick}));
 ''', encoding="utf-8")
@@ -174,4 +177,4 @@ console.log(JSON.stringify({turns:turns.length,tick}));
         assert json.loads(done.stdout)["turns"] == 2
     else:
         assert done.returncode != 0
-        assert ("grok_detail_not_stable" if mode == "never_hydrates" else "grok_detail_patch_incompatible") in done.stderr
+        assert ("grok_detail_not_stable" if mode == "never_hydrates" else "opencli_patch_mismatch:grok-detail-stability-2") in done.stderr

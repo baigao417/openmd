@@ -32,11 +32,9 @@ DEEPSEEK_BACKEND = "opencli.deepseek.detail"
 GROK_BACKEND = "opencli.grok.detail"
 PLANNED_AI_CHAT_BACKENDS = (
     "opencli.claude.detail",
-    "opencli.doubao.detail",
-    "opencli.gemini.detail",
-    "opencli.qwen.detail",
-    "opencli.yuanbao.detail",
 )
+IMPLEMENTED_AI_CHAT_SITES = frozenset({"chatgpt", "deepseek", "grok", "doubao", "gemini", "qwen", "yuanbao"})
+EXPERIMENTAL_AI_CHAT_SITES = frozenset({"doubao", "gemini", "qwen", "yuanbao"})
 
 AI_CHAT_BACKENDS = {
     "chatgpt": CHATGPT_BACKEND,
@@ -65,7 +63,7 @@ def register_backend_providers(registry: BackendProviderRegistry, options: Backe
             if site in {"chatgpt", "deepseek", "grok"}:
                 continue
             if requested in {None, backend}:
-                registry.register(backend, UnimplementedAiChatProvider(site, backend))
+                registry.register(backend, OpenCliAiChatProvider(site, backend) if site in IMPLEMENTED_AI_CHAT_SITES else UnimplementedAiChatProvider(site, backend))
 
 
 def ai_chat_backend_for_site(site: str) -> str | None:
@@ -102,7 +100,9 @@ def conversation_id_for_url(site: str, value: str) -> str | None:
 
 def build_opencli_detail_args(site: str, conversation_id: str) -> list[str]:
     command = ["opencli", site, "detail", conversation_id, "-f", "json"]
-    if site in {"chatgpt", "grok"}:
+    if site == "chatgpt":
+        command.extend(["--wait", "true", "--stable", "2", "--timeout", "60"])
+    if site in {"chatgpt", "grok", "qwen"}:
         command.extend(["--markdown", "true"])
     return command
 
@@ -132,6 +132,10 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
     if _is_generating(root):
         raise AiChatError("ai_chat_generating", "对话仍在生成中，请等待生成完成后重试。")
     rows = _find_message_rows(root)
+    if len(rows) == 1 and isinstance(rows[0], dict) and str(rows[0].get("Role") or rows[0].get("role") or "").lower() == "system" and str(rows[0].get("Text") or rows[0].get("text") or "") in {"No messages found. Verify the conversation ID.", "No visible messages found."}:
+        raise AiChatError("ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
+    if any(_is_generating(row) for row in rows):
+        raise AiChatError("ai_chat_generating", "对话仍在生成中，请等待生成完成后重试。")
     turns: list[TurnBlock] = []
     for index, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
@@ -159,6 +163,9 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         "assistant_turn_count": sum(1 for turn in turns if str(turn.role).lower() == "assistant"),
         "source_url": source_url,
     }
+    independent_counts = [row.get("OpenmdPageTurnCount") for row in rows if isinstance(row, dict) and type(row.get("OpenmdPageTurnCount")) is int and row["OpenmdPageTurnCount"] >= 0]
+    if independent_counts:
+        meta["independent_turn_count"] = max(independent_counts)
     return turns, meta
 
 
@@ -167,6 +174,32 @@ class AiChatError(ValueError):
         super().__init__(summary)
         self.code = code
         self.original_code = original_code or code
+
+
+def login_status_from_output(payload: Any) -> bool | None:
+    """Use status fields, never conversation prose, to identify login recovery."""
+    if isinstance(payload, str):
+        try:
+            payload = load_opencli_json(payload)
+        except (ValueError, TypeError):
+            return None
+    if _find_login_url(payload):
+        return False
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and _is_auth_error_code(str(error.get("code", "")).upper()):
+            return False
+        payload = payload.get("data", payload)
+    if isinstance(payload, list):
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            login, state = str(row.get("Login") or "").lower(), str(row.get("Status") or "").lower()
+            if login == "yes" and state != "page not ready":
+                return True
+            if state == "login required" or (login.startswith("no") and state == "connected"):
+                return False
+    return None
 
 
 class OpenCliAiChatProvider:
@@ -205,6 +238,10 @@ class OpenCliAiChatProvider:
         conversation_id = conversation_id_for_url(self.site, item.url)
         if not conversation_id:
             return _failed(self.name, "ai_chat_invalid_url", "Conversation URL did not contain a valid conversation ID.")
+        if self.runner is _run_command and self.site in {"chatgpt", "doubao", "gemini", "qwen", "yuanbao"}:
+            code, status_stdout, _ = self.runner(["opencli", self.site, "status", "-f", "json"], min(self.timeout, 90))
+            if code == 77 or login_status_from_output(status_stdout) is False:
+                return normalize_login_result(_failed(self.name, "login_required", "平台当前未登录，未导出对话。"), item)
         command = build_opencli_detail_args(self.site, conversation_id)
         turns = None
         metadata = None
@@ -222,7 +259,13 @@ class OpenCliAiChatProvider:
                     result = _failed(self.name, error_code or ("backend_exit_77" if code == 77 else "ai_chat_not_logged_in"), "平台当前未登录，未导出对话。")
                     return normalize_login_result(result, item)
                 if error_code == "EMPTY_RESULT":
+                    if self.runner is _run_command and attempt < 1:
+                        continue
                     return _failed(self.name, "ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
+                if error_code in {"TIMEOUT", "AI_CHAT_NOT_STABLE", "SESSION_BUSY"}:
+                    failure = _failed(self.name, "ai_chat_timeout" if error_code == "TIMEOUT" else "ai_chat_not_stable", "平台对话未在有限等待内稳定，请稍后重试。")
+                    failure.metadata["original_error_code"] = error_code
+                    return failure
                 return _failed(self.name, f"backend_exit_{code}", "OpenCLI conversation detail command failed.")
             try:
                 turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url)
@@ -305,8 +348,8 @@ def _first_text(value: dict[str, Any], *keys: str, strip: bool = True) -> str | 
 def _is_generating(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
-    for key in ("generating", "is_generating", "in_progress", "streaming"):
-        if value.get(key) is True:
+    for key in ("generating", "Generating", "is_generating", "in_progress", "streaming"):
+        if value.get(key) is True or str(value.get(key, "")).lower() in {"true", "yes"}:
             return True
     state = str(value.get("status") or value.get("state") or "").lower()
     return state in {"generating", "streaming", "in_progress", "pending"}
@@ -357,20 +400,18 @@ def _failed(backend: str, code: str, summary: str) -> TranscriptResult:
 
 
 def _grok_loading_environment() -> dict[str, str]:
-    """Replay the pinned detail loading fix in this Node process only.
+    from openmd.runtime.ai_chat_loading import detail_loading_environment
 
-    Grok hydrates user bubbles before assistant bubbles. OpenCLI 2.0.3 breaks
-    on the first nonempty result, silently exporting only the user prompts.
-    A scoped Node loader patches that one module without editing shared npm
-    files, profile/config, or any other provider. Marker drift fails closed.
-    """
-    from openmd.runtime.opencli_patches import loader_environment
-    return loader_environment("grok")
+    return detail_loading_environment("grok")
 
 
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     try:
-        kwargs = {"env": _grok_loading_environment()} if command[1:3] == ["grok", "detail"] else {}
+        kwargs = {}
+        if len(command) > 2 and command[1] in IMPLEMENTED_AI_CHAT_SITES and command[2] in {"detail", "read", "status", "history"}:
+            from openmd.runtime.ai_chat_loading import detail_loading_environment
+
+            kwargs["env"] = _grok_loading_environment() if command[1:3] == ["grok", "detail"] else detail_loading_environment(command[1], command[2])
         completed = run_interruptibly(command, capture_output=True, text=True, timeout=timeout, check=False, encoding="utf-8", errors="replace", **kwargs)
     except FileNotFoundError:
         return 127, "", "opencli executable not found"

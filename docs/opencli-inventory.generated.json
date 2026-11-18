@@ -176,6 +176,9 @@
       "command": "detail",
       "args": [
         "--markdown",
+        "--stable",
+        "--timeout",
+        "--wait",
         "-f"
       ],
       "positionals": 1,
@@ -184,7 +187,7 @@
         "Text"
       ],
       "sources": [
-        "src/openmd/backends/ai_chat.py:104"
+        "src/openmd/backends/ai_chat.py:102"
       ],
       "argv": [
         [
@@ -192,6 +195,28 @@
           "chatgpt",
           "detail",
           "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "chatgpt",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "chatgpt",
+          "status",
           "-f",
           "json"
         ]
@@ -210,7 +235,7 @@
         "Text"
       ],
       "sources": [
-        "src/openmd/backends/ai_chat.py:104"
+        "src/openmd/backends/ai_chat.py:102"
       ],
       "argv": [
         [
@@ -218,6 +243,73 @@
           "deepseek",
           "detail",
           "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "deepseek",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "deepseek",
+          "status",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "doubao",
+      "command": "detail",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:102"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "doubao",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "doubao",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "doubao",
+          "status",
           "-f",
           "json"
         ]
@@ -296,6 +388,51 @@
       "kind": "upstream"
     },
     {
+      "site": "gemini",
+      "command": "detail",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:102"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "gemini",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "gemini",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "gemini",
+          "status",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
       "site": "grok",
       "command": "detail",
       "args": [
@@ -308,7 +445,7 @@
         "Text"
       ],
       "sources": [
-        "src/openmd/backends/ai_chat.py:104"
+        "src/openmd/backends/ai_chat.py:102"
       ],
       "argv": [
         [
@@ -316,6 +453,28 @@
           "grok",
           "detail",
           "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "grok",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "grok",
+          "status",
           "-f",
           "json"
         ]
@@ -581,6 +740,52 @@
           "positional": false
         }
       ]
+    },
+    {
+      "site": "qwen",
+      "command": "detail",
+      "args": [
+        "--markdown",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:102"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "qwen",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "qwen",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "qwen",
+          "status",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
     },
     {
       "site": "twitter",
@@ -1148,6 +1353,51 @@
           "{mode}",
           "-f",
           "{output_format}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "yuanbao",
+      "command": "detail",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:102"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "yuanbao",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "yuanbao",
+      "command": "status",
+      "args": [
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:242"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "yuanbao",
+          "status",
+          "-f",
+          "json"
         ]
       ],
       "kind": "upstream"

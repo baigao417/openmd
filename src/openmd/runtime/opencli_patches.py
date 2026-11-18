@@ -258,19 +258,105 @@ BRIDGE_PATCHES += [('Quiet Openmd browser and adapter surfaces share the automat
              'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" ? "interactive" : "automation";\n}',
              'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";\n}', 1)]
 
-GROK_EDITS = [
-    ('let bubbles = [];', "let bubbles = []; let grokPrevious = ''; let grokStablePolls = 0; let grokStable = false;"),
+# Chrome throttles page timers in inactive tabs. Schedule read polling in Node.
+# These helpers and every injection are checked as loader entries below.
+_AI_HELPERS = r'''
+function openmdBackgroundPage(page) {
+  return new Proxy(page, {get(target, key) {
+    // The session already owns its target. Gemini's helper selects the same
+    // hidden target to activate animations; reading must not steal focus.
+    if (key === 'selectTab') return async () => {};
+    if (key === 'goto') return (url, options) => target.goto(url, {...options, waitUntil: 'none'});
+    if (key === 'wait') return async (options) => {
+      if (typeof options === 'number') return new Promise(r => setTimeout(r, options * 1000));
+      if (typeof options?.time === 'number') return new Promise(r => setTimeout(r, options.time * 1000));
+      if (options?.selector) {
+        const end = Date.now() + (options.timeout ?? 10) * 1000;
+        while (Date.now() < end) {
+          if (await target.evaluate('!!document.querySelector(' + JSON.stringify(options.selector) + ')')) return;
+          await new Promise(r => setTimeout(r, 500));
+        }
+        throw new Error('openmd_selector_wait_timeout');
+      }
+      return target.wait(options);
+    };
+    const value = Reflect.get(target, key, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  }});
+}
+async function openmdGenerating(page) {
+  if (typeof page.evaluate !== 'function') return false;
+  return !!(await page.evaluate(`!!document.querySelector('[data-testid="stop-button"], [data-testid="stop-response-button"], button[aria-label="Stop generating"], button[aria-label="停止生成"]')`));
+}
+function openmdMeasured(handler, selector) {
+  return async (page, kwargs) => {
+    const rows = await handler(page, kwargs);
+    if (!Array.isArray(rows)) return rows;
+    const count = await page.evaluate('document.querySelectorAll(' + JSON.stringify(selector) + ').length');
+    const generating = await openmdGenerating(page);
+    return rows.map(row => ({...row, ...(Number.isInteger(count) && count > 0 ? {OpenmdPageTurnCount: count} : {}), Generating: generating}));
+  };
+}
+async function openmdStableRows(page, read, select = x => x) {
+  let previous = '', stable = 0;
+  const deadline = Date.now() + 45000;
+  while (Date.now() < deadline) {
+    const value = await read();
+    const rows = select(value);
+    const signature = JSON.stringify(rows);
+    stable = signature === previous ? stable + 1 : 0;
+    previous = signature;
+    if (Array.isArray(rows) && rows.some(r => /^(assistant|model|助手)$/i.test(r.Role ?? r.role ?? '')) && stable >= 2 && !(await openmdGenerating(page))) return value;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  const err = new Error('AI conversation did not finish loading');
+  err.code = 'AI_CHAT_NOT_STABLE'; err.exitCode = 75;
+  throw err;
+}
+'''
+
+_BUBBLE_EDITS = (
+    ('let bubbles = [];',
+     "let bubbles = []; let grokPrevious = ''; let grokStablePolls = 0; let grokStable = false;"),
     ('const POLL_DEADLINE_MS = 20_000;', 'const POLL_DEADLINE_MS = 45_000;'),
     ('if (bubbles.length > 0) break;', """
-      const signature = JSON.stringify(bubbles.map(b => [b.role, b.text, b.html]));
-      grokStablePolls = signature === grokPrevious ? grokStablePolls + 1 : 0;
-      grokPrevious = signature;
-      if (bubbles.length > 0 && bubbles.some(b => b.role === 'Assistant') && grokStablePolls >= 2) {
-        grokStable = true;
-        break;
-      }"""),
-    ('if (!bubbles.length)', "if (bubbles.length && !grokStable) throw new Error('grok_detail_not_stable: conversation loading did not finish');\nif (!bubbles.length)"),
-]
+const signature = JSON.stringify(bubbles.map(b => [b.role, b.text, b.html]));
+grokStablePolls = signature === grokPrevious ? grokStablePolls + 1 : 0;
+grokPrevious = signature;
+if (bubbles.length > 0 && bubbles.some(b => /^assistant$/i.test(b.role)) && grokStablePolls >= 2 && !(await openmdGenerating(page))) {grokStable = true; break;}
+"""),
+    ('if (!bubbles.length)',
+     "if (bubbles.length && !grokStable) throw Object.assign(new Error('grok_detail_not_stable'), "
+     "{code:'AI_CHAT_NOT_STABLE',exitCode:75});\nif (!bubbles.length)"),
+)
+_DETAIL_EDITS = {
+    'grok': _BUBBLE_EDITS,
+    'qwen': _BUBBLE_EDITS,
+    'yuanbao': _BUBBLE_EDITS,
+    'deepseek': (
+        ('await ensureOnDeepSeek(page);', '// Navigate to the explicit conversation once; no redundant home wait.'),
+        ('const messages = await getVisibleMessages(page);',
+         'const messages = await openmdStableRows(page, () => getVisibleMessages(page));'),
+    ),
+    'gemini': (
+        ('const turns = await getGeminiVisibleTurns(page);',
+         'const turns = await openmdStableRows(page, () => getGeminiVisibleTurns(page));'),
+    ),
+    'doubao': (
+        ('const { messages, meeting } = await getConversationDetail(page, conversationId);',
+         'const { messages, meeting } = await openmdStableRows(page, '
+         '() => getConversationDetail(page, conversationId), x => x.messages);'),
+    ),
+}
+_AI_SELECTORS = {
+    'grok': '[data-testid="user-message"], [data-testid="assistant-message"]',
+    'chatgpt': '[data-message-author-role]',
+    'deepseek': '.ds-message',
+    'doubao': '[data-testid="union_message"]',
+    'gemini': 'user-query, model-response',
+    'qwen': '[data-chat-question-wrap], [data-chat-answers-wrap]',
+    'yuanbao': '.agent-chat__list__item--human, .agent-chat__list__item--ai',
+}
 
 
 @dataclass(frozen=True)
@@ -286,14 +372,34 @@ class Patch:
     verification: str = 'exact occurrence count, in registry order'
 
 
+def _ai_loader_patches() -> tuple[Patch, ...]:
+    patches = []
+    for site, selector in _AI_SELECTORS.items():
+        for operation in ('detail', 'history', 'status', 'read'):
+            target = f'clis/{site}/{operation}.js'
+            prefix = f'{site}-{operation}'
+            description = f'{site} {operation}: Node timers, background reads and stable assistant turns'
+            def add(label: str, before: str, after: str) -> None:
+                patches.append(Patch(f'{prefix}-{label}', 'loader', target, before, after, 1, description))
+
+            marker = "import { cli, Strategy } from '@jackwener/opencli/registry';"
+            add('helpers', marker, _AI_HELPERS + '\n' + marker)
+            page_only = operation == 'status' or (operation == 'read' and site in {'deepseek', 'doubao', 'gemini', 'yuanbao'})
+            entry = 'func: async (page) => {' if page_only else 'func: async (page, kwargs) => {'
+            if operation == 'detail':
+                add('handler', entry, 'func: openmdMeasured(async (page, kwargs) => {\npage = openmdBackgroundPage(page);')
+                add('measurement', '\n    },\n});', '\n    }, ' + json.dumps(selector) + '),\n});')
+                for index, (before, after) in enumerate(_DETAIL_EDITS.get(site, []), start=1):
+                    add(f'stability-{index}', before, after)
+            else:
+                add('handler', entry, entry + '\npage = openmdBackgroundPage(page);')
+    return tuple(patches)
+
+
 PATCHES = tuple(
     Patch(f'bridge-{i:02d}', 'bridge', 'dist/background.js', before, after, count, description)
     for i, (description, before, after, count) in enumerate(BRIDGE_PATCHES, start=1)
-) + tuple(
-    Patch(f'grok-detail-{i}', 'loader', 'clis/grok/detail.js', before, after, 1,
-          'Grok detail assistant hydration and bounded stability polling')
-    for i, (before, after) in enumerate(GROK_EDITS, start=1)
-) + (
+) + _ai_loader_patches() + (
     Patch('xiaoe-dispatch-registry-api', 'dispatcher', 'dist/src/registry-api.js',
           "export { cli, Strategy, getRegistry, fullName, registerCommand } from './registry.js';", '', 1,
           'Xiaoe/owned adapters import registry API through a scoped resolver', verification='exact ABI marker; no npm file mutation'),
@@ -412,24 +518,27 @@ def validate_dispatcher(package_root: Path) -> None:
             apply_patch(source, patch, version=version)
 
 
-def loader_environment(site: str, *, base: dict[str, str] | None = None) -> dict[str, str]:
+def loader_environment(site: str, operation: str = "detail", *, base: dict[str, str] | None = None) -> dict[str, str]:
     """Create a process-scoped loader from this registry, with no disk edits."""
-    patches = [p for p in PATCHES if p.kind == 'loader' and p.target.split('/')[1] == site]
+    patches = [p for p in PATCHES if p.kind == 'loader' and p.target == f'clis/{site}/{operation}.js']
     if not patches:
-        raise ValueError('opencli_loader_site_not_registered')
+        raise ValueError('opencli_patch_loader_not_registered:' + site + ':' + operation)
     edits = [{'id': p.id, 'target': '/' + p.target, 'before': p.original, 'after': p.replacement,
               'count': p.count, 'versions': p.versions} for p in patches]
-    loader = """
+    loader = r"""
 import {readFile} from 'node:fs/promises';
 export async function load(url, context, nextLoad) {
   const result = await nextLoad(url, context);
   const edits = EDITS.filter(p => new URL(url).pathname.endsWith(p.target));
   if (!edits.length) return result;
-  const version = JSON.parse(await readFile(new URL('../../package.json', url), 'utf8')).version;
+  let version;
+  try { version = JSON.parse(await readFile(new URL('../../package.json', url), 'utf8')).version; }
+  catch { throw new Error('opencli_patch_version_unreadable:' + edits[0].id); }
   let source = typeof result.source === 'string' ? result.source : new TextDecoder().decode(result.source);
+  source = source.replace(/\r\n/g, '\n');
   for (const p of edits) {
     if (!p.versions.includes(version)) throw new Error('opencli_patch_version_incompatible:' + p.id);
-    if (source.split(p.before).length !== p.count + 1) throw new Error('grok_detail_patch_incompatible:' + p.id);
+    if (source.split(p.before).length !== p.count + 1) throw new Error('opencli_patch_mismatch:' + p.id);
     source = source.split(p.before).join(p.after);
   }
   return {...result, source};
@@ -438,5 +547,6 @@ export async function load(url, context, nextLoad) {
     loader_url = 'data:text/javascript,' + quote(loader, safe='')
     bootstrap = "import {register} from 'node:module'; register(" + json.dumps(loader_url) + ', import.meta.url);'
     env = dict(os.environ if base is None else base)
+    env.setdefault('OPENCLI_BROWSER_COMMAND_TIMEOUT', '120')
     env['NODE_OPTIONS'] = (env.get('NODE_OPTIONS', '') + ' --max-old-space-size=1536 --import=data:text/javascript,' + quote(bootstrap, safe='')).strip()
     return env

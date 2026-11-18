@@ -168,6 +168,15 @@ def inventory(root: Path = ROOT) -> dict:
         parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
         sites = {n.args[0].value for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                  and n.func.id == 'OpenCliAiChatProvider' and n.args and isinstance(n.args[0], ast.Constant)}
+        # AI providers may also be constructed in a loop over this explicit
+        # implementation allowlist. Planned providers must stay excluded.
+        for assignment in tree.body:
+            if (isinstance(assignment, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == 'IMPLEMENTED_AI_CHAT_SITES' for t in assignment.targets)
+                    and isinstance(assignment.value, ast.Call)
+                    and isinstance(assignment.value.func, ast.Name)
+                    and assignment.value.func.id == 'frozenset'):
+                sites.update(ast.literal_eval(assignment.value.args[0]))
         for node in ast.walk(tree):
             if not isinstance(node, ast.List) or len(node.elts) < 3 or not isinstance(node.elts[0], ast.Constant) or node.elts[0].value != 'opencli':
                 continue
@@ -202,7 +211,7 @@ def inventory(root: Path = ROOT) -> dict:
                             result.extend(_symbol(arg, functions))
                 return result
             source = f'{path.relative_to(root).as_posix()}:{node.lineno}'
-            if argv[1] == '{site}':
+            if argv[1] in {'{site}', '{self.site}'}:
                 for site in sorted(sites):
                     add([argv[0], site, *argv[2:]], source, extra=extras(site))
             else:

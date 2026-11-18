@@ -56,6 +56,11 @@ def _local_path(item: ContentItem):
 def available_signals(item: ContentItem, result: TranscriptResult) -> dict[str, Any]:
     """Prefer existing platform metadata; probe only the explicit local source."""
     signals: dict[str, Any] = {}
+    if item.source_type == "conversation":
+        for value in (item.raw_meta.get("declared_turn_count"), result.metadata.get("independent_turn_count")):
+            if type(value) is int and value >= 0:
+                signals["conversation_turn_count"] = value
+                break
     if item.source_type in {"audio", "video"} or result.source_level in {"asr", "media_asr", "native_caption", "auto_caption", "platform_transcript"}:
         coverage = result.metadata.get("coverage")
         coverage = coverage if isinstance(coverage, dict) else {}
@@ -142,6 +147,8 @@ def check_completeness(item: ContentItem, result: TranscriptResult, *, signals: 
     selected = checkers
     if selected is None:
         selected = (pdf_page_check,) if item.platform == "pdf" else ((media_cue_check,) if item.source_type in {"audio", "video"} or result.source_level in {"asr", "media_asr", "native_caption", "auto_caption", "platform_transcript"} else ())
+        if item.source_type == "conversation":
+            selected = (*selected, conversation_turn_check)
     if not selected:
         return result
     evidence = available_signals(item, result) if signals is None else signals
@@ -155,3 +162,13 @@ def check_completeness(item: ContentItem, result: TranscriptResult, *, signals: 
                 notes.append(note)
     return replace(result, status="partial" if status == "downgrade" and result.status == "verified" else result.status,
                    source_notes=notes, metadata={**result.metadata, "completeness": {"status": status, "checks": [check.as_dict() for check in checks]}})
+
+
+def conversation_turn_check(item: ContentItem, result: TranscriptResult, signals: Mapping[str, Any]) -> Check:
+    expected = signals.get("conversation_turn_count")
+    actual = sum(1 for block in result.blocks if (getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)) == "turn")
+    if type(expected) is not int or expected < 0 or not result.blocks:
+        return Check("conversation_turns", reason="independent_turn_count_unavailable")
+    if actual < expected:
+        return Check("conversation_turns", "downgrade", "conversation_turns_missing", {"exported_turns": actual, "expected_turns": expected, "missing_turns": expected - actual})
+    return Check("conversation_turns", "ok")

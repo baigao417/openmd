@@ -182,7 +182,7 @@ def _daily_filename(title: str) -> str:
     return value
 
 
-def _save(stage: Path, destination: Path, *, title: str, package: bool = False, source: Path | None = None) -> Path:
+def _save(stage: Path, destination: Path, *, title: str, package: bool = False, source: Path | None = None, sync_receipt: dict | None = None) -> Path:
     destination = destination.expanduser().resolve()
     if destination.exists() and not destination.is_dir():
         raise ValueError("save_directory_required: 请输入保存文件夹")
@@ -208,6 +208,21 @@ def _save(stage: Path, destination: Path, *, title: str, package: bool = False, 
     if source.suffix != ".md" or not source.resolve().is_relative_to(stage.resolve()):
         raise ValueError("go_single_markdown_required: 未找到本次提取的 Markdown")
     base = _daily_filename(title)
+    staged_manifest = stage / ".openmd/manifest.json"
+    if staged_manifest.is_file():
+        from openmd.core.sync_manifest import SyncManifest
+
+        entries = json.loads(staged_manifest.read_text(encoding="utf-8")).get("entries", {})
+        relative = source.resolve().relative_to(stage.resolve()).as_posix()
+        matches = [entry for entry in entries.values() if entry.get("path") == relative]
+        if len(matches) != 1:
+            raise ValueError("go_sync_source_identity_missing")
+        entry = matches[0]
+        synced = SyncManifest(destination).write(entry["source_id"], f"{base}.md", source.read_text(encoding="utf-8"),
+                                                 content_identity=entry.get("content_identity"))
+        if sync_receipt is not None:
+            sync_receipt["operation"] = synced.operation
+        return synced.path
     for attempt in range(100):
         target = destination / f"{base}{'-' + uuid4().hex[:6] if attempt else ''}.md"
         try:
@@ -361,6 +376,10 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not url:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
+        from openmd.importers.chatgpt import cmd_import, is_chatgpt_export
+
+        if getattr(args, "chatgpt_export", False) or is_chatgpt_export(url):
+            return cmd_import(args, url, tty=tty)
         if getattr(args, "as_snapshot", False):
             source_url = str(getattr(args, "snapshot_url", "") or "").strip()
             if not re.match(r"^https?://[^\s]+$", source_url):
@@ -400,6 +419,7 @@ def cmd_go(args: argparse.Namespace) -> int:
             try:
                 result = _process_input(url, run_args, command="go")
                 run_args._go_result = result
+                args._go_result = result
                 if run_args.receipt:
                     with contextlib.redirect_stdout(io.StringIO()):
                         receipt_code = _emit_result(run_args, result)
@@ -448,7 +468,12 @@ def cmd_go(args: argparse.Namespace) -> int:
                         return 0
                     try:
                         destination = Path(destination_text.strip().strip('"')).expanduser().resolve()
-                        target = _save(stage, destination, title=title, package=args.package, source=None if args.package else first)
+                        published_sync = {}
+                        target = _save(stage, destination, title=title, package=args.package, source=None if args.package else first, sync_receipt=published_sync)
+                        if published_sync:
+                            from dataclasses import replace
+
+                            args._go_result = replace(result, sync=published_sync)
                         break
                     except (OSError, ValueError) as exc:
                         if not tty or requested_destination:

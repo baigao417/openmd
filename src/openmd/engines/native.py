@@ -15,7 +15,7 @@ DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx'),
 DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
 # Promotion is explicit and follows a saved per-format benchmark.
 ODF_FORMATS = {'odt'}
-PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt'}
+PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt', 'ods'}
 
 
 class NativeEngine(DocumentEngine):
@@ -79,3 +79,5 @@ def convert_local(path: Path, limits: EngineLimits):
         return document.result()
     {'docx': parse_docx, 'pptx': parse_pptx, 'xlsx': parse_xlsx, 'xls': parse_xls}[path.suffix.lower().lstrip('.')](document)
     return document.result()
+
+ODF_FORMATS.add('ods')

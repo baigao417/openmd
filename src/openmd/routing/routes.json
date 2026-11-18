@@ -1,6 +1,14 @@
 {
   "schema": "openmd.routes/v1",
   "version": "2026-11-10.1",
+  "source_traits": {
+    "ai_chat": {
+      "syncable": true
+    },
+    "collection_incremental": {
+      "syncable": true
+    }
+  },
   "routes": [
     {
       "source": "bilibili",

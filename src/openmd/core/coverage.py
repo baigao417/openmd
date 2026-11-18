@@ -37,6 +37,7 @@ class CollectionCoverage:
         default_factory=lambda: defaultdict(Counter)
     )
     _source_levels: Counter[str] = field(default_factory=Counter)
+    _completeness: Counter[str] = field(default_factory=Counter)
 
     def record_result(
         self,
@@ -45,6 +46,7 @@ class CollectionCoverage:
         skipped_existing: bool = False,
         force_failed: bool = False,
     ) -> None:
+        self._record_completeness(result.metadata)
         self.record(
             status="failed" if force_failed else result.status,
             components=result.normalized_components,
@@ -57,6 +59,7 @@ class CollectionCoverage:
         *,
         skipped_existing: bool = False,
     ) -> None:
+        self._record_completeness(metadata)
         raw_components = metadata.get("components")
         components = raw_components if isinstance(raw_components, list) else []
         self.record(
@@ -67,6 +70,11 @@ class CollectionCoverage:
 
     def record_failure(self) -> None:
         self.record(status="failed", components=[])
+
+    def _record_completeness(self, metadata: Mapping[str, Any]) -> None:
+        completeness = metadata.get("completeness")
+        if isinstance(completeness, dict) and completeness.get("status") in {"ok", "downgrade", "unknown"}:
+            self._completeness[completeness["status"]] += 1
 
     def record(
         self,
@@ -118,6 +126,7 @@ class CollectionCoverage:
 
         return {
             "attempted": self.attempted,
+            "completeness_counts": dict(sorted(self._completeness.items())),
             "verified": int(self._item_statuses["verified"]),
             "partial": int(self._item_statuses["partial"]),
             "failed": int(self._item_statuses["failed"]),

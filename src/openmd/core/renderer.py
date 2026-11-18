@@ -19,6 +19,7 @@ FRONTMATTER_FIELDS: tuple[str, ...] = (
     "url",
     "published",
     "platform",
+    "completeness",
 )
 
 _SOURCE_LABELS = {
@@ -50,6 +51,51 @@ def _frontmatter_value(value: Any) -> str:
     # JSON strings are valid YAML scalars and avoid implicit YAML booleans,
     # numbers, dates and special punctuation in external titles/authors.
     return json.dumps(text, ensure_ascii=False)
+
+
+def _format_completeness_seconds(value: Any) -> str | None:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if seconds < 0:
+        return None
+    whole = int(round(seconds))
+    hours, remainder = divmod(whole, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _completeness_frontmatter(result: TranscriptResult) -> str | None:
+    """Render only proven gaps as a short human-facing front matter scalar."""
+    completeness = result.metadata.get("completeness")
+    if not isinstance(completeness, dict) or completeness.get("status") != "downgrade":
+        return None
+    checks = completeness.get("checks")
+    if not isinstance(checks, list):
+        return "partial — 独立完整度核对发现缺口"
+    for check in checks:
+        if not isinstance(check, dict) or check.get("status") != "downgrade":
+            continue
+        gap = check.get("gap")
+        if check.get("signal") == "media_duration" and isinstance(gap, dict):
+            start = _format_completeness_seconds(gap.get("start_seconds"))
+            end = _format_completeness_seconds(gap.get("end_seconds"))
+            if start and end:
+                return f"partial — 逐字稿止于 {start}，媒体时长 {end}"
+        if check.get("signal") == "pdf_pages" and isinstance(gap, dict):
+            missing = gap.get("missing_pages")
+            if isinstance(missing, list) and missing:
+                numbers = [page for page in missing if isinstance(page, int) and page > 0]
+                if numbers:
+                    total = gap.get("total_pages")
+                    total = total if isinstance(total, int) and total > 0 else max(numbers)
+                    output = gap.get("output_pages")
+                    output = output if isinstance(output, int) and output >= 0 else max(0, total - len(numbers))
+                    return f"partial — 输出 {output}/{total} 页"
+        reason = str(check.get("reason") or "独立完整度核对发现缺口").strip()
+        return f"partial — {reason}"
+    return "partial — 独立完整度核对发现缺口"
 
 
 def source_level_label(value: object) -> str:
@@ -113,6 +159,9 @@ def render_markdown_document(
         "source_level": result.source_level,
         "backend": result.backend,
     }
+    completeness = _completeness_frontmatter(result)
+    if completeness is not None:
+        frontmatter["completeness"] = completeness
     return MarkdownDocument(
         frontmatter=frontmatter,
         title=title,

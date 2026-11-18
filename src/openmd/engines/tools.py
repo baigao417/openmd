@@ -36,7 +36,12 @@ def _clean_pandoc_markdown(text: str, title: str) -> str:
 def executable(tool: str) -> str | None:
     if tool == 'soffice':
         from openmd.ocr.office import soffice_path
-        return soffice_path()
+        selected = soffice_path()
+        if selected and os.name == 'nt':
+            console = Path(selected).with_suffix('.com')
+            if Path(selected).name.lower() == 'soffice.exe' and console.is_file():
+                return str(console)
+        return selected
     location = load_local_config().get('tools', {}).get(tool, {})
     if not isinstance(location, dict):
         return None
@@ -92,7 +97,11 @@ class ExecutableEngine(DocumentEngine):
         try:
             with owned_temporary_directory(prefix='openmd-engine-version-') as owned_root:
                 root = Path(owned_root)
-                version = run_command([command, '--version'], root, EngineLimits(timeout_s=5))
+                argv = [command, '--version']
+                if self.id == 'soffice':
+                    argv = [command, '-env:UserInstallation=' + (root / 'profile').as_uri(),
+                            '--headless', '--nologo', '--norestore', '--version']
+                version = run_command(argv, root, EngineLimits(timeout_s=5))
             version = version.splitlines()[0][:160] if version.strip() else 'unknown'
         except (EngineError, OSError, UnicodeError):
             return {'ok': False, 'reason': f'{self.id} executable cannot be started.', 'version': None}
@@ -153,7 +162,7 @@ class SofficeEngine(ExecutableEngine):
                     '<item oor:path="/org.openoffice.Office.Common/Security/Scripting"><prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop></item>'
                     '<item oor:path="/org.openoffice.Office.Common/Load"><prop oor:name="UpdateDocMode" oor:op="fuse"><value>0</value></prop></item></oor:items>', encoding='utf-8')
                 run_command([command, '-env:UserInstallation=' + (root / 'profile').as_uri(),
-                    '--headless', '--norestore', '--nodefault', '--convert-to', target,
+                    '--headless', '--nologo', '--norestore', '--nodefault', '--convert-to', target,
                     '--outdir', str(root), str(path.resolve())], root, limits)
                 output = root / (path.stem + '.' + target)
                 if not output.is_file():

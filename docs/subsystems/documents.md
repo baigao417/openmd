@@ -41,6 +41,8 @@ DOC/XLS/PPT/ODP/ODS 的 plan 检查 LibreOffice，MOBI/AZW3/FB2 检查 Calibre�
   `gfm-raw_html`，清除 HTML 包装并移除与文件名重复的起始书名标题。
 - LibreOffice：沿用 `soffice` / `OPENMD_SOFFICE` 和 PATH。每次使用独立 profile，
   禁用宏与外部更新；Writer 转 DOCX，Calc 转 XLSX，Impress 转 PPTX。
+  Windows 检测到同目录 `soffice.com` 时使用控制台入口；版本探测和转换均使用
+  临时 profile、`--headless`、`--nologo`，避免 GUI launcher 与启动画面。
   Calc/Impress 不支持有意义的 DOCX 导出，保留其对应 OOXML 格式。
 - Calibre：PATH 的 `ebook-convert`、`OPENMD_CALIBRE` 或 `tools.calibre.executable`。
   未安装返回 `engine_unavailable` 和安装提示。检测到 DRM 返回

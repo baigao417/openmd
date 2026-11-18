@@ -102,6 +102,9 @@ def _process_items(
             selection.chain,
             allow_fallback=args.fallback,
         )
+        from .core.completeness import check_completeness
+
+        result = check_completeness(item, result)
         output: OutputWriteResult | None = None
         if result.has_usable_text:
             try:
@@ -244,6 +247,9 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             selection.chain,
             allow_fallback=args.fallback,
         )
+        from .core.completeness import check_completeness
+
+        result = check_completeness(item, result)
         output: OutputWriteResult | None = None
         if result.has_usable_text:
             try:
@@ -291,6 +297,10 @@ def _maybe_skip_existing_package(
 
     if not getattr(args, "package", False):
         return None
+    from .core.sync_manifest import is_syncable
+
+    if is_syncable(item):
+        raise PackageValidationError("sync_requires_markdown_output")
     if (
         getattr(args, "update", False)
         or getattr(args, "overwrite", False)
@@ -362,16 +372,17 @@ def _write_extraction_output(
             package_operation=package_result.operation,
         )
 
-    return OutputWriteResult(
-        path=write_item_result(
-            item,
-            result,
-            args.out,
-            overwrite=getattr(args, "overwrite", False),
-            download_assets=getattr(args, "download_assets", False),
-            raw=getattr(args, "raw", False),
-        )
+    sync_receipt: dict = {}
+    path = write_item_result(
+        item,
+        result,
+        args.out,
+        overwrite=getattr(args, "overwrite", False),
+        download_assets=getattr(args, "download_assets", False),
+        raw=getattr(args, "raw", False),
+        sync_receipt=sync_receipt,
     )
+    return OutputWriteResult(path=path, package_operation=sync_receipt.get("operation"))
 
 
 def _build_package_validation_failure_entry(
@@ -416,7 +427,7 @@ def _build_package_validation_failure_entry_for_item(
     from .cli import ContentItem, PackageValidationError, build_runlog_entry
 
     error_code = str(exc)
-    if error_code not in {"execution_fingerprint_missing", "execution_fingerprint_mismatch"}:
+    if error_code not in {"execution_fingerprint_missing", "execution_fingerprint_mismatch", "sync_requires_markdown_output"}:
         error_code = "package_validation_failed"
     return build_runlog_entry(
         input_url=item.url,

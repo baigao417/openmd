@@ -98,6 +98,8 @@ def build_runlog_entry(
     document_metadata: dict[str, Any] | None = None,
     asr_execution: dict[str, Any] | None = None,
     source_scope: dict[str, Any] | None = None,
+    completeness: dict[str, Any] | None = None,
+    sync: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     success = success_count if success_count is not None else int(status in {"verified", "partial"})
     failed = failed_count if failed_count is not None else int(status == "failed")
@@ -130,6 +132,8 @@ def build_runlog_entry(
         "document_metadata": document_metadata or {},
         "asr_execution": asr_execution or {},
         "source_scope": sanitize_source_scope(source_scope),
+        "completeness": completeness or {},
+        "sync": sync or {},
     }
 
 
@@ -155,6 +159,8 @@ def build_item_runlog_entry(
         status=result.status,
         source_type=item.source_type,
         source_level=result.source_level,
+        completeness=result.metadata.get("completeness"),
+        sync={"operation": package_operation} if package_operation in {"created", "updated", "unchanged", "conflict_kept_user_edit", "restored_missing"} and package_id is None else {},
         asr_execution=asr_execution_metrics(result.metadata),
         source_scope=result.metadata,
         route_trace={key: result.metadata[key] for key in ("card_id", "route_version", "overlay_applied", "fallback_attempts") if key in result.metadata},

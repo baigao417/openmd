@@ -37,6 +37,8 @@ ALLOWED_RUNLOG_FIELDS: frozenset[str] = frozenset(
         "document_metadata",
         "asr_execution",
         "source_scope",
+        "completeness",
+        "sync",
     }
 )
 

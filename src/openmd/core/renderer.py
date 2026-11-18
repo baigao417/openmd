@@ -19,6 +19,7 @@ FRONTMATTER_FIELDS: tuple[str, ...] = (
     "url",
     "published",
     "platform",
+    "completeness",
 )
 
 _SOURCE_LABELS = {
@@ -113,6 +114,8 @@ def render_markdown_document(
         "source_level": result.source_level,
         "backend": result.backend,
     }
+    if "completeness" in result.metadata:
+        frontmatter["completeness"] = json.dumps(result.metadata["completeness"], ensure_ascii=False, sort_keys=True)
     return MarkdownDocument(
         frontmatter=frontmatter,
         title=title,

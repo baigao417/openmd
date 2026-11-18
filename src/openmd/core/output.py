@@ -33,11 +33,15 @@ def write_item_result(
     download_assets: bool = False,
     asset_fetcher: AssetFetcher | None = None,
     raw: bool = False,
+    sync_receipt: dict | None = None,
 ) -> Path:
     document = render_markdown_document(item, result, captured_at=captured_at)
     platform_dir = Path(out_dir) / safe_filename(item.platform, fallback="unknown", max_length=80)
     filename_base = filename_base_for_item(document.title, item_id=item.id, url=item.url)
-    output_path = unique_markdown_path(
+    from .sync_manifest import SyncManifest, is_syncable, source_id_for
+
+    syncable = is_syncable(item)
+    output_path = platform_dir / f"{filename_base}.md" if syncable else unique_markdown_path(
         platform_dir,
         filename_base,
         collision_key=item.url or item.id or document.title,
@@ -54,7 +58,13 @@ def write_item_result(
             content=localized_content,
             source_notes=[*document.source_notes, *asset_notes],
         )
-    output_path.write_text(render_document(document, raw=raw), encoding="utf-8", newline="\n")
+    content = render_document(document, raw=raw)
+    if syncable:
+        synced = SyncManifest(out_dir).write(source_id_for(item), output_path.relative_to(Path(out_dir)).as_posix(), content)
+        if sync_receipt is not None:
+            sync_receipt["operation"] = synced.operation
+        return synced.path
+    output_path.write_text(content, encoding="utf-8", newline="\n")
     return output_path
 
 

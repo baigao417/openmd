@@ -73,6 +73,10 @@ class SnapshotProvider:
             html = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             return _failed("snapshot_read_failed", "当前页快照无法读取。")
+        from openmd.backends.loaded_chat import extract_loaded_chat, loaded_chat_site
+
+        if loaded_chat_site(item.url):
+            return extract_loaded_chat(html, item, backend=self.name)
         title = item.title or _html_title(html) or "当前页快照"
         if login_wall_reason(html, title):
             return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
@@ -189,13 +193,15 @@ const { parseHTML } = require(path.join(process.argv[1], 'linkedom'));
 
 
 def snapshot_acceleration_hint(url: str) -> str | None:
+    from openmd.backends.loaded_chat import loaded_chat_site
+
+    if loaded_chat_site(url):
+        return "AI 对话优先读取当前已加载页面；范围仅限已加载分支。"
     host = (urlparse(url).hostname or "").lower()
     if host == "mp.weixin.qq.com" or host.endswith(".weixin.qq.com"):
         return "该 URL 有公众号平台路线，可以用平台路线完整抓取。"
     if host.endswith("xiaohongshu.com") or host.endswith("xhslink.com"):
         return "该 URL 有小红书平台路线，可以用平台路线完整抓取。"
-    if host.endswith("chatgpt.com") or host.endswith("claude.ai") or host.endswith("deepseek.com"):
-        return "该 URL 有 AI 对话平台路线，可以用对话导出获取完整分支。"
     return None
 
 

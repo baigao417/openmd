@@ -75,9 +75,13 @@ def receipt(result: dict) -> dict:
         action = "Check local readiness with openmd_doctor and the CLI doctor, then submit a fresh save."
     elif status == "partial":
         action = "Inspect completeness and the saved artifact before using this source."
+    login = result.get("login")
+    login_summary = {"required": bool(login.get("required", True))} if isinstance(login, dict) and login else None
+    if code == "login_required":
+        login_summary = {"required": True}
     return {"status": status, "source_level": label(result.get("source_level")),
             "completeness": structure(result.get("completeness")), "sync": structure(result.get("sync")),
-            "login": structure(result.get("login")), "next_action": action, "error_code": code}
+            "login": login_summary, "next_action": action, "error_code": code}
 
 
 def _validate_source_url(value: str) -> str:
@@ -164,8 +168,14 @@ def job(job_id: str, *, include_content: bool = False) -> dict:
         raise ValueError("invalid_job_id")
     with queue():
         status = host.read_status(job_id)
-    result = {"id": job_id, "state": status["state"], **receipt(status.get("receipt", {})),
+    fields = dict(status.get("receipt", {}))
+    for key in ("login", "error_code"):
+        if key in status:
+            fields[key] = status[key]
+    result = {"id": job_id, "state": status["state"], **receipt(fields),
               "saved_to": status.get("saved_to")}
+    if status["state"] == "unknown":
+        result.update(error_code="job_not_found", next_action="Check the job ID and the server data directory.")
     if status["state"] == "failed" and not result["error_code"]:
         result.update(status="failed", error_code="extraction_failed",
                       next_action="Check local readiness with openmd_doctor and the CLI doctor, then submit a fresh save.")

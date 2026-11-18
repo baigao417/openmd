@@ -124,3 +124,31 @@ def test_doctor_is_bounded_and_does_not_cleanup_or_probe(monkeypatch):
     assert len(json.dumps(result)) < 1500
     assert not result["ready"] and result["next_action"]
     assert "PRIVATE_BODY_SENTINEL" not in json.dumps(result)
+
+
+def test_paused_jobs_expose_login_and_unknown_ids_have_next_action(tmp_path):
+    queued = mcp_jobs.save("https://example.org", str(tmp_path))
+    with mcp_jobs.queue():
+        stored = host.read_status(queued["id"])
+        stored.update(state="paused", error_code="login_required", login={"site": "Example", "url": "https://example.org"})
+        host._write_status(host.jobs_root() / queued["id"], stored)
+    paused = mcp_jobs.job(queued["id"])
+    assert paused["login"] == {"required": True}
+    assert paused["error_code"] == "login_required" and paused["next_action"]
+    unknown = mcp_jobs.job("0" * 32)
+    assert unknown["state"] == "unknown"
+    assert unknown["error_code"] == "job_not_found" and unknown["next_action"]
+
+
+def test_explicit_content_redacts_credentials_without_logging_body(tmp_path):
+    queued = mcp_jobs.save("https://example.org", str(tmp_path))
+    artifact = tmp_path / "note.md"
+    artifact.write_text("Synthetic text\nCookie: SYNTHETIC_SECRET\n", encoding="utf-8")
+    with mcp_jobs.queue():
+        stored = host.read_status(queued["id"])
+        stored.update(state="done", saved_to=str(artifact))
+        host._write_status(host.jobs_root() / queued["id"], stored)
+    reply = mcp_jobs.job(queued["id"], include_content=True)
+    assert reply["content_redacted"]
+    assert "Synthetic text" in reply["content"]
+    assert "SYNTHETIC_SECRET" not in reply["content"]

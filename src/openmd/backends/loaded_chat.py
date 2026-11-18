@@ -111,17 +111,41 @@ def _role_content(site: str, node: Tag) -> tuple[str, Tag]:
     return role, node
 
 
-def _markdown(node: Tag) -> str:
+def _markdown(node: Tag, stats: dict[str, int] | None = None) -> str:
+    stats = stats if stats is not None else {}
     body = BeautifulSoup(str(node), "html.parser")
     for child in list(body.select('script, style, noscript, button, .sr-only, .cdk-visually-hidden, .thinking-container, [data-prompt-link-href]')):
         if child.parent is not None:
             child.decompose()
+    literals = {}
+
+    def literal(child: Tag, text: str, *, block: bool = False) -> None:
+        marker = f"OPENMDLOADEDLITERAL{len(literals)}END"
+        while marker in str(body):
+            marker += "X"
+        literals[marker] = text
+        child.replace_with(body.new_string(("\n\n" if block else "") + marker + ("\n\n" if block else "")))
+
+    # Read semantic TeX before removing accessibility duplicates. Never flatten
+    # fractions/superscripts through a generic HTML-to-text converter.
+    for formula in _outermost(list(body.select('.katex-display, .katex, mjx-container, math'))):
+        if not _visible(formula):
+            continue
+        annotation = formula.select_one('annotation[encoding="application/x-tex"]')
+        block = "katex-display" in formula.get("class", []) or formula.get("display") in {"block", "true"}
+        if annotation is not None and annotation.get_text().strip():
+            tex = annotation.get_text().strip()
+            text = "$$\n" + tex + "\n$$" if block else "$" + tex + "$"
+        else:
+            math = formula if formula.name == "math" else formula.find("math")
+            text = str(math) if math is not None else formula.get_text(" ", strip=True)
+            stats["math_fallback_count"] = stats.get("math_fallback_count", 0) + 1
+        literal(formula, text, block=block)
     for child in list(body.find_all(True)):
         if child.parent is not None and not _visible(child):
             child.decompose()
     # Preserve every code byte after HTML entity decoding, including indentation
     # and blank lines. General converters otherwise strip language/whitespace.
-    literals = {}
     for pre in body.find_all("pre"):
         code = pre.find("code")
         code = code if code is not None else pre
@@ -129,11 +153,7 @@ def _markdown(node: Tag) -> str:
         classes = " ".join(code.get("class", []))
         language = re.search(r"(?:language|lang)-([\w+-]+)", classes)
         fence = "`" * max(3, max((len(m.group()) + 1 for m in re.finditer(r"`+", text)), default=3))
-        marker = f"OPENMDLOADEDCODE{len(literals)}END"
-        while marker in str(body):
-            marker += "X"
-        literals[marker] = fence + (language.group(1) if language else "") + "\n" + text + ("" if text.endswith("\n") else "\n") + fence
-        pre.replace_with(body.new_string("\n\n" + marker + "\n\n"))
+        literal(pre, fence + (language.group(1) if language else "") + "\n" + text + ("" if text.endswith("\n") else "\n") + fence, block=True)
     text = html_to_markdown(str(body))
     for marker, literal in literals.items():
         text = text.replace(marker, literal)
@@ -171,9 +191,10 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     if login_path or login_form or (not roots and login_cta):
         return normalize_login_result(TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code="login_required"), item)
     turns = []
+    stats: dict[str, int] = {"math_fallback_count": 0}
     for node in roots:
         role, content = _role_content(site, node)
-        text = _markdown(content)
+        text = _markdown(content, stats)
         if role not in {"user", "assistant", "system", "tool"} or not text:
             continue
         turns.append(TurnBlock(role=role, text=text, message_id=node.get("data-message-id") or node.get("data-conv-id")))
@@ -190,6 +211,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
         metadata={"chat_site": site, "captured_from": "browser_snapshot", "coverage": "visible_branch",
                   "turn_count": len(turns), "independent_turn_count": independent_count, "independent_user_turn_count": user_count, "generating": generating,
                   "selector_source": f"OpenCLI 2.0.3 clis/{site}/detail.js",
-                  "assistant_turn_count": sum(turn.role == "assistant" for turn in turns)},
-        source_notes=["读取当前已加载页面；仅覆盖 DOM 中已加载的分支，未验证未加载的历史消息。"],
+                  "assistant_turn_count": sum(turn.role == "assistant" for turn in turns), **stats},
+        source_notes=["读取当前已加载页面；仅覆盖 DOM 中已加载的分支，未验证未加载的历史消息。",
+                      *([f"公式可能失真：{stats['math_fallback_count']} 处未找到 TeX annotation，保留 MathML 或可见文本。"] if stats["math_fallback_count"] else [])],
     )

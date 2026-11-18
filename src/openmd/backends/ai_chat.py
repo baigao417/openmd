@@ -364,37 +364,8 @@ def _grok_loading_environment() -> dict[str, str]:
     A scoped Node loader patches that one module without editing shared npm
     files, profile/config, or any other provider. Marker drift fails closed.
     """
-    loader = r'''
-export async function load(url, context, nextLoad) {
-  const result = await nextLoad(url, context);
-  if (!new URL(url).pathname.endsWith('/clis/grok/detail.js')) return result;
-  let source = typeof result.source === 'string' ? result.source : new TextDecoder().decode(result.source);
-  const edits = [
-    ['let bubbles = [];', "let bubbles = []; let grokPrevious = ''; let grokStablePolls = 0; let grokStable = false;"],
-    ['const POLL_DEADLINE_MS = 20_000;', 'const POLL_DEADLINE_MS = 45_000;'],
-    ['if (bubbles.length > 0) break;', `
-      const signature = JSON.stringify(bubbles.map(b => [b.role, b.text, b.html]));
-      grokStablePolls = signature === grokPrevious ? grokStablePolls + 1 : 0;
-      grokPrevious = signature;
-      if (bubbles.length > 0 && bubbles.some(b => b.role === 'Assistant') && grokStablePolls >= 2) {
-        grokStable = true;
-        break;
-      }`],
-    ['if (!bubbles.length)', "if (bubbles.length && !grokStable) throw new Error('grok_detail_not_stable: conversation loading did not finish');\nif (!bubbles.length)"],
-  ];
-  for (const [before, after] of edits) {
-    if (source.split(before).length !== 2) throw new Error('grok_detail_patch_incompatible');
-    source = source.replace(before, after);
-  }
-  return {...result, source};
-}
-'''
-    loader_url = "data:text/javascript," + quote(loader, safe="")
-    bootstrap = "import {register} from 'node:module'; register(" + json.dumps(loader_url) + ", import.meta.url);"
-    bootstrap_url = "data:text/javascript," + quote(bootstrap, safe="")
-    env = dict(os.environ)
-    env["NODE_OPTIONS"] = (env.get("NODE_OPTIONS", "") + " --max-old-space-size=1536 --import=" + bootstrap_url).strip()
-    return env
+    from openmd.runtime.opencli_patches import loader_environment
+    return loader_environment("grok")
 
 
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:

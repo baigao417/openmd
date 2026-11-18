@@ -21,9 +21,9 @@ def render_routes_markdown(*, source: str | None = None, effective: bool = False
 
 def render_route_table(view: dict) -> str:
     """Render bundled declarations and effective runtime views identically."""
-    lines = ["# Openmd routes", "", f"Generated from bundled cards and routes, version `{view['version']}`.", "", "| Source | Capability | Ordered backends |", "|---|---|---|"]
+    lines = ["# Openmd routes", "", f"Generated from bundled cards and routes, version `{view['version']}`.", "", "| Source | Capability | Ordered backends | Last verified |", "|---|---|---|---|"]
     for route in view["routes"]:
-        lines.append(f"| {route['source']} | {route['capability']} | {' → '.join(route['chain'])} |")
+        lines.append(f"| {route['source']} | {route['capability']} | {' → '.join(route['chain'])} | {route.get('last_verified') or '—'} |")
     lines += ["", "Tools run only with the gates declared in their cards. Media steps require local ASR before producing text.", "", "Local overlay applied: " + str(view["overlay_applied"]).lower() + ".", ""]
     return "\n".join(lines)
 

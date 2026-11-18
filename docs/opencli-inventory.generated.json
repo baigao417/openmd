@@ -1,0 +1,1156 @@
+{
+  "schema": "openmd.opencli-inventory/v1",
+  "browser_runtime_args": [
+    "--keep-tab",
+    "--site-session"
+  ],
+  "browser_runtime_source": "src/openmd/runtime/managed_tools.py:managed_command",
+  "commands": [
+    {
+      "site": "bilibili",
+      "command": "subtitle",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "content",
+        "from",
+        "to",
+        "language",
+        "track_type"
+      ],
+      "sources": [
+        "src/openmd/backends/bilibili.py:401"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "bilibili",
+          "subtitle",
+          "{bvid}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "bilibili",
+      "command": "user-videos",
+      "args": [
+        "--limit"
+      ],
+      "positionals": 1,
+      "columns": [
+        "title",
+        "url",
+        "bvid"
+      ],
+      "sources": [
+        "src/openmd/backends/bilibili.py:841"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "bilibili",
+          "user-videos",
+          "{uid}",
+          "--limit",
+          "{str(limit)}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "browser",
+      "command": "close",
+      "args": [
+        "--session",
+        "--window"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/discourse.py:157",
+        "src/openmd/backends/douyin.py:525"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "browser",
+          "close",
+          "--session",
+          "{self.session}",
+          "--window",
+          "background"
+        ],
+        [
+          "opencli",
+          "browser",
+          "close",
+          "--session",
+          "{session}",
+          "--window",
+          "background"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "browser",
+      "command": "eval",
+      "args": [
+        "--session",
+        "--window"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/discourse.py:144",
+        "src/openmd/backends/douyin.py:514"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "browser",
+          "eval",
+          "{script}",
+          "--session",
+          "{self.session}",
+          "--window",
+          "background"
+        ],
+        [
+          "opencli",
+          "browser",
+          "eval",
+          "JSON.stringify({url: location.href})",
+          "--session",
+          "{session}",
+          "--window",
+          "background"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "browser",
+      "command": "open",
+      "args": [
+        "--session",
+        "--window"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/discourse.py:116",
+        "src/openmd/backends/douyin.py:511"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "browser",
+          "open",
+          "{self.url}",
+          "--session",
+          "{self.session}",
+          "--window",
+          "background"
+        ],
+        [
+          "opencli",
+          "browser",
+          "open",
+          "{extract_first_url(input_value)}",
+          "--session",
+          "{session}",
+          "--window",
+          "background"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "chatgpt",
+      "command": "detail",
+      "args": [
+        "--markdown",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "Role",
+        "Text"
+      ],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:104"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "chatgpt",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "deepseek",
+      "command": "detail",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "Role",
+        "Text"
+      ],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:104"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "deepseek",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "douyin",
+      "command": "detail",
+      "args": [
+        "--keep-tab",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "aweme_id",
+        "desc",
+        "author",
+        "duration_s",
+        "play_url",
+        "images"
+      ],
+      "sources": [
+        "src/openmd/backends/douyin_detail.py:86"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "douyin",
+          "detail",
+          "{expected or target}",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "douyin",
+      "command": "user-videos",
+      "args": [
+        "--limit",
+        "--with_comments",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "aweme_id",
+        "title"
+      ],
+      "sources": [
+        "src/openmd/backends/douyin.py:273"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "douyin",
+          "user-videos",
+          "{sec_uid}",
+          "--limit",
+          "{str(_bounded_limit(limit))}",
+          "--with_comments",
+          "false",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "grok",
+      "command": "detail",
+      "args": [
+        "--markdown",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "Role",
+        "Text"
+      ],
+      "sources": [
+        "src/openmd/backends/ai_chat.py:104"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "grok",
+          "detail",
+          "{conversation_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "openmd-douyin",
+      "command": "creator-videos",
+      "args": [
+        "--page_delay_ms",
+        "--request_timeout_ms",
+        "--timeout",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "index",
+        "aweme_id",
+        "title",
+        "author",
+        "published_at",
+        "duration",
+        "digg_count",
+        "aweme_type",
+        "image_count",
+        "media_kind",
+        "play_url",
+        "transcript_candidates",
+        "page_count",
+        "empty_page_count",
+        "duplicate_page_count",
+        "pagination_retry_count",
+        "source_exhausted"
+      ],
+      "sources": [
+        "src/openmd/backends/douyin.py:289"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "openmd-douyin",
+          "creator-videos",
+          "{extract_first_url(input_value).strip()}",
+          "--timeout",
+          "1800",
+          "--page_delay_ms",
+          "800",
+          "--request_timeout_ms",
+          "30000",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "owned",
+      "definition": "integrations/opencli/openmd-douyin/creator-videos.ts",
+      "declared_args": [
+        {
+          "name": "creator",
+          "positional": true
+        },
+        {
+          "name": "timeout",
+          "positional": false
+        },
+        {
+          "name": "progress",
+          "positional": false
+        },
+        {
+          "name": "page_delay_ms",
+          "positional": false
+        },
+        {
+          "name": "max_pages",
+          "positional": false
+        },
+        {
+          "name": "request_timeout_ms",
+          "positional": false
+        }
+      ]
+    },
+    {
+      "site": "openmd-xiaohongshu",
+      "command": "creator-notes",
+      "args": [
+        "--scroll_delay_ms",
+        "--selector_stdin",
+        "--stable_rounds",
+        "--timeout",
+        "--transient_note_urls",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "index",
+        "note_id",
+        "title",
+        "author",
+        "published_at",
+        "type",
+        "likes",
+        "url",
+        "page_count",
+        "scroll_count",
+        "stable_round_count",
+        "empty_snapshot_count",
+        "duplicate_snapshot_count",
+        "anomaly_count",
+        "source_exhausted",
+        "explicit_exhaustion",
+        "exhaustion_reason",
+        "store_source",
+        "runtime_note_url"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaohongshu.py:124"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "openmd-xiaohongshu",
+          "creator-notes",
+          "{'stdin-selector' if selector_stdin else target}",
+          "--timeout",
+          "1800",
+          "--scroll_delay_ms",
+          "1500",
+          "--stable_rounds",
+          "4",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "owned",
+      "definition": "integrations/opencli/openmd-xiaohongshu/creator-notes.ts",
+      "declared_args": [
+        {
+          "name": "creator",
+          "positional": true
+        },
+        {
+          "name": "selector_stdin",
+          "positional": false
+        },
+        {
+          "name": "transient_note_urls",
+          "positional": false
+        },
+        {
+          "name": "timeout",
+          "positional": false
+        },
+        {
+          "name": "progress",
+          "positional": false
+        },
+        {
+          "name": "scroll_delay_ms",
+          "positional": false
+        },
+        {
+          "name": "stable_rounds",
+          "positional": false
+        },
+        {
+          "name": "max_scrolls",
+          "positional": false
+        }
+      ]
+    },
+    {
+      "site": "openmd-xiaohongshu",
+      "command": "note-assets",
+      "args": [
+        "--creator",
+        "--download",
+        "--output",
+        "--selector_stdin",
+        "--timeout",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "row_type",
+        "note_id",
+        "title",
+        "author",
+        "native_text",
+        "tags",
+        "media_kind",
+        "native_transcript",
+        "image_count",
+        "video_count",
+        "asset_index",
+        "asset_type",
+        "asset_status",
+        "asset_error_code",
+        "local_path",
+        "initial_state_note_present",
+        "detail_key_count",
+        "structured_note_count",
+        "dom_image_count",
+        "scoped_image_count",
+        "background_image_count",
+        "dom_video_count",
+        "candidate_image_count",
+        "candidate_video_count"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaohongshu_providers.py:96"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "openmd-xiaohongshu",
+          "note-assets",
+          "{target}"
+        ]
+      ],
+      "kind": "owned",
+      "definition": "integrations/opencli/openmd-xiaohongshu/note-assets.ts",
+      "declared_args": [
+        {
+          "name": "note",
+          "positional": true
+        },
+        {
+          "name": "selector_stdin",
+          "positional": false
+        },
+        {
+          "name": "creator",
+          "positional": false
+        },
+        {
+          "name": "output",
+          "positional": false
+        },
+        {
+          "name": "download",
+          "positional": false
+        },
+        {
+          "name": "timeout",
+          "positional": false
+        },
+        {
+          "name": "diagnostics",
+          "positional": false
+        },
+        {
+          "name": "max_scrolls",
+          "positional": false
+        },
+        {
+          "name": "stable_rounds",
+          "positional": false
+        },
+        {
+          "name": "scroll_delay_ms",
+          "positional": false
+        }
+      ]
+    },
+    {
+      "site": "twitter",
+      "command": "article",
+      "args": [
+        "--keep-tab",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "title",
+        "author",
+        "content",
+        "url"
+      ],
+      "sources": [
+        "src/openmd/backends/x.py:116"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "twitter",
+          "article",
+          "{tweet_ref}",
+          "-f",
+          "md",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "twitter",
+      "command": "thread",
+      "args": [
+        "--keep-tab",
+        "--limit",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "id",
+        "author",
+        "text",
+        "url"
+      ],
+      "sources": [
+        "src/openmd/backends/x.py:88"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "twitter",
+          "thread",
+          "{tweet_id}",
+          "--limit",
+          "{str(_bounded_limit(limit, default=DEFAULT_THREAD_LIMIT))}",
+          "-f",
+          "md",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "twitter",
+      "command": "tweets",
+      "args": [
+        "--keep-tab",
+        "--limit",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "id",
+        "text",
+        "url"
+      ],
+      "sources": [
+        "src/openmd/backends/x.py:102"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "twitter",
+          "tweets",
+          "{username}",
+          "--limit",
+          "{str(_bounded_limit(limit, default=DEFAULT_TWEETS_LIMIT))}",
+          "-f",
+          "md",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "web",
+      "command": "read",
+      "args": [
+        "--download-images",
+        "--keep-tab",
+        "--site-session",
+        "--stdout",
+        "--url",
+        "--window",
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/web_article.py:233",
+        "src/openmd/backends/xiaoyuzhou.py:158"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "web",
+          "read",
+          "--url",
+          "{item.url}",
+          "--stdout",
+          "true",
+          "--download-images",
+          "false",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false",
+          "-f",
+          "md"
+        ],
+        [
+          "opencli",
+          "web",
+          "read",
+          "--url",
+          "{url}",
+          "--stdout"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "weixin",
+      "command": "download",
+      "args": [
+        "--download-images",
+        "--keep-tab",
+        "--output",
+        "--site-session",
+        "--url",
+        "--window",
+        "-f"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/weixin.py:269"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "weixin",
+          "download",
+          "--url",
+          "{item.url}",
+          "--output",
+          "{tmp_dir}",
+          "--download-images",
+          "false",
+          "-f",
+          "json",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "xiaoe",
+      "command": "catalog",
+      "args": [
+        "--keep-tab",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "ch",
+        "chapter",
+        "no",
+        "title",
+        "type",
+        "resource_id",
+        "url",
+        "status"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaoe.py:134"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaoe",
+          "catalog",
+          "{url}",
+          "-f",
+          "json",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "owned",
+      "definition": "integrations/opencli/xiaoe/catalog.js",
+      "declared_args": [
+        {
+          "name": "url",
+          "positional": true
+        }
+      ]
+    },
+    {
+      "site": "xiaoe",
+      "command": "content",
+      "args": [
+        "--keep-tab",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "title",
+        "content",
+        "content_length",
+        "image_count"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaoe.py:152"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaoe",
+          "content",
+          "{url}",
+          "-f",
+          "json",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "owned",
+      "definition": "integrations/opencli/xiaoe/content.js",
+      "declared_args": [
+        {
+          "name": "url",
+          "positional": true
+        }
+      ]
+    },
+    {
+      "site": "xiaoe",
+      "command": "play-url",
+      "args": [
+        "--keep-tab",
+        "--site-session",
+        "--window",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "title",
+        "resource_id",
+        "m3u8_url",
+        "candidate_media_urls",
+        "duration_sec",
+        "method"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaoe.py:129"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaoe",
+          "play-url",
+          "{url}",
+          "-f",
+          "json",
+          "--window",
+          "background",
+          "--site-session",
+          "ephemeral",
+          "--keep-tab",
+          "false"
+        ]
+      ],
+      "kind": "owned",
+      "definition": "integrations/opencli/xiaoe/play-url.js",
+      "declared_args": [
+        {
+          "name": "url",
+          "positional": true
+        }
+      ]
+    },
+    {
+      "site": "xiaohongshu",
+      "command": "note",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "field",
+        "value"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaohongshu.py:95"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaohongshu",
+          "note",
+          "{input_url}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "xiaohongshu",
+      "command": "user",
+      "args": [
+        "--limit",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "id",
+        "title",
+        "url"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaohongshu.py:100"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaohongshu",
+          "user",
+          "{input_url}",
+          "--limit",
+          "{str(bounded_limit)}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "xiaoyuzhou",
+      "command": "episode",
+      "args": [
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "title"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaoyuzhou.py:268"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaoyuzhou",
+          "episode",
+          "{episode_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "xiaoyuzhou",
+      "command": "podcast-episodes",
+      "args": [
+        "--limit",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "eid",
+        "title"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaoyuzhou.py:144"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaoyuzhou",
+          "podcast-episodes",
+          "{podcast_id}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "xiaoyuzhou",
+      "command": "transcript",
+      "args": [
+        "--json",
+        "--output",
+        "--text",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "json_file",
+        "text_file"
+      ],
+      "sources": [
+        "src/openmd/backends/xiaoyuzhou.py:123"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "xiaoyuzhou",
+          "transcript",
+          "{episode_id}",
+          "--output",
+          "{output_dir}",
+          "--json",
+          "true",
+          "--text",
+          "true",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "youtube",
+      "command": "channel",
+      "args": [
+        "--limit",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "field",
+        "value"
+      ],
+      "sources": [
+        "src/openmd/backends/youtube_discovery.py:178"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "youtube",
+          "channel",
+          "{target}",
+          "--limit",
+          "{str(bounded_limit)}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "youtube",
+      "command": "playlist",
+      "args": [
+        "--limit",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [
+        "title",
+        "url"
+      ],
+      "sources": [
+        "src/openmd/backends/youtube_discovery.py:286"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "youtube",
+          "playlist",
+          "{target}",
+          "--limit",
+          "{str(bounded_limit)}",
+          "-f",
+          "json"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "youtube",
+      "command": "transcript",
+      "args": [
+        "--mode",
+        "-f"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/youtube.py:45"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "youtube",
+          "transcript",
+          "{video_id}",
+          "--mode",
+          "{mode}",
+          "-f",
+          "{output_format}"
+        ]
+      ],
+      "kind": "upstream"
+    }
+  ]
+}

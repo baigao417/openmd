@@ -15,6 +15,7 @@ import subprocess
 from openmd.core.preferences import data_directory
 from .interpreters import run_interruptibly
 from .managed_tools import managed_package_root, node_dir, OPENCLI_VERSION, config_directory, command_environment, managed_command
+from .opencli_patches import validate_dispatcher
 
 ADAPTER_FILES = ("play-url.js", "catalog.js", "content.js", "dispatch.js")
 
@@ -60,6 +61,7 @@ def run_xiaoe(args: list[str], *, timeout: int = 300) -> tuple[int, str, str]:
         host = Path(os.environ["OPENMD_XIAOE_HOST"]) if os.environ.get("OPENMD_XIAOE_HOST") else managed_package_root()
         if json.loads((host / "package.json").read_text(encoding="utf-8"))["version"] != OPENCLI_VERSION:
             return 2, "", "opencli_protocol_version_mismatch"
+        validate_dispatcher(host)
         node = node_dir()
         if node is None:
             return 127, "", "node_missing"
@@ -70,6 +72,8 @@ def run_xiaoe(args: list[str], *, timeout: int = 300) -> tuple[int, str, str]:
         done = run_interruptibly(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, env=env)
         return done.returncode, done.stdout, done.stderr
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith('opencli_patch_'):
+            return 1, '', str(exc)
         return 1, "", f"xiaoe_dispatch_failed: {type(exc).__name__}"
 
 
@@ -82,6 +86,7 @@ def run_tingwu(audio: Path, *, duration: float, timeout: int = 1800) -> tuple[in
         host = Path(os.environ['OPENMD_XIAOE_HOST']) if os.environ.get('OPENMD_XIAOE_HOST') else managed_package_root()
         if json.loads((host / 'package.json').read_text(encoding='utf-8'))['version'] != OPENCLI_VERSION:
             return 1, '{"ok":false,"error_code":"tingwu_protocol_invalid"}', ''
+        validate_dispatcher(host)
         node = node_dir()
         if node is None:
             return 1, '{"ok":false,"error_code":"tingwu_browser_unavailable"}', ''
@@ -95,7 +100,10 @@ def run_tingwu(audio: Path, *, duration: float, timeout: int = 1800) -> tuple[in
         done = run_interruptibly(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout + 30, env=env)
         # Third-party diagnostic streams are intentionally never returned.
         return done.returncode, done.stdout, ''
-    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+    except ValueError as exc:
+        code = str(exc) if str(exc).startswith('opencli_patch_') else 'tingwu_browser_unavailable'
+        return 1, json.dumps({'ok': False, 'error_code': code}), ''
+    except (OSError, RuntimeError, subprocess.SubprocessError):
         return 1, '{"ok":false,"error_code":"tingwu_browser_unavailable"}', ''
     finally:
         # Parent-side fallback also runs when the JS worker is cancelled/killed.

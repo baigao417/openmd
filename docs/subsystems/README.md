@@ -131,3 +131,9 @@ ASR 在下载完成后开始。AES-128 内容密钥仅在内存，core 生成的
 ## 9. 浏览器插件
 - 入口：`src/openmd/browser_extension/`（MV3 插件）、`browser_setup.py`（注册 Native Messaging、复制插件到 `~/.openmd/browser/extension`）、`browser_host.py`（后台队列）。
 - 合同：不开本地端口，只有固定插件 ID 能连；目前仅 Windows。
+
+## 10. OpenCLI 上游同步
+
+命令清单、离线契约、统一补丁、隔离金丝雀和路线验证日期见
+[OpenCLI 升级手册](opencli-upgrade.md)。修改来源后运行声明生成检查；
+真实升级前保留 baseline/candidate 脱敏回执，不由金丝雀自动修改 pin。

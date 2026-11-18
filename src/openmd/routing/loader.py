@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import date
 import json
 from dataclasses import dataclass
 from functools import lru_cache
@@ -77,6 +78,13 @@ def validate_catalog(cards: list[dict[str, Any]], route_data: dict[str, Any]) ->
         seen.add(key)
         if len(chain) != len(set(chain)):
             raise ValueError("route_backend_duplicate")
+        verified = route.get('last_verified')
+        if verified is not None:
+            try:
+                if not isinstance(verified, str) or date.fromisoformat(verified).isoformat() != verified:
+                    raise ValueError('format')
+            except ValueError:
+                raise ValueError('route_last_verified_invalid') from None
         for backend in chain:
             if backend not in capabilities or route["source"] not in capabilities[backend]["sources"]:
                 raise ValueError(f"route_backend_unknown: {backend}")
@@ -85,6 +93,21 @@ def validate_catalog(cards: list[dict[str, Any]], route_data: dict[str, Any]) ->
     if any(not isinstance(source, str) or not source for source in source_ids) or len(source_ids) != len(set(source_ids)):
         raise ValueError("capability_metadata_invalid_or_duplicate")
     return Catalog(tools, capabilities, tuple(routes), route_data["version"], tuple(metadata))
+
+
+def route_verification_status(routes=None, *, today: date | None = None) -> dict[str, Any]:
+    """A read-only freshness hint, separate from availability or source quality."""
+    today = today or date.today()
+    rows = []
+    for route in load_catalog(include_plugins=False).routes if routes is None else routes:
+        verified = route.get('last_verified')
+        age = (today - date.fromisoformat(verified)).days if verified else None
+        state = 'unknown' if age is None else 'future' if age < 0 else 'stale' if age > 30 else 'fresh'
+        rows.append({'source': route['source'], 'capability': route['capability'],
+                     'last_verified': verified, 'age_days': age, 'state': state})
+    return {'threshold_days': 30, 'stale_count': sum(r['state'] == 'stale' for r in rows),
+            'unknown_count': sum(r['state'] == 'unknown' for r in rows),
+            'future_count': sum(r['state'] == 'future' for r in rows), 'routes': rows}
 
 
 @lru_cache(maxsize=2)

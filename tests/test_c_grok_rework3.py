@@ -138,7 +138,7 @@ def test_grok_loading_patch_waits_for_assistants_and_stable_turns(tmp_path, mode
         pytest.skip("Node not installed")
     module = tmp_path / "clis/grok/detail.js"
     module.parent.mkdir(parents=True)
-    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"type":"module","version":"2.0.3"}', encoding="utf-8")
     module.write_text('''
 export async function detail(page) {
 let bubbles = [];

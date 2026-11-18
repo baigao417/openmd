@@ -21,6 +21,7 @@ from openmd.backends.base import BackendCapability, BackendDescriptor, BackendEx
 from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
+from openmd.core.chat_title import conversation_title
 from openmd.core.login import normalize_login_result
 from openmd.core.opencli_output import load_opencli_json
 from openmd.core.secrets import sanitize_error_summary
@@ -171,6 +172,10 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str, include_th
         "thinking_omitted_count": 0 if include_thinking else thinking_count,
         "thinking_included_count": thinking_count if include_thinking else 0,
     }
+    title_sources = [value for value in (payload, root) if isinstance(value, dict)]
+    page_title = next((value[key] for value in title_sources for key in ("title", "Title", "page_title") if isinstance(value.get(key), str) and value[key].strip()), None)
+    session_title = next((value[key] for value in title_sources for key in ("conversation_title", "ConversationTitle") if isinstance(value.get(key), str) and value[key].strip()), None)
+    meta["title"] = conversation_title(site, page_title, turns, session_title=session_title)
     independent_counts = [row.get("OpenmdPageTurnCount") for row in rows if isinstance(row, dict) and type(row.get("OpenmdPageTurnCount")) is int and row["OpenmdPageTurnCount"] >= 0]
     if independent_counts:
         meta["independent_turn_count"] = max(independent_counts)
@@ -301,7 +306,7 @@ class OpenCliAiChatProvider:
             status="verified",
             source_level="browser_rendered",
             backend=self.name,
-            title=item.title or f"{self.site} conversation {conversation_id}",
+            title=conversation_title(self.site, item.title, turns, session_title=metadata["title"]),
             metadata=metadata,
             blocks=turns,
             source_notes=["OpenCLI detail returned conversation turns; no summary or turn merging was performed.",

@@ -165,3 +165,43 @@ def test_detail_explicit_thinking_field_obeys_same_option():
     turns, meta = parse_ai_chat_output(payload, site='deepseek', source_url=URLS['deepseek'], include_thinking=True)
     assert turns[0].text.index('#### 思考过程') < turns[0].text.index('Synthetic final answer.')
     assert meta['thinking_included_count'] == 1
+
+
+@pytest.mark.parametrize(('site', 'page_title'), [
+    ('chatgpt', 'Synthetic topic - ChatGPT'), ('grok', 'Synthetic topic | Grok'),
+    ('deepseek', 'Synthetic topic - DeepSeek'), ('doubao', 'Synthetic topic - 豆包'),
+    ('gemini', 'Synthetic topic - Google Gemini'), ('qwen', 'Synthetic topic - 千问'),
+    ('yuanbao', 'Synthetic topic - 腾讯元宝'),
+])
+def test_snapshot_and_detail_strip_same_site_suffix(site, page_title):
+    import json
+    from openmd.backends.ai_chat import AI_CHAT_BACKENDS, OpenCliAiChatProvider
+    from openmd.backends.base import BackendExtractRequest
+    html = answer_html(site, 'Synthetic answer.').replace('Synthetic conversation', page_title)
+    snapshot = extract(html, site)
+    item = loaded_chat.snapshot_item(Path('synthetic.html'), URLS[site])
+    payload = {'title': page_title, 'messages': [{'role': 'user', 'text': 'Synthetic question.'}, {'role': 'assistant', 'text': 'Synthetic answer.'}]}
+    detail = OpenCliAiChatProvider(site, AI_CHAT_BACKENDS[site], runner=lambda *_: (0, json.dumps(payload), '')).extract(BackendExtractRequest(item=item, backend_chain=(AI_CHAT_BACKENDS[site],)))
+    assert snapshot.title == detail.title == 'Synthetic topic'
+
+
+@pytest.mark.parametrize('header', ['<header><h1>Synthetic session title</h1></header>', '<aside><a aria-current="page" href="/chat/demo">Synthetic session title</a></aside>', '<nav><a href="/chat/other">Other chat</a><a href="/chat/demo">Synthetic session title</a></nav>'])
+def test_generic_site_title_prefers_current_dom_title(header):
+    html = answer_html('qwen', 'Synthetic answer.').replace('Synthetic conversation', '千问-阿里 AI 助手').replace('<main>', header + '<main>')
+    assert extract(html, 'qwen').title == 'Synthetic session title'
+
+
+def test_generic_site_title_falls_back_to_first_user_message_and_preserves_real_title():
+    question = '这是一个用于合成回归测试的问题标题文本需要保留三十个字然后截断'
+    html = answer_html('qwen', 'Synthetic answer.').replace('Synthetic conversation', '千问-阿里 AI 助手').replace('Synthetic question.', question)
+    assert extract(html, 'qwen').title == question[:30] + '…'
+    html = html.replace('千问-阿里 AI 助手', 'Synthetic-hyphen topic')
+    assert extract(html, 'qwen').title == 'Synthetic-hyphen topic'
+
+
+def test_detail_generic_title_uses_conversation_title_then_first_user():
+    from openmd.backends.ai_chat import parse_ai_chat_output
+    payload = {'title': '千问-阿里 AI 助手', 'conversation_title': 'Synthetic session title', 'messages': [{'role': 'user', 'text': 'Synthetic question.'}]}
+    assert parse_ai_chat_output(payload, site='qwen', source_url=URLS['qwen'])[1]['title'] == 'Synthetic session title'
+    del payload['conversation_title']
+    assert parse_ai_chat_output(payload, site='qwen', source_url=URLS['qwen'])[1]['title'] == 'Synthetic question.'

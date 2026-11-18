@@ -10,11 +10,12 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
 
 from openmd.core.content_validation import html_to_markdown
+from openmd.core.chat_title import conversation_title
 from openmd.core.login import normalize_login_result
 from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
 
@@ -223,6 +224,23 @@ def _turn_markdown(site: str, node: Tag, role: str, stats: dict[str, int], *, in
     return answer
 
 
+def _session_title(soup: BeautifulSoup, url: str) -> str | None:
+    selectors = '[data-conversation-title], [data-testid="conversation-title"], [data-testid="chat-title"], .conversation-title, .chat-title, header h1, header h2, nav [aria-current="page"], aside [aria-current="page"], nav [aria-selected="true"], aside [aria-selected="true"]'
+    for node in soup.select(selectors):
+        if _visible(node):
+            title = str(node.get("data-conversation-title") or node.get_text(" ", strip=True))
+            if title:
+                return title
+    target = urlsplit(url)
+    for node in soup.select('nav a[href], aside a[href]'):
+        link = urlsplit(urljoin(url, str(node.get("href"))))
+        if _visible(node) and (link.hostname, link.path.rstrip("/")) == (target.hostname, target.path.rstrip("/")):
+            title = node.get_text(" ", strip=True)
+            if title:
+                return title
+    return None
+
+
 def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> TranscriptResult:
     site = loaded_chat_site(item.url)
     soup = BeautifulSoup(html, "html.parser")
@@ -257,7 +275,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     return TranscriptResult(
         text="\n\n".join(turn.text for turn in turns) + "\n", blocks=turns,
         status="partial" if generating else "verified", source_level="browser_rendered", backend=backend,
-        title=item.title or title or f"{site} conversation",
+        title=conversation_title(site, item.title or title, turns, session_title=_session_title(soup, item.url)),
         error_code="ai_chat_not_stable" if generating else None,
         error_summary="当前页仍在生成，请等待完成后重新读取。" if generating else None,
         metadata={"chat_site": site, "captured_from": "browser_snapshot", "coverage": "visible_branch",

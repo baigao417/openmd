@@ -27,6 +27,7 @@ from openmd.runtime.interpreters import owned_popen, communicate_interruptibly, 
 from openmd.runtime.services import ensure_opencli_daemon
 
 HOST_NAME = "com.openmd.host"
+PROTOCOL_VERSION = 1
 MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
 MAX_MESSAGE = MAX_SNAPSHOT_BYTES + 2 * 1024 * 1024
 RECENT_JOBS = 8
@@ -553,7 +554,24 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
     kind = message.get("type")
     try:
         if kind == "ping":
-            return {"ok": True, "version": 1, "save_to": str(default_save_directory())}
+            from openmd.browser_setup import EXTENSION_DIR
+            from openmd.browser_extension_sync import sync_extension
+
+            try:
+                updated, content_hash = sync_extension(EXTENSION_DIR, data_directory() / "browser" / "extension")
+            except OSError as exc:
+                return {"ok": False, "error_code": "extension_sync_failed",
+                        "error": "扩展副本同步失败：" + sanitize_error_summary(exc)
+                        + "。请运行 openmd browser-setup 后重新加载扩展。"}
+            requested = message.get("protocol_version", PROTOCOL_VERSION)
+            compatible = type(requested) is int and requested == PROTOCOL_VERSION
+            reply = {"ok": True, "version": 1, "save_to": str(default_save_directory()),
+                     "extension_updated": updated, "extension_hash": content_hash,
+                     "protocol_version": PROTOCOL_VERSION, "protocol_compatible": compatible}
+            if not compatible:
+                reply.update(error_code="extension_protocol_mismatch",
+                             error="扩展与本机 openmd 协议不兼容，请运行 openmd browser-setup 后重新加载扩展。")
+            return reply
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
         if kind == "save_snapshot":

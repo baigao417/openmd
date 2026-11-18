@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from openmd.browser_host import HOST_NAME
+from openmd.browser_extension_sync import sync_extension
 from openmd.core.preferences import data_directory
 from openmd.runtime.interpreters import run_interruptibly
 
@@ -73,7 +74,7 @@ def install() -> int:
     print("下一步（只需一次）：打开 chrome://extensions（Edge 为 edge://extensions）→ 打开“开发者模式”")
     print("→ “加载已解压的扩展程序” → 选择这个文件夹：")
     print(f"  {folder}")
-    print(f"插件 ID 应显示为：{extension_id()}。升级 openmd 后再运行一次 openmd browser-setup 即可同步插件。")
+    print(f"插件 ID 应显示为：{extension_id()}。支持自动同步的插件会在启动或定期检查时同步升级，并在保存结束后重新加载。")
     if sys.stdout.isatty():
         with contextlib.suppress(OSError):
             os.startfile(folder)  # type: ignore[attr-defined]  # Windows only, checked above
@@ -88,7 +89,7 @@ def stable_extension_dir(root: Path | None = None) -> Path:
     not. The manifest key keeps the extension ID identical.
     """
     target = (root or data_directory() / "browser") / "extension"
-    shutil.copytree(EXTENSION_DIR, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.py", "*.pyc"))
+    sync_extension(EXTENSION_DIR, target)
     return target
 
 

@@ -8,17 +8,17 @@ import subprocess
 import pytest
 
 
-def test_background_grok_waits_use_node_clock_not_hidden_page_timers(tmp_path):
+def test_background_grok_waits_use_node_clock_not_hidden_page_timers(tmp_path, pinned_ai_package):
     from openmd.backends.ai_chat import _grok_loading_environment
     node = shutil.which("node")
     if not node:
         pytest.skip("Node not installed")
     module = tmp_path / "clis/grok/detail.js"
     module.parent.mkdir(parents=True)
-    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
     module.write_text('''
-const cli = x => x;
-export const command = cli({func: async (page, kwargs) => {
+import { cli, Strategy } from '@jackwener/opencli/registry';
+export const command = cli({site: 'grok',
+    func: async (page, kwargs) => {
 await page.goto('https://grok.com/c/fixture');
 await page.wait(2);
 let bubbles = [];
@@ -31,7 +31,8 @@ await page.wait(1);
 }
 if (!bubbles.length) throw new Error('empty');
 return bubbles;
-}});
+    },
+});
 ''', encoding="utf-8")
     probe = tmp_path / "probe.mjs"
     probe.write_text('''
@@ -40,6 +41,7 @@ let tick=0;
 globalThis.setTimeout=(fn,ms)=>{tick++;fn();};
 Date.now=()=>tick*1000;
 const page={
+evaluate:async(code)=>code.includes('.length')?2:false,
 goto:async(url,opts)=>{if(opts?.waitUntil!=='none')throw Error('hidden DOM settle timer');},
 wait:async()=>{throw Error('hidden page timer');},
 getMessages:async()=>[{role:'User',text:'fixture'},{role:'Assistant',text:'answer'}]
@@ -63,15 +65,14 @@ def test_grok_timeout_keeps_machine_error_code():
     assert result.metadata["original_error_code"] == "TIMEOUT"
 
 
-def test_deepseek_detail_skips_redundant_home_and_waits_for_late_reply(tmp_path):
+def test_deepseek_detail_skips_redundant_home_and_waits_for_late_reply(tmp_path, pinned_ai_package):
     from openmd.runtime.ai_chat_loading import detail_loading_environment
     node=shutil.which("node")
     if not node:pytest.skip("Node not installed")
     module=tmp_path/"clis/deepseek/detail.js"
     module.parent.mkdir(parents=True)
-    (tmp_path/"package.json").write_text('{"type":"module"}',encoding="utf-8")
     module.write_text('''
-const cli=x=>x;
+import { cli, Strategy } from '@jackwener/opencli/registry';
 const ensureOnDeepSeek=async()=>{throw Error('redundant home navigation');};
 const getVisibleMessages=page=>page.messages();
 export const command=cli({site: 'deepseek',
@@ -94,16 +95,15 @@ if(rows.length!==2||tick<5)throw Error('late reply omitted');
     assert done.returncode==0,done.stderr
 
 
-def test_gemini_history_keeps_owned_tab_in_background(tmp_path):
+def test_gemini_history_keeps_owned_tab_in_background(tmp_path, pinned_ai_package):
     from openmd.runtime.ai_chat_loading import detail_loading_environment
     node = shutil.which("node")
     if not node:
         pytest.skip("Node not installed")
     module = tmp_path / "clis/gemini/history.js"
     module.parent.mkdir(parents=True)
-    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
     module.write_text('''
-const cli=x=>x;
+import { cli, Strategy } from '@jackwener/opencli/registry';
 export const command=cli({site: 'gemini',
     func: async (page, kwargs) => {
         await page.selectTab('owned-hidden-tab');

@@ -2,172 +2,245 @@
 
 # Openmd
 
-**把任何链接存成干净的 Markdown：原文和完整逐字稿。**
+**Everything to Markdown — just beginning.**
+
+**把你看得到、却拿不出来的内容，变成 Agent 能用的 Markdown。**
 
 [![PyPI](https://img.shields.io/pypi/v/openmd-cli?color=3b5bdb)](https://pypi.org/project/openmd-cli/)
 [![Python](https://img.shields.io/pypi/pyversions/openmd-cli)](https://pypi.org/project/openmd-cli/)
 [![CI](https://github.com/baigao417/openmd/actions/workflows/ci.yml/badge.svg)](https://github.com/baigao417/openmd/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](https://github.com/baigao417/openmd/blob/main/LICENSE)
 
-[English](https://github.com/baigao417/openmd/blob/main/README.md) · 简体中文
+[English](https://github.com/baigao417/openmd/blob/main/README.md) · 简体中文 · [日本語](https://github.com/baigao417/openmd/blob/main/README.ja.md) · [한국어](https://github.com/baigao417/openmd/blob/main/README.ko.md)
 
 </div>
 
-网页文章、公众号、B 站和 YouTube 视频、播客等一切形式……Openmd 把它们统一存成一种人和 AI agent 都好读的 Markdown。它只保留原作者的原话：不总结、不改写。拿不全的时候，它会说清缺了什么，而不是存下一页错误内容。
+AI 时代，模型越来越聪明，但它能读到的东西，取决于你能喂给它什么。
+
+大量真正有价值的信息困在各个平台里：要登录的文章、视频里的原话、播客里的对谈、和 AI 聊了一下午的对话、群聊里的讨论。你看得到，却拿不出来。
+
+Openmd 想做的是一块基石：把这些内容变成开放、可携带、**人与 Agent 都能直接阅读和使用**的 Markdown。网页文章、视频平台、办公文件、聊天对话，一切都可以成为你专业知识库的原料。
+
+我们首先面向 AI native：保留原文不改写，附上来源与完整度回执，遇到错误页和登录墙直接拒收。因为对 Agent 来说，“这份材料能不能信”和“有没有这份材料”同样重要。
+
+万物 Markdown，这只是开端。
+
+---
+
+## 快速开始
+
+Openmd 提供命令行工具与 Python 模块 `openmd`（包名 `openmd-cli`，需要 Python 3.10 或更新版本，支持 Windows、macOS、Linux）。
 
 ```bash
+# 安装基础包（也可以用 pipx install openmd-cli 或 uv tool install openmd-cli）
 pip install openmd-cli
-openmd "https://www.bilibili.com/video/BV1GJ411x7h7"
+
+# 检查本地运行环境与可选组件状态
+openmd doctor
+
+# 粘贴一个链接，回车后选择保存位置
+openmd
+
+# 将单篇网页内容直接保存到指定目录
+openmd "https://example.com/article" -o ./notes
+
+# 供 Agent 或自动化脚本调用，不再询问，输出机器可读的 JSON 运行回执
+openmd "https://example.com/article" -o ./notes --json
+
+# 批量处理链接清单（每行一个链接）；批量命令用 --out 指定目录
+openmd batch links.txt --out ./notes
 ```
 
-## 亮点
+每个链接会在你选择的目录里生成一份 `标题.md`。运行日志写在 `~/.openmd/runs/`，不会混进你的笔记。
 
-- **一条命令，多种来源**：网页文章、公众号文章、X 帖子、B 站和 YouTube 视频、小宇宙播客、PDF 和 Office 文件。
-- **原文优先**：字幕和逐字稿按时间整理成带时间戳的段落，方便阅读，但一个字都不改。
-- **结果诚实**：错误页、登录墙、"请验证你是真人"之类的页面直接拒收，不会存成正文；只拿到一部分时会明确标注。
-- **装完就能用**：不用手动装 Node.js 或其他工具，需要借用浏览器读取时，Openmd 第一次用到会自动准备好。
-- **必要时借用你的浏览器**：一个浏览器插件，让 Openmd 用你已经登录的 Chrome / Edge 读取页面，读取在最小化的后台窗口里进行。
-- **默认完全本地**：所有处理都在你的电脑上完成，云服务除非你主动开启，否则永远不用。
-- **也为 agent 设计**：`openmd "<链接>" -o <目录> --json` 全程不提问，返回机器可读的回执。
-
-## 安装
-
-需要 Python 3.10 及以上，支持 Windows、macOS、Linux。
+当你需要处理本地办公文档或启用本地音视频转写时，可按需安装扩展依赖：
 
 ```bash
-pip install openmd-cli          # 或 pipx install openmd-cli / uv tool install openmd-cli
-openmd doctor                   # 看看现在能处理哪些内容、缺什么怎么装
+# 安装文档与图片解析依赖
+pip install "openmd-cli[document]"
+
+# 安装图片与扫描件 OCR 依赖
+pip install "openmd-cli[ocr]"
+
+# 安装可选的 Pandoc 转换回退
+pip install "openmd-cli[pandoc]"
+
+# 安装本地音视频转写（ASR）依赖
+pip install "openmd-cli[asr]"
 ```
 
-安装包叫 `openmd-cli`，装好后命令和 Python 模块都叫 `openmd`。
+> 注：文档解析、OCR 与本地 ASR 除安装 Python 依赖外，还可能需要准备 FFmpeg 或对应本地模型，可通过 `openmd doctor` 查看环境就绪情况。
 
-## 用法
+如果你想把 Openmd 接入自己的 Agent 或自动化工具链，可以阅读 [工具集成指南](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)。
 
-```bash
-openmd                                   # 粘贴链接，回车，选保存位置
-openmd "https://sspai.com/post/73145"    # 处理这个链接，再问存到哪里
-openmd "https://..." -o ~/notes          # 直接存进这个文件夹，不提问
-openmd "https://..." -o ~/notes --json   # 同上，并输出 JSON 回执，适合脚本和 agent
-openmd batch links.txt --out ~/notes     # 一行一个链接，批量处理
-```
+---
 
-每个链接存成所选文件夹里的 `标题.md`。运行日志放在 `~/.openmd/runs/`，不会混进你的笔记。
+## 为什么适合作为 AI 与知识库的前置入口
 
-## 能处理什么
+Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信息拿出来、理清楚”这一步基石工作：
 
-| 内容 | 装完即可用 | 还需要 |
-|---|:---:|---|
-| 网页文章 | ✓ | — |
-| YouTube 有字幕的视频 | ✓ | — |
-| 小宇宙播客逐字稿 | ✓ | —（第一次使用时自动准备约 20MB 的读取组件） |
-| 公众号文章、X 帖子、B 站字幕 | ✓ | Openmd 浏览器插件；B 站 AI 字幕还需要你已登录账号 |
-| 没有字幕的视频和播客 | | `pip install "openmd-cli[asr]"` 加本机语音模型（[说明](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)） |
-| 本地文档 | | `pip install "openmd-cli[document]"`；格式矩阵见下表 |
-| 图片 / 扫描件 | | `pip install "openmd-cli[ocr]"` 或配置已有本机 OCR |
-| 抖音、小红书 | 实验性 | 浏览器插件并已登录你自己账号 |
+1. **保留原文，把理解权留给后续环节**
+   默认目标是完整保留原文、字幕或逐字稿，仅整理分段和空白，不自动总结、翻译或改写。这样既方便人核对原话，也能避免在进入 AI 上下文前丢失关键细节。
 
-运行 `openmd doctor` 可以看到你这台机器上哪些已经就绪。链接处理失败时，Openmd 会说明原因，并打印一行信息，直接贴进[问题反馈](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)就行。
+2. **附带来源、元数据与时间定位**
+   生成的 Markdown 可包含标题、作者、原始链接等元数据（取决于来源实际提供的信息），音视频逐字稿支持保留时间定位，并附带来源与完整性说明。同时支持可选的结构化 package 输出，方便下游工具按需消费。
+
+3. **主动拒收无效页面**
+   遇到已识别的错误页、登录墙等情况时，Openmd 会直接拒收并通过回执反馈，而不是把错误页面静默保存成看似正常的笔记（受限于网页形态多变，仍无法承诺识别所有异常页面）。
+
+---
+
+## 当前能力
+
+| 类别 | 来源 | 状态 | 运行说明 |
+| :--- | :--- | :--- | :--- |
+| **网页与社区** | 普通网页文章 | 可用 | 安装即用 |
+| | 微信公众号文章、X 帖子 | 可用 | 需配合 Openmd 浏览器扩展及你已有的访问权限 |
+| | 保存当前页、登录提醒 | 可用 | 需浏览器扩展 |
+| **音视频与逐字稿** | YouTube（有字幕）、小宇宙 | 可用 | 小宇宙首次使用时会自动准备一个约 20 MB 的读取组件 |
+| | B 站、小鹅通 | 可用 | 需浏览器扩展；B 站 AI 字幕还需要登录 |
+| | 无字幕音视频、本地音视频 | 需扩展依赖 | 需 `[asr]` 依赖、FFmpeg 和本地语音模型 |
+| **本地文档与图片** | PDF、DOCX、PPTX、XLSX、图片 | 需扩展依赖 | 需 `[document]` 依赖；复杂版面与扫描件可能进入额外的 OCR 路线 |
+| **办公协作** | 飞书文档 | 部分可用 | 需本机已安装并登录 `lark-cli`，命令中加 `--enable-network-backends` 显式允许联网读取 |
+| **AI 对话** | Grok、DeepSeek、ChatGPT | 实验 | 真实会话仍需稳定性或登录验证；报告不会写入私人对话正文 |
+| **聊天记录** | QQ 群导出文件（JSON / HTML / TXT） | 暂停 | 导出文件解析已实现，暂未作为稳定能力开放；Openmd 不读取或解密聊天数据库 |
+| **实验性支持** | 抖音、小红书 | 实验 | 需浏览器扩展与登录；这些网站经常拦截自动读取，暂不承诺稳定或全量可用 |
 
 ### 本地文档格式
 
-安装 `pip install "openmd-cli[document]"`。下表已用独立 wheel、空配置和不含
-Pandoc、LibreOffice、Calibre 的 PATH 验证。范围为原生文字；样本通过不代表
-所有文件或视觉版式都已认证。
+`[document]` 是本地文档解析的基础依赖。下表来自全新安装实测，描述原生文字，并如实标出 partial。图片或扫描件请安装 `[ocr]`；可选的转换回退请安装 `[pandoc]`。详见[格式链与限制](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md)。
 
-| 格式 | 只装 `[document]` | 可选增强 / 限制 |
+| 格式 | 只装 `[document]` 的状态 | 可选增强 / 限制 |
 |---|---|---|
 | 含原生文字的 PDF | 可用 | 扫描件另需本机 OCR；不认证表格几何结构 |
-| DOCX、PPTX、XLSX | 可用 | 保留原始嵌图；缺图片 OCR 或公式缓存时 partial；PPTX 包含备注、类别图表 |
-| XLS | 可用 | 保存的单元格计算值与工作表顺序；未认证二进制嵌图 |
-| HTML、HTM、EPUB、RTF、ODT、ODS、ODP、FB2 | 可用 | 本地文件，不执行脚本；Pandoc / LibreOffice 提供可选回退；图片缺口明确报告 |
-| CSV、TSV、JSON、XML、IPYNB、MSG | 可用 | 大表有截断 coverage；不执行 Notebook；MSG 附件标为缺口 |
-| DOC、PPT | partial 文字回退 | 安装 LibreOffice 使用首选转换；不认证 95% 召回、版式和旧 PPT 活跃幻灯片顺序 |
-| ZIP | 可用，逐条报告状态 | 音视频 / 图片另需 ASR / OCR；受容器资源上限约束 |
+| DOCX | 部分可用 | 可取得文字；并非所有样本都认证表格形状 |
+| PPTX、XLSX、XLS | 可用 | 嵌图、备注、公式缓存和二进制图片限制会明确报告 |
+| HTML、HTM、EPUB、RTF、ODT、ODS、ODP、FB2 | 可用或部分可用 | 本地文件，不执行脚本；复杂版面可能 partial |
+| CSV、TSV、JSON、XML、IPYNB、MSG | 可用 | 大表可能截断；不执行 Notebook；MSG 附件标为缺口 |
+| DOC、PPT | partial 文字回退 | 安装 LibreOffice 使用首选转换；不认证版式和旧 PPT 活跃幻灯片顺序 |
+| ZIP | 部分可用，逐条报告状态 | 音视频 / 图片另需 ASR / OCR；受容器资源上限约束 |
 | MOBI、AZW3 | 需安装 Calibre | 缺工具返回 `engine_unavailable`；拒收加密电子书，不解密 |
 
-图片 / 扫描件 OCR 单独安装 `pip install "openmd-cli[ocr]"`，或配置已有本机 OCR。
-Pandoc 可选：`pip install "openmd-cli[pandoc]"`。文档解析不下载模型，不启用云端
-图片描述或转录。`[document]` 不安装 MarkItDown、magika 或 ONNX Runtime；
-已安装的 MarkItDown 暂保留兼容回退。详见[格式链与限制](docs/subsystems/document-formats.generated.md)。
+在你的电脑上运行 `openmd doctor` 可以看到哪些已经就绪。链接处理失败时，Openmd 会打印原因，以及一行可以直接贴进 [问题反馈](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml) 的信息。
 
-## 产物长什么样
+---
+
+## 输出长什么样
 
 ```markdown
 ---
-title: "台灯是怎么做出来的"
-author: "示例工作室"
+title: "我们是怎么做出这盏阅读灯的"
+author: "Example Studio"
 url: "https://www.bilibili.com/video/BV..."
 published: "2026-05-24"
 platform: "bilibili"
 ---
 
-# 台灯是怎么做出来的
+# 我们是怎么做出这盏阅读灯的
 
 **00:00:00**
 
-今天想给大家看看我们花了三个月做的这盏台灯 以及前两个版本为什么都失败了
+今天想给大家看看我们花了三个月做的这盏灯以及前两版为什么失败了
 
 **00:00:31**
 
-第一个原型晚上太亮 所以我们在灯罩下面又加了一个光源
+第一版原型晚上太亮了所以我们在灯罩下面加了第二个光源
 
 *来源：自动字幕；识别错误保持原样。*
 ```
 
-- 开头是 YAML 元数据，Obsidian、Logseq 等笔记软件和脚本都能直接读。
-- 逐字稿按约 30 秒、约 450 字或自然停顿分段，每段开头是时间戳：人能快速扫读，agent 能按时间点引用。
-- 最后一行注明正文来源（原文、平台字幕、自动字幕、语音识别……）以及是否完整。
+- 开头是 YAML front matter，Obsidian、Logseq 等笔记软件和脚本都能直接读取。
+- 逐字稿按约 30 秒、约 450 字或自然停顿分段，每段以时间戳开头：人可以快速浏览，Agent 可以引用到具体时刻。
+- 最后一行说明文字来源（原文、平台字幕、自动字幕、语音识别……）以及内容是否完整。
 
-## 浏览器插件
+---
 
-有些网站只对已登录的浏览器显示内容。Openmd 插件（Chrome、Edge，目前支持 Windows）让 Openmd 借用你自己的浏览器读取这些页面。
+## 浏览器扩展与本地运行
 
-也可从 [Release](https://github.com/baigao417/openmd/releases) 下载扩展 zip，运行 `openmd browser-setup` 后解压并加载该文件夹。
+- **复用已有浏览器访问权限**：微信公众号、X、B 站等部分读取路线需要配合 Openmd 浏览器扩展使用，部分内容需要你已在浏览器中登录。浏览器扩展目前支持 **Windows 系统的 Chrome / Edge**。Openmd 仅使用你已有的合法访问权限，不承诺绕过登录限制、付费墙、DRM 或其他访问控制。
+- **本地优先与联网边界**：Openmd 坚持本地优先，但读取在线内容时必然会访问原网站，部分运行组件在首次使用时可能触发下载；涉及云服务的功能则需要你明确开启。
 
-1. 运行 `openmd browser-setup`，它会注册本机连接，并打开插件所在文件夹。
-2. 打开 `chrome://extensions`（Edge 为 `edge://extensions`），打开右上角的**开发者模式**，点**加载已解压的扩展程序**，选择那个文件夹。
-3. 在任意页面点 Openmd 图标即可保存。按住 Ctrl 多选几个标签页可以一次全存；在页面上选中一段内容后右键，可以保存其中所有链接。
+安装扩展：
 
-读取过程中，Chrome 顶部可能出现"Openmd 已开始调试此浏览器"的提示条。这是 Chrome 对所有使用调试接口的插件统一显示的提示，插件自己无法隐藏；读取本身在一个单独的最小化窗口里进行。
+1. 运行 `openmd browser-setup`。它会注册本地连接，并打开扩展所在的文件夹。
+2. 打开 `chrome://extensions`（或 `edge://extensions`），开启 **开发者模式**，点击 **加载已解压的扩展程序**，选择刚才那个文件夹。
+3. 在任意页面点击 Openmd 图标即可保存。选中多个标签页可以一次全部保存；选中一段文字后右键，可以保存其中的所有链接。
+
+也可以从 [Releases](https://github.com/baigao417/openmd/releases) 下载扩展 ZIP，解压后在运行 `openmd browser-setup` 之后加载这个文件夹。
+
+- **默认浏览器行为**：读取不弹窗，默认在现有窗口的不激活后台标签中进行；任务创建的标签默认静音，任务结束后自动关闭。
+
+Chrome 可能显示“Openmd 已开始调试此浏览器”的浏览器提示栏；这是浏览器提供的提示，扩展无法隐藏。
+
+---
+
+## 托管 OpenCLI
+
+OpenCLI 是 Openmd 托管的浏览器与平台组件。`openmd opencli list` 和
+`openmd opencli <site> <command> [args]` 会透传只读命令，并保留其输出与退出码。
+写操作和未知命令默认 fail closed；只有显式加 `--allow-write` 才能放行。Openmd 不会打印凭证内容。
+
+---
 
 ## 配置
 
 | 环境变量 | 作用 |
 |---|---|
-| `OPENMD_AUTO_INSTALL_TOOLS=0` | 不自动下载浏览器读取组件 |
-| `OPENMD_NPM_REGISTRY` | 下载那个组件时使用的 npm 镜像 |
-| `OPENMD_SHOW_BROWSER=1` | 让后台浏览器窗口保持可见，方便排查问题 |
+| `OPENMD_AUTO_INSTALL_TOOLS=0` | 永不自动下载浏览器读取组件 |
+| `OPENMD_NPM_REGISTRY` | 首次下载读取组件时使用的 npm 镜像 |
+| `OPENMD_SHOW_BROWSER=1` | 让后台浏览器窗口保持可见，便于排查问题 |
 | `OPENMD_DATA_DIR` | Openmd 存放设置、日志和工具的位置（默认 `~/.openmd`） |
 
-更多：[工具接入规范](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)、[当前路由](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md)、[全景图](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html)。
+更多：[工具集成](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)、[当前路由](https://github.com/baigao417/openmd/blob/main/docs/routes.generated.md)、[架构地图](https://github.com/baigao417/openmd/blob/main/docs/architecture-map.html)。
+
+---
+
+## 扩展方向
+
+**Everything to Markdown** 是一个长期愿景，我们正在继续探索以下尚未交付的方向：
+
+- **网页 AI 对话导出**目前是实验能力：只有通过真实登录、稳定性与完整度检查的路线，才会升级为正式支持。
+- **电子书与更多文本格式**：支持 EPUB、RTF、MOBI、AZW3 等格式转换。
+- **更广的文档解析能力**：持续提升复杂版面文档的提取质量。
+
+以上方向在完成真实样本验证之前，不作为已交付功能。
+
+---
 
 ## 常见问题
 
-**Openmd 会总结或润色内容吗？**
-不会。它只调整空白和分段。总结、翻译、润色交给你后续用的工具。
+**Openmd 会总结或润色文字吗？**
+不会。它只调整空白和分段。总结、翻译和润色交给你接下来使用的工具。
 
 **我的数据会去哪里？**
-哪里都不去。Openmd 在本机运行，用你自己的网络和浏览器读取页面，文件写进你选的文件夹，不保存任何 cookie 或密码。
+哪里都不去。Openmd 在本地运行，用你自己的网络和浏览器读取页面，把文件写进你选择的目录。它从不保存 cookie 或密码。
 
-**有个链接处理不了怎么办？**
-加上 `--verbose` 再跑一次，看看尝试了哪些读取方式，然后带着 Openmd 打印的那行信息提一个[链接提取失败](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)的反馈。失败的链接是最有价值的贡献。
+**为什么包名叫 `openmd-cli`？**
+PyPI 上的 `openmd` 已被一个无关项目占用。安装之后，命令仍然是 `openmd`。
+
+**某个链接处理失败了。**
+加上 `--verbose` 再运行一次，可以看到尝试了哪些读取路线；然后附上 Openmd 打印的那一行，提交一份 [链接失败报告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)。失败的真实链接是最有价值的贡献。
+
+---
 
 ## 参与贡献
 
-欢迎带着真实链接提问题、接入新平台、修 bug。大多数新平台只需要加一张小小的 JSON "工具卡"，见[接入新平台](https://github.com/baigao417/openmd/blob/main/docs/adding-a-platform.md)。Windows、macOS、Linux 的开发步骤都一样：
+欢迎附带真实链接的问题反馈、新平台接入和修复。大多数新平台只需要一张很小的 JSON “工具卡”，见 [接入新平台](https://github.com/baigao417/openmd/blob/main/docs/adding-a-platform.md)。在 Windows、macOS、Linux 上开发的方式相同：
 
 ```bash
 git clone https://github.com/baigao417/openmd && cd openmd
-python scripts/dev_setup.py     # 建 .venv、装开发依赖、检查 ffmpeg / Node
+python scripts/dev_setup.py     # 创建 .venv、安装开发依赖、检查 ffmpeg / Node
 python -m pytest
 ```
 
-每个修复都要附一个修复前会失败的测试；每个"能用了"的结论都要附一条真实跑过的链接。提 PR 前请先读 [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md) 和[代码规范](https://github.com/baigao417/openmd/blob/main/docs/code-standards.md)。
+每个修复都要附带一个修复前会失败的测试；每个“能用了”的结论都要附带一条真实运行过的链接。提交 Pull Request 前请先阅读 [CONTRIBUTING](https://github.com/baigao417/openmd/blob/main/CONTRIBUTING.md) 和 [代码规范](https://github.com/baigao417/openmd/blob/main/docs/code-standards.md)。
 
-## 致谢
+---
 
-Openmd 建立在这些项目之上：[opencli](https://github.com/jackwener/opencli)（浏览器读取）、[trafilatura](https://github.com/adbar/trafilatura)、[youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)、Bilibili-Harvest（Lanbin07）、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[MarkItDown](https://github.com/microsoft/markitdown)。详情与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
+## 致谢与许可
 
-## 许可证
+Openmd 建立在 [OpenCLI](https://github.com/jackwener/opencli)（浏览器读取，已内置）、[trafilatura](https://github.com/adbar/trafilatura)、[youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)、Bilibili-Harvest（Lanbin07）、[faster-whisper](https://github.com/SYSTRAN/faster-whisper) 和 [MarkItDown](https://github.com/microsoft/markitdown) 等开源项目之上。详细信息与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
 
-[MIT](https://github.com/baigao417/openmd/blob/main/LICENSE)。请尊重你所保存内容的版权；Openmd 面向个人存档与研究用途。
+本项目采用 [MIT](https://github.com/baigao417/openmd/blob/main/LICENSE) 许可证开源。请尊重你所保存内容的版权；Openmd 面向个人存档与研究使用。
+
+**Everything to Markdown — just beginning.**

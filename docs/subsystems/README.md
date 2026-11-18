@@ -131,3 +131,19 @@ ASR 在下载完成后开始。AES-128 内容密钥仅在内存，core 生成的
 ## 9. 浏览器插件
 - 入口：`src/openmd/browser_extension/`（MV3 插件）、`browser_setup.py`（注册 Native Messaging、复制插件到 `~/.openmd/browser/extension`）、`browser_host.py`（后台队列）。
 - 合同：不开本地端口，只有固定插件 ID 能连；目前仅 Windows。
+
+## 10. OpenCLI 上游同步
+
+命令清单、离线契约、统一补丁、隔离金丝雀和路线验证日期见
+[OpenCLI 升级手册](opencli-upgrade.md)。修改来源后运行声明生成检查；
+真实升级前保留 baseline/candidate 脱敏回执，不由金丝雀自动修改 pin。
+
+## 11. Agent 回执与同步边界
+
+非交互调用使用 `openmd <source> -o <dir> --json`。顶层回执至少解释 `status`、`source_level`、`completeness`、`sync`、`login`、`next_action` 和 `error_code`；具体字段语义与常见错误见包内 [SKILL.md](../../src/openmd/SKILL.md)。
+
+同步状态只描述目标文件如何处理：`created`、`unchanged`、`conflict_kept_user_edit` 和 `restored_missing`。同步回执不能替代来源完整度判断，`sync=created` 也不自动等于 `status=verified`。
+
+## 12. 托管 OpenCLI 的只读透传
+
+`openmd opencli list` 与 `openmd opencli <site> <command> [args]` 只使用 Openmd 固定的托管 OpenCLI。`doctor`、`list`、`status`、`daemon status` 和已知站点的 `--help` 属于只读命令；写操作、未知命令和未知站点帮助默认拒绝，只有显式 `--allow-write` 才能继续。命令输出可包含站点错误，但不得把凭证、cookie、profile 内容写入日志或 Markdown。

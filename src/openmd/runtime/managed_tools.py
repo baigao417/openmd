@@ -105,6 +105,8 @@ def _prepare_bundled_node_host_package() -> None:
     the same package shape there without touching ``~/.opencli`` or a user's
     plugin directory.
     """
+    if os.environ.get('OPENMD_OPENCLI_CANARY') == '1':
+        return  # candidate probes must never repoint the shared Node host
     global _host_package_warning_shown
     node = node_dir()
     source = managed_package_root()
@@ -170,11 +172,13 @@ def ensure_opencli(say: Callable[[str], None] | None = None) -> str:
     install (the route then reports opencli as missing with a hint).
     """
     state = activate()
-    if state == "managed" and (managed_package_root() / "package.json").is_file():
+    if state == "managed" and (managed_package_root() / "package.json").is_file() and os.environ.get('OPENMD_OPENCLI_CANARY') != '1':
         from .opencli_adapters import prepare_bundled_plugins
         prepare_bundled_plugins()
     if state != "missing" or not auto_install_enabled():
         return state
+    if os.environ.get('OPENMD_OPENCLI_CANARY') == '1':
+        return 'missing'  # never install or prepare plugins into the user's config
     node = node_dir()
     npm = _npm_cli(node) if node else None
     if node is None or npm is None:
@@ -246,10 +250,14 @@ def command_environment(base=None) -> dict[str, str]:
     without patching npm files or changing the controller/user's home.
     """
     config = config_directory()
-    config.mkdir(parents=True, exist_ok=True)
     home = config.parent / ("." + config.name + "-home")
-    home.mkdir(parents=True, exist_ok=True)
     alias = home / ".opencli"
+    if os.environ.get('OPENMD_OPENCLI_CANARY') == '1':
+        if not config.is_dir() or not home.is_dir() or not alias.exists() or alias.resolve() != config.resolve():
+            raise ValueError('opencli_canary_config_not_prepared')
+    else:
+        config.mkdir(parents=True, exist_ok=True)
+        home.mkdir(parents=True, exist_ok=True)
     if alias.exists() or alias.is_symlink():
         if alias.resolve() != config.resolve():
             raise ValueError("opencli_home_alias_conflict")

@@ -54,7 +54,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "openmd.routing" = ["routes.json", "declarations.json", "cards/*.json"]
-"openmd" = ["browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
+"openmd" = ["SKILL.md", "browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
 "openmd.ocr" = ["settings.json", "ovis-prompt.txt"]
 "openmd.runtime" = ["tingwu_bridge.mjs"]
 "openmd.engines" = ["local_html.cjs"]

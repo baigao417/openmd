@@ -233,6 +233,7 @@ def test_tingwu_multistep_always_closes_its_unique_session(tmp_path, monkeypatch
     (host / "package.json").write_text(json.dumps({"version": managed_tools.OPENCLI_VERSION}))
     monkeypatch.delenv("OPENMD_XIAOE_HOST", raising=False)
     monkeypatch.setattr(opencli_adapters, "managed_package_root", lambda: host)
+    monkeypatch.setattr(opencli_adapters, "validate_dispatcher", lambda host: None)
     monkeypatch.setattr(opencli_adapters, "node_dir", lambda: tmp_path)
     monkeypatch.setattr(opencli_adapters, "command_environment", lambda: {})
     monkeypatch.setattr(opencli_adapters, "managed_command", lambda args: ["managed", *args])

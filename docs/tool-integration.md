@@ -102,3 +102,15 @@ Bridge changes require extension reload. Generate with
 the vendor JavaScript. Windows diagnostics are available via
 `scripts/diag_window_events.py --output evidence.json -- <command>`.
 No window/sound availability claim is made until real extension acceptance.
+
+## Agent receipt contract
+
+For non-interactive use, prefer:
+
+```bash
+openmd "<url-or-path>" -o <directory> --json
+```
+
+Read the saved artifact together with the top-level `status`, `source_level`, `completeness`, `sync`, `login`, `next_action`, and `error_code` fields. A successful process exit only says that the command ended; it does not certify the body. `status=partial` must remain partial when a source or member is missing.
+
+`openmd opencli list` and `openmd opencli <site> <command> [args]` are read-only pass-throughs to the pinned managed OpenCLI. The controller permits built-in read-only commands and rejects writes, unknown commands, and unknown-site help unless the caller explicitly supplies `--allow-write`. The exact write gate and privacy boundary are documented in [SKILL.md](../src/openmd/SKILL.md).

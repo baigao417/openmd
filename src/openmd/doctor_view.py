@@ -88,4 +88,14 @@ def render(payload: dict[str, Any]) -> str:
             lines.append(f"PATH 上的其他 opencli 已忽略: {managed['ignored_path_opencli']}")
     if preparation.get("prepare_recommended"):
         lines.append("本机模型大分片会增加加载内存；运行 openmd asr prepare-models 准备独立小分片副本（原模型保留）。")
+    patches = (payload.get('profile_diagnostics') or {}).get('opencli_patches') or {}
+    if patches:
+        lines.append(f"OpenCLI 补丁：{patches.get('total', 0)} 条；全部匹配：{'是' if patches.get('ok') else '否'}")
+        lines.extend(f"  {p['id']}: {p['error_code']}" for p in patches.get('patches', []) if not p['ok'])
+    verification = (payload.get('profile_diagnostics') or {}).get('route_verification') or {}
+    for route in verification.get('routes', []):
+        if route['state'] == 'stale':
+            lines.append(f"路线 {route['source']}/{route['capability']} 已 {route['age_days']} 天未验证；请用授权真实样本复验。")
+    if verification.get('unknown_count'):
+        lines.append(f"{verification['unknown_count']} 条路线尚无已登记的真实验证日期。")
     return "\n".join(lines)

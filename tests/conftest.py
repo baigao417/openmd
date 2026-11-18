@@ -7,6 +7,17 @@ from tempfile import TemporaryDirectory
 import pytest
 
 
+@pytest.fixture
+def pinned_ai_package(tmp_path):
+    """Synthetic pinned package with the real loader ABI and a stub registry."""
+    (tmp_path / 'package.json').write_text('{"type":"module","version":"2.0.3"}', encoding='utf-8')
+    registry = tmp_path / 'node_modules/@jackwener/opencli'
+    registry.mkdir(parents=True)
+    (registry / 'package.json').write_text('{"type":"module","exports":{"./registry":"./registry.js"}}', encoding='utf-8')
+    (registry / 'registry.js').write_text('export const cli=x=>x; export const Strategy={};', encoding='utf-8')
+    return tmp_path
+
+
 def _isolate_machine(monkeypatch, root):
     # Inherited model/interpreter/host overrides must not escape to real paths.
     for key in tuple(os.environ):

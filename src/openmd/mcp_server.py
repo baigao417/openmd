@@ -5,9 +5,19 @@ from __future__ import annotations
 def create_server():
     from mcp.server.fastmcp import FastMCP
     from mcp.types import ToolAnnotations
+    from mcp.server.fastmcp.exceptions import ToolError
     from openmd import mcp_jobs
 
-    server = FastMCP("Openmd", log_level="CRITICAL")
+    class PrivateFastMCP(FastMCP):
+        async def call_tool(self, name, arguments):
+            try:
+                return await super().call_tool(name, arguments)
+            except Exception:
+                # SDK validation errors can include the rejected HTML or OS path.
+                # Never forward exception text or its chained traceback to clients.
+                raise ToolError("openmd_tool_failed: check typed arguments, limits and local readiness") from None
+
+    server = PrivateFastMCP("Openmd", log_level="CRITICAL")
     writes = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
     reads = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 

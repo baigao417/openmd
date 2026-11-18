@@ -2,19 +2,22 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import subprocess
 import sys
 import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 # Isolated worker processes use this installed file, including in editable worktrees.
 if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from openmd import browser_host as host
-from openmd.core.secrets import sanitize_for_logging
+from openmd.core.secrets import is_sensitive_query_key, SENSITIVE_TEXT_PATTERNS
 
 MAX_HTML_BYTES = 2 * 1024 * 1024
 MAX_CONTENT_CHARS = 32_000
@@ -46,7 +49,45 @@ def destination(value: str) -> Path:
 
 
 def receipt(result: dict) -> dict:
-    return {key: sanitize_for_logging(result.get(key), key=key) for key in RECEIPT_FIELDS}
+    def label(value):
+        return value if isinstance(value, str) and re.fullmatch(r"[a-z0-9_.:-]{1,100}", value) else None
+
+    def structure(value, depth=0):
+        if depth > 5:
+            return None
+        if isinstance(value, dict):
+            allowed = {"status", "checks", "signal", "reason", "gap", "operation", "required", "state",
+                       "complete", "expected_count", "actual_count", "missing_count", "exported_count", "stats_count",
+                       "missing_pages", "output_pages", "total_pages", "start_seconds", "end_seconds", "limit"}
+            return {key: structure(child, depth + 1) for key, child in value.items() if key in allowed}
+        if isinstance(value, list):
+            return [structure(child, depth + 1) for child in value[:20]]
+        if type(value) in (bool, int) or (type(value) is float and math.isfinite(value)):
+            return value
+        return label(value)
+
+    code = label(result.get("error_code"))
+    status = result.get("status") if result.get("status") in {"verified", "partial", "failed"} else None
+    action = None
+    if code == "login_required":
+        action = "Sign in using the source application, then submit a fresh save."
+    elif code or status == "failed":
+        action = "Check local readiness with openmd_doctor and the CLI doctor, then submit a fresh save."
+    elif status == "partial":
+        action = "Inspect completeness and the saved artifact before using this source."
+    return {"status": status, "source_level": label(result.get("source_level")),
+            "completeness": structure(result.get("completeness")), "sync": structure(result.get("sync")),
+            "login": structure(result.get("login")), "next_action": action, "error_code": code}
+
+
+def _validate_source_url(value: str) -> str:
+    url = host._validate_url(value)
+    parsed = urlsplit(url)
+    if parsed.username is not None or parsed.password is not None or any(
+        is_sensitive_query_key(key) for key, _ in parse_qsl(parsed.query) + parse_qsl(parsed.fragment)
+    ):
+        raise ValueError("credential_url_not_allowed")
+    return url
 
 
 def _initial(status: dict) -> dict:
@@ -56,8 +97,10 @@ def _initial(status: dict) -> dict:
 def save(source: str, output_directory: str, *, network: bool = False, browser: bool = False,
          media: bool = False, asr: bool = False, cloud: bool = False) -> dict:
     target = destination(output_directory)
+    if not isinstance(source, str) or not source or len(source) > 4096:
+        raise ValueError("invalid_source")
     if source.startswith(("http://", "https://")):
-        source = host._validate_url(source)
+        source = _validate_source_url(source)
     elif not Path(source).is_absolute() or not Path(source).is_file():
         raise ValueError("source_must_be_http_url_or_absolute_file")
     with queue():
@@ -75,6 +118,7 @@ def save(source: str, output_directory: str, *, network: bool = False, browser: 
 def save_page(source_url: str, output_directory: str, *, html: str | None = None,
               html_path: str | None = None) -> dict:
     target = destination(output_directory)
+    source_url = _validate_source_url(source_url)
     if (html is None) == (html_path is None):
         raise ValueError("provide_exactly_one_of_html_or_html_path")
     if html_path is not None:
@@ -116,18 +160,27 @@ def arguments(status: dict):
 
 
 def job(job_id: str, *, include_content: bool = False) -> dict:
+    if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{32}", job_id):
+        raise ValueError("invalid_job_id")
     with queue():
         status = host.read_status(job_id)
     result = {"id": job_id, "state": status["state"], **receipt(status.get("receipt", {})),
               "saved_to": status.get("saved_to")}
     if status["state"] == "failed" and not result["error_code"]:
-        result.update(status="failed", error_code="extraction_failed")
+        result.update(status="failed", error_code="extraction_failed",
+                      next_action="Check local readiness with openmd_doctor and the CLI doctor, then submit a fresh save.")
     if include_content and status.get("saved_to"):
-        path = Path(status["saved_to"])
-        if path.is_file():
+        path = Path(status["saved_to"]).resolve()
+        root = Path(status["save_to"]).resolve()
+        if path.is_file() and path.is_relative_to(root) and path.suffix.lower() == ".md":
             with path.open(encoding="utf-8") as stream:
                 content = stream.read(MAX_CONTENT_CHARS + 1)
-            result.update(content=content[:MAX_CONTENT_CHARS], content_truncated=len(content) > MAX_CONTENT_CHARS)
+            bounded = content[:MAX_CONTENT_CHARS]
+            redacted = bounded
+            for pattern in SENSITIVE_TEXT_PATTERNS:
+                redacted = pattern.sub("[redacted]", redacted)
+            result.update(content=redacted, content_truncated=len(content) > MAX_CONTENT_CHARS,
+                          content_redacted=redacted != bounded)
     return result
 
 
@@ -137,7 +190,8 @@ def doctor() -> dict:
     report = build_doctor_report("core")
     return {"profile": "core", "ready": bool(report.get("ready")),
             "manifest_valid": bool(report.get("manifest_valid")),
-            "network_access": "not_probed", "private_session_state": "not_read"}
+            "network_access": "not_probed", "private_session_state": "not_read",
+            "next_action": "Use openmd_save or openmd_save_page." if report.get("ready") else "Run the CLI doctor for optional dependency details."}
 
 
 def main() -> int:

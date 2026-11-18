@@ -37,6 +37,7 @@ copied. These optional libraries are installed by pip and retain their licenses:
 | python-pptx (github.com/scanny/python-pptx) | MIT | PPTX slides, charts, notes |
 | openpyxl (openpyxl.readthedocs.io) | MIT | XLSX saved values and formulas |
 | xlrd (github.com/python-excel/xlrd) | BSD-3-Clause | XLS saved cell values |
+| olefile (github.com/decalage2/olefile) | BSD-2-Clause | MSG/DOC/PPT local OLE streams |
 
 | Component | License | How it arrives |
 |---|---|---|

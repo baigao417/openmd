@@ -1198,7 +1198,7 @@ function getLeaseLifecycle(key, kind) {
   return getSurfaceFromKey(key) === "browser" ? "persistent" : "ephemeral";
 }
 function getOwnedWindowRole(key) {
-  return getSurfaceFromKey(key) === "browser" ? "interactive" : "automation";
+  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";
 }
 function getWindowRole(key, ownership) {
   return ownership === "borrowed" ? "borrowed-user" : getOwnedWindowRole(key);

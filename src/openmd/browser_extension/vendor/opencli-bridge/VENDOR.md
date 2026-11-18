@@ -171,5 +171,10 @@ async function handleCommand(cmd) {
       resetWindowIdleTimer(leaseKey);
       return;
     }`
+- Quiet Openmd browser and adapter surfaces share the automation container: `function getOwnedWindowRole(key) {
+  return getSurfaceFromKey(key) === "browser" ? "interactive" : "automation";
+}` → `function getOwnedWindowRole(key) {
+  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";
+}`
 
 Regenerate with `python scripts/vendor_opencli_bridge.py`; never edit `background.js` by hand.

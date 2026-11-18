@@ -267,6 +267,10 @@ PATCHES += [('Restore controller identity with the exact recorded tab lease', 'o
 
 PATCHES += [('Refresh job anchor with every real command', '  resetWindowIdleTimer(leaseKey);\n  activeCommandCounts.set(leaseKey,', '  resetWindowIdleTimer(leaseKey);\n  if (openmdOptions.ownerPid) resetWindowIdleTimer(getLeaseKey("openmd-job:" + openmdOptions.ownerPid, "adapter"));\n  activeCommandCounts.set(leaseKey,', 1), ('Long commands keep their job anchor alive', '  session.idleTimer = setTimeout(async () => {\n    if ((activeCommandCounts.get(leaseKey) ?? 0) > 0) {\n      return;\n    }', '  session.idleTimer = setTimeout(async () => {\n    const jobActive = session.session?.startsWith("openmd-job:") && [...automationSessions.entries()].some(([key, item]) => item.openmdOwnerPid === session.openmdOwnerPid && (activeCommandCounts.get(key) ?? 0) > 0);\n    if ((activeCommandCounts.get(leaseKey) ?? 0) > 0 || jobActive) {\n      resetWindowIdleTimer(leaseKey);\n      return;\n    }', 1)]
 
+PATCHES += [('Quiet Openmd browser and adapter surfaces share the automation container',
+             'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" ? "interactive" : "automation";\n}',
+             'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";\n}', 1)]
+
 # Openmd's own idle page (upstream idle.html is replaced, not patched).
 IDLE_HTML = """<!doctype html>
 <html lang="zh-CN">

@@ -309,3 +309,16 @@ def test_xiaohongshu_assets_bypass_path_shim_before_string_quoting(monkeypatch):
     monkeypatch.setattr(xiaohongshu_providers, "run_interruptibly", runner)
     xiaohongshu_providers._run_asset_command(["opencli", "openmd-xiaohongshu", "note-assets", "fixture"], 5, None)
     assert runner.call_args.args[0][:2] == ["pinned-node", "main.js"]
+
+
+def test_quiet_browser_and_adapter_surfaces_share_one_container(tmp_path):
+    from openmd.runtime.interpreters import run_interruptibly
+    node = managed_tools.node_dir()
+    if node is None:
+        pytest.skip("Node not installed")
+    source = (Path(__file__).parents[1] / "src/openmd/browser_extension/vendor/opencli-bridge/background.js").read_text(encoding="utf-8")
+    function = "function getOwnedWindowRole(" + source.split("function getOwnedWindowRole(")[1].split("function getWindowRole(")[0]
+    script = tmp_path / "roles.cjs"
+    script.write_text("const assert=require('node:assert/strict');let currentContextId='openmd';const openmdOptions={show:false};const getSurfaceFromKey=k=>k;" + function + "assert.equal(getOwnedWindowRole('browser'),'automation');assert.equal(getOwnedWindowRole('adapter'),'automation');openmdOptions.show=true;assert.equal(getOwnedWindowRole('browser'),'interactive');currentContextId='other';openmdOptions.show=false;assert.equal(getOwnedWindowRole('browser'),'interactive');")
+    result = run_interruptibly([str(node / ("node.exe" if os.name == "nt" else "node")), str(script)], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stderr

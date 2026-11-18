@@ -91,3 +91,12 @@ def test_legacy_gemini_has_unknown_independent_count(tmp_path):
     assert [turn.role for turn in result.blocks] == ["user", "assistant"]
     assert result.metadata["independent_turn_count"] is None
     assert result.metadata["completeness"]["status"] == "unknown"
+
+
+def test_login_dialog_over_loaded_history_is_not_exported(tmp_path):
+    path = tmp_path / "page.html"
+    source = (FIXTURES / "grok.html").read_text(encoding="utf-8")
+    path.write_text(source.replace("</body>", '<dialog open><form><input type="password"><button>Sign in</button></form></dialog></body>'), encoding="utf-8")
+    result = extract("grok", path)
+    assert result.error_code == "login_required"
+    assert not result.text and not result.blocks

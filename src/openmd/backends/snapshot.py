@@ -46,11 +46,11 @@ class SnapshotProvider:
             name=self.name,
             layer="L1 local snapshot extractor",
             capabilities=(BackendCapability(
-                platforms=("page_snapshot",), source_types=("article",), input_types=("single",),
+                platforms=("page_snapshot", "ai_chat"), source_types=("article", "conversation"), input_types=("single",),
                 source_levels=("browser_rendered", "third_party_extractor", "partial_extraction"),
                 requires_network=False,
             ),),
-            description="Extract a browser captured HTML snapshot through Defuddle.",
+            description="Read a loaded AI conversation or extract an article snapshot through Defuddle.",
             provider="openmd.backends.snapshot",
         )
 

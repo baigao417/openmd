@@ -73,7 +73,7 @@ def test_share_link_is_single_item_and_resolves_before_extraction():
     result = provider.extract(BackendExtractRequest(identity.item, (provider.name,)))
     assert result.has_usable_text
     assert len(calls) == 1
-    assert calls[0] == ["opencli", "douyin", "detail", "https://v.douyin.com/fixture/", "--window", "background", "--keep-tab", "false", "-f", "json"]
+    assert calls[0] == ["opencli", "douyin", "detail", "https://v.douyin.com/fixture/", "--window", "background", "--site-session", "ephemeral", "--keep-tab", "false", "-f", "json"]
 
 
 def test_detail_rejects_wrong_id_and_never_retains_raw_response():

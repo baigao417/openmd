@@ -18,7 +18,7 @@ try {
   const {executeCommand} = await import(moduleUrl('execution.js'));
   const cmd = getRegistry().get(`xiaoe/${command}`);
   if (!cmd) throw new Error('adapter_missing');
-  const result = await executeCommand(cmd, {url}, false, {windowMode: 'background', siteSession: 'persistent', keepTab: false});
+  const result = await executeCommand(cmd, {url}, false, {windowMode: 'background', siteSession: 'ephemeral', keepTab: 'false'});
   process.stdout.write(JSON.stringify(result) + '\n');
 } catch (error) {
   // Browser errors may carry signed locators/session details. Expose only type.

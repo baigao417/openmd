@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_interactive():
             actual = ["go"]
-    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "asr"} and not actual[0].startswith("-"):
+    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "asr", "opencli"} and not actual[0].startswith("-"):
         actual.insert(0, "go")
     parser = build_parser()
     try:
@@ -304,6 +304,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"openmd: {sanitize_error_summary(exc)}", file=sys.stderr)
         return 1
     finally:
+        from openmd.runtime.services import finish_openmd_bridge
+        finish_openmd_bridge()
         lock = getattr(args, "_compact_output_lock", None)
         if lock is not None:
             try:

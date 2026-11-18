@@ -23,6 +23,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
+    from .cli_commands import cmd_opencli
+    passthrough = subparsers.add_parser("opencli", description="Managed OpenCLI; read-only unless --allow-write")
+    passthrough.add_argument("--allow-write", action="store_true")
+    passthrough.add_argument("opencli_args", nargs=argparse.REMAINDER)
+    passthrough.set_defaults(func=cmd_opencli)
+
     from openmd.runtime.prepared_models import cmd_prepare_models
     asr = subparsers.add_parser("asr", description="Prepare existing local ASR weights without downloading models")
     asr_commands = asr.add_subparsers(dest="asr_command", required=True)

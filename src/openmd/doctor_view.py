@@ -66,6 +66,13 @@ def render(payload: dict[str, Any]) -> str:
     if missing:
         lines.append(f"{missing} 项可选能力未就绪；不装也能用，遇到对应内容时会提示。机器可读结果：openmd doctor --json")
     preparation = (payload.get("profile_diagnostics") or {}).get("model_preparation") or {}
+    managed = payload.get("managed_tools") or {}
+    if managed.get("executable"):
+        lines += ["", f"OpenCLI: {managed['executable']}",
+                  f"版本: {managed.get('actual_version') or '未安装'}；配置目录: {managed.get('config_dir')}",
+                  f"插件: {', '.join(managed.get('plugins') or []) or '无'}"]
+        if managed.get("ignored_path_opencli"):
+            lines.append(f"PATH 上的其他 opencli 已忽略: {managed['ignored_path_opencli']}")
     if preparation.get("prepare_recommended"):
         lines.append("本机模型大分片会增加加载内存；运行 openmd asr prepare-models 准备独立小分片副本（原模型保留）。")
     return "\n".join(lines)

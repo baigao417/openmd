@@ -5,7 +5,7 @@ routes (Bilibili subtitles, Weixin, X, Douyin ...). Node.js comes from the
 `nodejs-wheel-binaries` dependency; opencli itself is installed once, on first
 need, into ``<data>/tools/opencli`` at a pinned version.
 
-A user's own `opencli` on PATH always wins and is never modified.
+Openmd always selects its pinned copy; other PATH installs are ignored.
 Set ``OPENMD_AUTO_INSTALL_TOOLS=0`` to disable the automatic install, and
 ``OPENMD_NPM_REGISTRY`` to use a registry mirror.
 """
@@ -13,6 +13,7 @@ Set ``OPENMD_AUTO_INSTALL_TOOLS=0`` to disable the automatic install, and
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import stat
@@ -52,8 +53,8 @@ def managed_root() -> Path:
     tools = load_local_config().get("tools", {})
     if "opencli" in tools:
         setting = tools["opencli"]
-        if (not isinstance(setting, dict) or set(setting) != {"root"}
-                or not isinstance(setting["root"], str) or not setting["root"].strip()):
+        if (not isinstance(setting, dict) or set(setting) - {"root", "config_dir"}
+                or not isinstance(setting.get("root"), str) or not setting["root"].strip()):
             raise ValueError("managed_opencli_location_invalid")
         return Path(setting["root"]).expanduser().resolve()
     return data_directory() / "tools" / "opencli"
@@ -140,19 +141,22 @@ def _prepare_bundled_node_host_package() -> None:
 def activate() -> str:
     """Make a usable opencli visible to this process and its children.
 
-    Returns "user" (own install on PATH), "managed" (Openmd's copy) or "missing".
+    Returns "managed" (Openmd's copy) or "missing".
     Browser reads default to a background (minimized) window.
     """
     show = os.environ.get("OPENMD_SHOW_BROWSER", "").strip().lower() in {"1", "true", "yes", "on"}
     os.environ.setdefault("OPENCLI_WINDOW", "foreground" if show else "background")
+    os.environ.setdefault("OPENCLI_CLOSE_OWNED_TAB", "1")
+    os.environ["OPENCLI_CONFIG_DIR"] = str(config_directory())
     if _managed_ready():
-        if shutil.which("opencli") and Path(shutil.which("opencli")).parent != managed_bin():
-            return "user"
         node = node_dir()
-        _prepend_path(*([node] if node else []), managed_bin())
+        # Move existing managed entries too: a later PATH install must never win.
+        folders = [*([node] if node else []), managed_bin()]
+        os.environ["PATH"] = os.pathsep.join([*(str(f) for f in folders),
+            *(p for p in os.environ.get("PATH", "").split(os.pathsep) if p not in {str(f) for f in folders})])
         _prepare_bundled_node_host_package()
         return "managed"
-    return "user" if shutil.which("opencli") else "missing"
+    return "missing"
 
 
 def auto_install_enabled() -> bool:
@@ -166,6 +170,9 @@ def ensure_opencli(say: Callable[[str], None] | None = None) -> str:
     install (the route then reports opencli as missing with a hint).
     """
     state = activate()
+    if state == "managed" and (managed_package_root() / "package.json").is_file():
+        from .opencli_adapters import prepare_bundled_plugins
+        prepare_bundled_plugins()
     if state != "missing" or not auto_install_enabled():
         return state
     node = node_dir()
@@ -197,16 +204,156 @@ def ensure_opencli(say: Callable[[str], None] | None = None) -> str:
     shutil.rmtree(root, ignore_errors=True)
     staging.rename(root)
     say("浏览器读取组件已就绪。")
-    return activate()
+    state = activate()
+    if (managed_package_root() / "package.json").is_file():
+        from .opencli_adapters import prepare_bundled_plugins
+        prepare_bundled_plugins()
+    return state
 
 
 def status() -> dict[str, object]:
     """Doctor view: where opencli comes from, without probing the network."""
+    other_path = os.pathsep.join(p for p in os.environ.get("PATH", "").split(os.pathsep)
+                               if Path(p).resolve() != managed_bin().resolve())
+    other = shutil.which("opencli", path=other_path)
     state = activate()
+    config = config_directory()
+    package = managed_package_root() / "package.json"
+    version = json.loads(package.read_text(encoding="utf-8")).get("version") if package.is_file() else None
     return {
         "opencli": state,
         "opencli_version_pinned": OPENCLI_VERSION,
         "managed_path": str(managed_root()),
+        "executable": str(managed_bin() / ("opencli.cmd" if os.name == "nt" else "opencli")),
+        "actual_version": version,
+        "config_dir": str(config),
+        "plugins": sorted(p.name for p in (config / "plugins").iterdir()) if (config / "plugins").is_dir() else [],
+        "ignored_path_opencli": other if other and Path(other).parent != managed_bin() else None,
         "bundled_node": node_dir() is not None,
         "auto_install": auto_install_enabled(),
     }
+
+
+def config_directory() -> Path:
+    setting = load_local_config().get("tools", {}).get("opencli", {})
+    return Path(setting["config_dir"]).expanduser().resolve() if "config_dir" in setting else data_directory() / "opencli"
+
+
+def command_environment(base=None) -> dict[str, str]:
+    """2.0.3 discovery uses os.homedir, plugin lock uses HOME, profiles use CONFIG_DIR.
+
+    A private home alias makes all three resolve to the same config directory,
+    without patching npm files or changing the controller/user's home.
+    """
+    config = config_directory()
+    config.mkdir(parents=True, exist_ok=True)
+    home = config.parent / ("." + config.name + "-home")
+    home.mkdir(parents=True, exist_ok=True)
+    alias = home / ".opencli"
+    if alias.exists() or alias.is_symlink():
+        if alias.resolve() != config.resolve():
+            raise ValueError("opencli_home_alias_conflict")
+    else:
+        try:
+            alias.symlink_to(config, target_is_directory=True)
+        except OSError:
+            _create_junction(config, alias)
+    env = dict(os.environ if base is None else base)
+    env.update(OPENCLI_CONFIG_DIR=str(config), HOME=str(home), USERPROFILE=str(home))
+    env.setdefault("OPENCLI_PROFILE", "openmd")
+    env.setdefault("OPENCLI_CLOSE_OWNED_TAB", "1")
+    env.setdefault("OPENCLI_WINDOW", "foreground" if env.get("OPENMD_SHOW_BROWSER") == "1" else "background")
+    env.setdefault("NODE_OPTIONS", "--max-old-space-size=1536")
+    return env
+
+
+def command_uses_browser(args: list[str], *, package_root: Path | None = None) -> bool | None:
+    """Read pinned command metadata; API commands have no browser CLI options."""
+    if len(args) < 2:
+        return None
+    if args[0] in {"openmd-douyin", "openmd-xiaohongshu"}:
+        return True
+    try:
+        manifest = json.loads(((package_root or managed_package_root()) / "cli-manifest.json").read_text(encoding="utf-8"))
+        for row in manifest:
+            if row.get("site") == args[0] and row.get("name") == args[1]:
+                return row.get("browser") if type(row.get("browser")) is bool else None
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
+def managed_command(args: list[str]) -> list[str]:
+    node = node_dir()
+    if node is None:
+        raise OSError("managed_opencli_node_missing")
+    if command_uses_browser(args) is True and "--site-session" not in args and not any(a.startswith("--site-session=") for a in args):
+        args = [*args, "--site-session", "ephemeral", "--keep-tab", "false"]
+    return [str(node / ("node.exe" if os.name == "nt" else "node")),
+            str(managed_package_root() / "dist/src/main.js"), *args]
+
+
+def _migration_files(source: Path):
+    def walk(folder, relative, ancestors):
+        resolved = folder.resolve()
+        if resolved in ancestors:
+            return
+        for entry in sorted(folder.iterdir(), key=lambda p: p.name):
+            name = relative / entry.name
+            if entry.is_dir():
+                yield from walk(entry, name, ancestors | {resolved})
+            elif entry.is_file():
+                yield entry, name
+    if source.is_dir():
+        yield from walk(source, Path(), set())
+
+
+def migrate_config(*, source: Path | None = None, destination: Path | None = None, apply: bool = False):
+    source = source or Path.home() / ".opencli"
+    destination = destination or config_directory()
+    if source.resolve() == destination.resolve() or source.resolve() in destination.resolve().parents:
+        raise ValueError("opencli_migration_destination_invalid")
+    files = list(_migration_files(source))
+    receipt = {"schema": "openmd.opencli-migration/v1", "applied": apply,
+               "files": [{"name": rel.as_posix(), "size": file.stat().st_size} for file, rel in files],
+               "copied": [], "conflicts": [], "source_preserved": True}
+    if apply:
+        if any(not (destination / relative).resolve().is_relative_to(destination.resolve()) for _, relative in files):
+            raise ValueError("opencli_migration_destination_link_escape")
+        destination.mkdir(parents=True, exist_ok=True)
+        for file, relative in files:
+            target = destination / relative
+            if target.exists():
+                receipt["conflicts"].append(relative.as_posix())
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(file, target)
+            receipt["copied"].append(relative.as_posix())
+        (destination / "openmd-migration-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    return receipt
+
+
+def command_access(args: list[str]) -> str:
+    """Read registry metadata without executing the requested adapter. Unknown fails closed."""
+    if args == ["list"] or args[:1] == ["list"]:
+        return "read"
+    if len(args) < 2 or any(a.startswith("-") for a in args[:2]):
+        return "unknown"
+    env = command_environment()
+    result = run_interruptibly(managed_command(["list", "--site", args[0], "--limit", "100", "-f", "json"]),
+        env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    from openmd.core.opencli_output import load_opencli_json
+    payload = load_opencli_json(result.stdout)
+    if result.returncode or not isinstance(payload, dict):
+        return "unknown"
+    for row in payload.get("commands", []):
+        if row.get("command") == " ".join(args[:2]):
+            return row.get("access", "unknown")
+    return "unknown"
+
+
+def passthrough(args: list[str]) -> int:
+    """Inherit stdout/stderr directly, retaining the original exit status."""
+    from .opencli_adapters import prepare_bundled_plugins
+    prepare_bundled_plugins()
+    return run_interruptibly(managed_command(args), env=command_environment(), stdin=subprocess.DEVNULL).returncode

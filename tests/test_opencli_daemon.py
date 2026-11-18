@@ -10,6 +10,12 @@ import pytest
 from openmd.runtime import interpreters, services
 
 
+@pytest.fixture(autouse=True)
+def no_live_daemon(monkeypatch):
+    monkeypatch.setattr(services, "daemon_status", Mock(return_value=None))
+    monkeypatch.setattr(services, "prepare_openmd_bridge", Mock())
+
+
 @pytest.fixture
 def npm_opencli(tmp_path, monkeypatch):
     node = tmp_path / ("node.exe" if os.name == "nt" else "node")
@@ -49,6 +55,16 @@ def test_unix_npm_symlink_entry(npm_opencli, monkeypatch):
 @pytest.mark.parametrize("argv", [["ollama", "serve"], ["python", "server.py"], ["node", "other.js"], "", None])
 def test_other_commands_have_no_service_exception(argv):
     assert services._opencli_launch(argv) is None
+
+
+def test_known_api_command_does_not_prepare_browser_daemon(npm_opencli):
+    import json
+    launcher, _, _ = npm_opencli
+    package = Path(launcher[1]).parents[2]
+    (package / "cli-manifest.json").write_text(json.dumps([
+        {"site": "hackernews", "name": "top", "browser": False}
+    ]))
+    assert services._opencli_launch([*launcher, "hackernews", "top"]) is None
 
 
 def test_existing_daemon_unchanged(npm_opencli, monkeypatch):
@@ -112,7 +128,7 @@ def test_detached_process_is_only_the_fixed_installed_daemon(npm_opencli, monkey
     assert options["stdin"] == options["stdout"] == options["stderr"] == subprocess.DEVNULL
     assert options["close_fds"] is True
     if os.name == "nt":
-        assert options["creationflags"] == subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        assert options["creationflags"] == subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_BREAKAWAY_FROM_JOB
     else:
         assert options["start_new_session"] is True
     with pytest.raises(ValueError, match="Only the installed"):

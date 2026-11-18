@@ -21,6 +21,7 @@ from openmd.adapters.screenshot.ocr import OCRBackend, classify_ocr_profile
 from openmd.core.local_config import checkout_root
 from openmd.core.models import TranscriptResult
 from openmd.runtime.gpu_lock import gpu_lock, gpu_lock_path
+from openmd.runtime.interpreters import process_options
 from openmd.runtime.gpu_quarantine import GPUQuarantined, clear_quarantine, mark_quarantine
 from .breakers import breaker_reason, estimate_expected_chars
 from .config import settings
@@ -53,7 +54,7 @@ class GpuSampler:
         def sample():
             while not self.stop.is_set():
                 try:
-                    value = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=3, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                    value = subprocess.run(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=3, **process_options())
                     self.values.append(float(value.stdout.strip().splitlines()[0]))
                 except (OSError, ValueError, IndexError, subprocess.SubprocessError):
                     return

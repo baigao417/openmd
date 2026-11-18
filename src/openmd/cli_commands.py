@@ -1,6 +1,41 @@
 """CLI commands responsibility; compatibility imports resolve at call time."""
 from __future__ import annotations
 
+
+def cmd_opencli(args) -> int:
+    import argparse
+    import json
+    import sys
+    from pathlib import Path
+    from openmd.runtime import managed_tools
+
+    argv = list(args.opencli_args)
+    if argv[:1] == ["migrate"]:
+        parser = argparse.ArgumentParser(prog="openmd opencli migrate")
+        parser.add_argument("--apply", action="store_true")
+        parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--to", type=Path)
+        options = parser.parse_args(argv[1:])
+        if options.apply and options.dry_run:
+            parser.error("--apply and --dry-run are mutually exclusive")
+        print(json.dumps(managed_tools.migrate_config(destination=options.to, apply=options.apply), ensure_ascii=True))
+        return 0
+    allow_write = getattr(args, "allow_write", False) or "--allow-write" in argv
+    argv = [a for a in argv if a != "--allow-write"]
+    if not argv:
+        argv = ["list"]
+    if managed_tools.ensure_opencli() != "managed":
+        print("managed_opencli_missing", file=sys.stderr)
+        return 127
+    from openmd.runtime.opencli_adapters import prepare_bundled_plugins
+    prepare_bundled_plugins()
+    access = managed_tools.command_access(argv)
+    if access != "read" and not allow_write:
+        print("opencli_write_not_allowed: command access is write or unknown; use --allow-write", file=sys.stderr)
+        return 2
+    return managed_tools.passthrough(argv)
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     from .cli import Path, argparse, build_doctor_report, json, sanitize_error_summary, shutil, sys
 

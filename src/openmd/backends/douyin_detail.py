@@ -83,7 +83,7 @@ class DouyinDetailProvider:
         parsed = urlparse(target)
         if not expected and (parsed.hostname or "").lower() not in {"v.douyin.com", "www.iesdouyin.com"}:
             raise DouyinDetailError("douyin_invalid_video_target", "A video ID, video URL, modal URL, or video share link is required.")
-        command = ["opencli", "douyin", "detail", expected or target, "--window", "background", "--keep-tab", "false", "-f", "json"]
+        command = ["opencli", "douyin", "detail", expected or target, "--window", "background", "--site-session", "ephemeral", "--keep-tab", "false", "-f", "json"]
         try:
             code, stdout, _stderr = self.runner(command, timeout=self.timeout)
         except Exception as exc:

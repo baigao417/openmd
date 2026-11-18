@@ -71,3 +71,23 @@ def test_math_without_tex_keeps_mathml_and_warns():
     assert 'visible equation' in result.text
     assert any('公式可能失真' in note for note in result.source_notes)
     assert result.metadata['math_fallback_count'] == 2
+
+
+@pytest.mark.parametrize("site", URLS)
+def test_embedded_large_images_are_counted_and_external_images_preserved(site):
+    large = 'data:image/svg+xml;base64,' + 'A' * 9000
+    html = '<figure><img src="' + large + '" alt="Synthetic chart"><figcaption>Synthetic caption</figcaption></figure><img src="data:image/png;base64,AAAA" width="16" height="16" alt="icon"><img src="https://example.org/chart.png" alt="External chart">'
+    result = extract(answer_html(site, html), site)
+    assert large not in result.text
+    assert '[图片：内嵌 SVG，已省略]' in result.text
+    assert 'Synthetic chart' in result.text and 'Synthetic caption' in result.text
+    assert 'data:image/png' not in result.text
+    assert 'https://example.org/chart.png' in result.text
+    assert result.metadata['embedded_image_omitted_count'] == 1
+    assert result.metadata['embedded_icon_removed_count'] == 1
+    assert any('已省略内嵌图片：1' in note for note in result.source_notes)
+
+
+def test_small_meaningful_embedded_image_is_preserved():
+    result = extract('<div data-message-author-role="assistant"><img src="data:image/png;base64,AAAA" width="300" alt="Synthetic plot"></div>')
+    assert 'data:image/png;base64,AAAA' in result.text

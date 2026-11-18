@@ -35,6 +35,7 @@ HOSTS = {
     "qianwen.aliyun.com": "qwen", "tongyi.aliyun.com": "qwen", "yuanbao.tencent.com": "yuanbao",
 }
 CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-testid="user-message"]'
+EMBEDDED_IMAGE_LIMIT = 8 * 1024  # UTF-8 bytes of the inline URI, before decoding.
 
 
 def loaded_chat_site(url: str) -> str | None:
@@ -144,6 +145,23 @@ def _markdown(node: Tag, stats: dict[str, int] | None = None) -> str:
     for child in list(body.find_all(True)):
         if child.parent is not None and not _visible(child):
             child.decompose()
+    for image in body.find_all("img"):
+        source = str(image.get("src") or "")
+        if not source.lower().startswith("data:"):
+            continue
+        if len(source.encode("utf-8")) > EMBEDDED_IMAGE_LIMIT:
+            kind = source.split(";", 1)[0].split(",", 1)[0].removeprefix("data:").removeprefix("image/").upper()
+            kind = "SVG" if kind == "SVG+XML" else kind
+            alt = str(image.get("alt") or "").strip()
+            literal(image, f"[图片：内嵌 {kind}，已省略]" + (f" {alt}" if alt else ""))
+            stats["embedded_image_omitted_count"] = stats.get("embedded_image_omitted_count", 0) + 1
+        else:
+            width, height = str(image.get("width", "")), str(image.get("height", ""))
+            tiny = width.isdigit() and height.isdigit() and int(width) <= 32 and int(height) <= 32
+            decorative = image.get("role") == "presentation" or "icon" in image.get("class", [])
+            if tiny or decorative:
+                image.decompose()
+                stats["embedded_icon_removed_count"] = stats.get("embedded_icon_removed_count", 0) + 1
     # Preserve every code byte after HTML entity decoding, including indentation
     # and blank lines. General converters otherwise strip language/whitespace.
     for pre in body.find_all("pre"):
@@ -191,7 +209,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     if login_path or login_form or (not roots and login_cta):
         return normalize_login_result(TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code="login_required"), item)
     turns = []
-    stats: dict[str, int] = {"math_fallback_count": 0}
+    stats: dict[str, int] = {"math_fallback_count": 0, "embedded_image_omitted_count": 0, "embedded_icon_removed_count": 0}
     for node in roots:
         role, content = _role_content(site, node)
         text = _markdown(content, stats)
@@ -213,5 +231,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
                   "selector_source": f"OpenCLI 2.0.3 clis/{site}/detail.js",
                   "assistant_turn_count": sum(turn.role == "assistant" for turn in turns), **stats},
         source_notes=["读取当前已加载页面；仅覆盖 DOM 中已加载的分支，未验证未加载的历史消息。",
-                      *([f"公式可能失真：{stats['math_fallback_count']} 处未找到 TeX annotation，保留 MathML 或可见文本。"] if stats["math_fallback_count"] else [])],
+                      *([f"公式可能失真：{stats['math_fallback_count']} 处未找到 TeX annotation，保留 MathML 或可见文本。"] if stats["math_fallback_count"] else []),
+                      *([f"已省略内嵌图片：{stats['embedded_image_omitted_count']} 张；保留替代文本和图注。"] if stats["embedded_image_omitted_count"] else []),
+                      *([f"已删除内嵌小图标：{stats['embedded_icon_removed_count']} 个。"] if stats["embedded_icon_removed_count"] else [])],
     )

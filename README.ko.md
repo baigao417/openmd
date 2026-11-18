@@ -123,7 +123,8 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 | | 자막 없는 음성·영상, 로컬 미디어 | 추가 의존성 필요 | `[asr]` 의존성, FFmpeg, 로컬 음성 모델 필요 |
 | **로컬 문서와 이미지** | PDF, DOCX, PPTX, XLSX, 이미지 | 추가 의존성 필요 | `[document]` 의존성 필요. 복잡한 레이아웃과 스캔 문서는 추가 OCR 경로를 거칠 수 있습니다 |
 | **업무 문서** | Feishu / Lark 문서 | 일부 지원 | 로컬에 `lark-cli`를 설치하고 로그인한 뒤, 명령에 `--enable-network-backends`를 붙여 네트워크 읽기를 명시적으로 허용해야 합니다 |
-| **AI 대화** | Grok, DeepSeek, ChatGPT; ChatGPT / Claude 공식 내보내기 ZIP 또는 JSON | 실험적 / 오프라인 가져오기 | 온라인 경로는 안정성 또는 로그인 확인이 필요하며, 공식 내보내기는 브라우저 없이 로컬에서 가져옵니다. 보고서에 비공개 대화 본문을 쓰지 않습니다 |
+| **AI 대화** | Doubao, Gemini, Qwen, Yuanbao, Grok, DeepSeek(열려 있는 대화 페이지) | 일부 지원 | 브라우저 확장 필요: 대화 페이지에서 클릭하면 이미 로드된 내용을 저장하고, 에이전트는 `--as-snapshot`으로 넘길 수 있습니다. 현재 보이는 분기만 포함하며 사고 과정은 기본 생략 |
+| | ChatGPT 대화 페이지; ChatGPT / Claude 공식 내보내기 ZIP 또는 JSON | 실험적 | 사용자 질문이 표시되지 않는 ChatGPT 페이지는 partial로 저장; 공식 내보내기는 브라우저 없이 로컬에서 가져옵니다 |
 | **채팅 기록** | QQ 그룹 내보내기 파일(JSON / HTML / TXT) | 일시 중지 | 내보내기 파일 분석은 구현되어 있지만 아직 안정 기능으로 공개하지 않았습니다. Openmd는 채팅 데이터베이스를 읽거나 복호화하지 않습니다 |
 | **실험적 지원** | 더우인(Douyin), 샤오훙수(Xiaohongshu) | 실험적 | 브라우저 확장 프로그램과 로그인 필요. 이 사이트들은 자동 읽기를 자주 차단하므로 안정성과 전체 수집을 약속하지 않습니다 |
 
@@ -220,7 +221,7 @@ OpenCLI는 Openmd가 관리하는 브라우저·플랫폼 구성 요소입니다
 
 **Everything to Markdown**은 장기적인 비전입니다. 아래는 아직 제공되지 않았으며 탐색 중인 방향입니다.
 
-- **웹 AI 대화 내보내기**는 현재 실험적입니다. 실제 로그인, 안정성, 완전성 검사를 통과한 경로만 정식 지원으로 올립니다. ChatGPT / Claude 공식 내보내기는 `openmd go export.zip -o archive --chatgpt-export` / `--claude-export`로 오프라인에서 가져올 수 있습니다(JSON 및 형식 자동 감지 지원). Claude는 `--claude-title`, `--claude-since`, `--claude-until`로 필터링하며, 텍스트가 아닌 블록과 첨부 파일은 자리표시자와 개수만 보존합니다. 반복 가져오기는 사용자 편집을 보호합니다.
+- **웹 AI 대화 내보내기**는 이미 열려 있는 대화 페이지를 읽습니다(확장 클릭, 또는 에이전트 자체 브라우저에서 `--as-snapshot`). 백그라운드에서 링크를 다시 열지 않습니다. 현재 일부 지원이며 로드된 현재 보이는 분기만 저장합니다. ChatGPT / Claude 공식 내보내기는 `openmd go export.zip -o archive --chatgpt-export` / `--claude-export`로 오프라인에서 가져올 수 있습니다(JSON 및 형식 자동 감지 지원). Claude는 `--claude-title`, `--claude-since`, `--claude-until`로 필터링하며, 텍스트가 아닌 블록과 첨부 파일은 자리표시자와 개수만 보존합니다. 반복 가져오기는 사용자 편집을 보호합니다.
 - **전자책과 더 많은 텍스트 형식**: EPUB, RTF, MOBI, AZW3 등 지원.
 - **더 넓은 문서 분석**: 복잡한 레이아웃 문서의 추출 품질을 꾸준히 높입니다.
 

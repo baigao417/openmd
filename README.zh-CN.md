@@ -123,7 +123,8 @@ Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信�
 | | 无字幕音视频、本地音视频 | 需扩展依赖 | 需 `[asr]` 依赖、FFmpeg 和本地语音模型 |
 | **本地文档与图片** | PDF、DOCX、PPTX、XLSX、图片 | 需扩展依赖 | 需 `[document]` 依赖；复杂版面与扫描件可能进入额外的 OCR 路线 |
 | **办公协作** | 飞书文档 | 部分可用 | 需本机已安装并登录 `lark-cli`，命令中加 `--enable-network-backends` 显式允许联网读取 |
-| **AI 对话** | Grok、DeepSeek、ChatGPT；ChatGPT / Claude 官方导出 ZIP 或 JSON | 实验 / 离线导入 | 在线路线仍需稳定性或登录验证；官方导出在本地导入，无需浏览器；报告不会写入私人对话正文 |
+| **AI 对话** | 豆包、Gemini、千问、元宝、Grok、DeepSeek（已打开的对话页） | 部分可用 | 需浏览器扩展：在对话页点击即保存已加载的内容，也可由 Agent 用 `--as-snapshot` 交给 Openmd；只覆盖当前可见分支，默认省略思考过程 |
+| | ChatGPT 对话页；ChatGPT / Claude 官方导出 ZIP 或 JSON | 实验 | ChatGPT 页面未显示用户提问时保存为 partial；官方导出在本地导入，无需浏览器 |
 | **聊天记录** | QQ 群导出文件（JSON / HTML / TXT） | 暂停 | 导出文件解析已实现，暂未作为稳定能力开放；Openmd 不读取或解密聊天数据库 |
 | **实验性支持** | 抖音、小红书 | 实验 | 需浏览器扩展与登录；这些网站经常拦截自动读取，暂不承诺稳定或全量可用 |
 
@@ -220,7 +221,7 @@ OpenCLI 是 Openmd 托管的浏览器与平台组件。`openmd opencli list` 和
 
 **Everything to Markdown** 是一个长期愿景，我们正在继续探索以下尚未交付的方向：
 
-- **网页 AI 对话导出**目前是实验能力：只有通过真实登录、稳定性与完整度检查的路线，才会升级为正式支持。ChatGPT / Claude 官方导出支持离线导入：`openmd go export.zip -o archive --chatgpt-export` / `--claude-export`（也接受 JSON，可自动识别格式）。Claude 可用 `--claude-title`、`--claude-since`、`--claude-until` 筛选；非文本块与附件只保留占位并计数。重复导入会保护用户修改。
+- **网页 AI 对话导出**读取你已经打开的对话页（扩展点击，或 Agent 用自己的浏览器经 `--as-snapshot` 交给 Openmd），不会在后台重新打开链接。目前为部分可用：只保存已加载的当前可见分支。ChatGPT / Claude 官方导出支持离线导入：`openmd go export.zip -o archive --chatgpt-export` / `--claude-export`（也接受 JSON，可自动识别格式）。Claude 可用 `--claude-title`、`--claude-since`、`--claude-until` 筛选；非文本块与附件只保留占位并计数。重复导入会保护用户修改。
 - **电子书与更多文本格式**：支持 EPUB、RTF、MOBI、AZW3 等格式转换。
 - **更广的文档解析能力**：持续提升复杂版面文档的提取质量。
 

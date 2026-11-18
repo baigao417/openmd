@@ -59,6 +59,8 @@ def _preview(args: argparse.Namespace, url: str) -> None:
 
 
 def _authorize(args: argparse.Namespace, url: str, *, tty: bool) -> bool:
+    if getattr(args, "_explicit_permissions", False):
+        return True
     # Open-source ease of use (user decision 2026-11-15): a non-interactive run
     # that names a destination gets the same daily gates as the terminal flow.
     # Explicit capability flags stay a narrow grant; cloud is never implied.
@@ -510,7 +512,7 @@ def cmd_go(args: argparse.Namespace) -> int:
                 except (OSError, ValueError) as exc:
                     workspace.keep = True
                     print(f"正文已保存；运行记录暂留：{stage}（{sanitize_error_summary(exc)}）", file=sys.stderr)
-                if tty:
+                if tty and not getattr(args, "_explicit_permissions", False):
                     try:
                         save_preferences(last_save_directory=destination)
                     except OSError as exc:

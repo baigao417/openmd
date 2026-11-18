@@ -1,0 +1,163 @@
+"""MCP adapter for the existing serial job queue and single-save CLI service."""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+import time
+import uuid
+from contextlib import contextmanager
+from pathlib import Path
+
+# Isolated worker processes use this installed file, including in editable worktrees.
+if __name__ == "__main__" and not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from openmd import browser_host as host
+from openmd.core.secrets import sanitize_for_logging
+
+MAX_HTML_BYTES = 2 * 1024 * 1024
+MAX_CONTENT_CHARS = 32_000
+GATES = {"network": "--enable-network-backends", "browser": "--enable-browser-backends",
+         "media": "--enable-media-download", "asr": "--enable-asr", "cloud": "--enable-cloud-backends"}
+RECEIPT_FIELDS = ("status", "source_level", "completeness", "sync", "login", "next_action", "error_code")
+
+
+@contextmanager
+def queue():
+    # A browser runner from another installed version must never consume MCP jobs.
+    token = host.JOB_NAMESPACE.set("mcp-jobs")
+    try:
+        yield
+    finally:
+        host.JOB_NAMESPACE.reset(token)
+
+
+def _spawn():
+    def spawn(_command, **kwargs):
+        return subprocess.Popen([sys.executable, "-I", str(Path(__file__).resolve()), "--runner"], **kwargs)
+    host._spawn_runner(spawn)
+
+
+def destination(value: str) -> Path:
+    if not isinstance(value, str) or not value.strip() or not Path(value).is_absolute():
+        raise ValueError("output_directory_must_be_absolute")
+    return Path(value).resolve()
+
+
+def receipt(result: dict) -> dict:
+    return {key: sanitize_for_logging(result.get(key), key=key) for key in RECEIPT_FIELDS}
+
+
+def _initial(status: dict) -> dict:
+    return {"id": status["id"], "state": status["state"], **receipt({})}
+
+
+def save(source: str, output_directory: str, *, network: bool = False, browser: bool = False,
+         media: bool = False, asr: bool = False, cloud: bool = False) -> dict:
+    target = destination(output_directory)
+    if source.startswith(("http://", "https://")):
+        source = host._validate_url(source)
+    elif not Path(source).is_absolute() or not Path(source).is_file():
+        raise ValueError("source_must_be_http_url_or_absolute_file")
+    with queue():
+        job_id = uuid.uuid4().hex
+        job_dir = host.jobs_root() / job_id
+        job_dir.mkdir(parents=True)
+        status = {"id": job_id, "state": "queued", "url": source, "save_to": str(target),
+                  "created": time.time(), "seq": host._next_seq(), "attempts": 0, "mcp": True,
+                  "permissions": dict(network=network, browser=browser, media=media, asr=asr, cloud=cloud)}
+        host._write_status(job_dir, status)
+        _spawn()
+    return _initial(status)
+
+
+def save_page(source_url: str, output_directory: str, *, html: str | None = None,
+              html_path: str | None = None) -> dict:
+    target = destination(output_directory)
+    if (html is None) == (html_path is None):
+        raise ValueError("provide_exactly_one_of_html_or_html_path")
+    if html_path is not None:
+        path = Path(html_path)
+        if not path.is_absolute() or not path.is_file():
+            raise ValueError("html_path_must_be_absolute_file")
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_HTML_BYTES + 1)
+        if len(raw) > MAX_HTML_BYTES:
+            raise ValueError("snapshot_too_large")
+        html = raw.decode("utf-8-sig")
+    if not isinstance(html, str) or not html:
+        raise ValueError("empty_snapshot_html")
+    if len(html.encode("utf-8")) > MAX_HTML_BYTES:
+        raise ValueError("snapshot_too_large")
+    with queue():
+        status = host.start_snapshot_job(html, source_url, save_to=str(target), spawn=lambda *a, **k: None)
+        status.update(mcp=True, permissions={name: False for name in GATES})
+        host._write_status(host.jobs_root() / status["id"], status)
+        _spawn()
+    return _initial(status)
+
+
+def command(status: dict) -> list[str]:
+    return [sys.executable, "-I", "-X", "utf8", str(Path(__file__).resolve()), "--execute", status["id"]]
+
+
+def arguments(status: dict):
+    from openmd.cli import build_parser
+
+    source = status["snapshot_path"] if status.get("snapshot") else status["url"]
+    argv = ["go", source, "--save-to", status["save_to"], "--json"]
+    if status.get("snapshot"):
+        argv += ["--as-snapshot", "--url", status["url"]]
+    argv += [flag for name, flag in GATES.items() if status["permissions"].get(name) is True]
+    args = build_parser().parse_args(argv)
+    args._explicit_permissions = True
+    return args
+
+
+def job(job_id: str, *, include_content: bool = False) -> dict:
+    with queue():
+        status = host.read_status(job_id)
+    result = {"id": job_id, "state": status["state"], **receipt(status.get("receipt", {})),
+              "saved_to": status.get("saved_to")}
+    if status["state"] == "failed" and not result["error_code"]:
+        result.update(status="failed", error_code="extraction_failed")
+    if include_content and status.get("saved_to"):
+        path = Path(status["saved_to"])
+        if path.is_file():
+            with path.open(encoding="utf-8") as stream:
+                content = stream.read(MAX_CONTENT_CHARS + 1)
+            result.update(content=content[:MAX_CONTENT_CHARS], content_truncated=len(content) > MAX_CONTENT_CHARS)
+    return result
+
+
+def doctor() -> dict:
+    from openmd.core.doctor import build_doctor_report
+
+    report = build_doctor_report("core")
+    return {"profile": "core", "ready": bool(report.get("ready")),
+            "manifest_valid": bool(report.get("manifest_valid")),
+            "network_access": "not_probed", "private_session_state": "not_read"}
+
+
+def main() -> int:
+    with queue():
+        if sys.argv[1:] == ["--runner"]:
+            host.run_queue()
+            return 0
+        if len(sys.argv) == 3 and sys.argv[1] == "--execute":
+            from openmd.interactive import cmd_go
+            from openmd.runtime.managed_tools import activate
+            from openmd.runtime.services import finish_openmd_bridge
+
+            status = host.read_status(sys.argv[2])
+            try:
+                activate()
+                return cmd_go(arguments(status))
+            finally:
+                finish_openmd_bridge()
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -60,7 +60,13 @@ def write_item_result(
         )
     content = render_document(document, raw=raw)
     if syncable:
-        synced = SyncManifest(out_dir).write(source_id_for(item), output_path.relative_to(Path(out_dir)).as_posix(), content)
+        identity = None
+        if item.source_type == "conversation":
+            import hashlib
+
+            stable = render_document(render_markdown_document(item, result, captured_at="export-time"), raw=raw)
+            identity = hashlib.sha256(stable.encode("utf-8")).hexdigest()
+        synced = SyncManifest(out_dir).write(source_id_for(item), output_path.relative_to(Path(out_dir)).as_posix(), content, content_identity=identity)
         if sync_receipt is not None:
             sync_receipt["operation"] = synced.operation
         return synced.path

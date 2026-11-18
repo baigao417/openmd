@@ -244,6 +244,34 @@ def build_plan(
     except ValueError:
         return _blocked(source_id, selected_kind, request_all, code="source_unsupported", reason="input source is not approved")
 
+    if source_id == "ai_chat":
+        from openmd.core.detector import ai_chat_site
+        from openmd.backends.ai_chat import ai_chat_backend_for_site
+
+        site = ai_chat_site(value)
+        site_backend = ai_chat_backend_for_site(site or "")
+        if site_backend and site not in {"chatgpt", "deepseek", "grok"}:
+            return PlanResult(
+                ok=True,
+                detected_source=source_id,
+                input_kind=selected_kind,
+                capability_tier=record.tier,
+                implementation_state="unimplemented",
+                source_exhausted_requested=request_all,
+                source_exhausted_approved=False,
+                planned_provider=site_backend,
+                runtime_provider=None,
+                binding_state="unimplemented",
+                execution_ready=False,
+                required_gates=("browser", "account"),
+                cost_class="unknown",
+                side_effects=READ_ONLY_SIDE_EFFECTS,
+                blocked_reason=f"AI chat site is not implemented: {site}",
+                error_code="ai_chat_site_not_implemented",
+                required_backend=site_backend,
+                next_action=f"AI chat site not implemented: {site}.",
+            )
+
     if local_path is not None and selected_kind != inferred_kind:
         return _blocked(source_id, selected_kind, request_all, code="input_shape_unsupported", reason="input kind does not match local input", record=record)
     if inferred_kind == "collection" and selected_kind == "single":

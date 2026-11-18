@@ -240,7 +240,7 @@ def prepare_openmd_bridge(env=None):
         reply = _bridge_request("openmd-configure", ownerPid=os.getpid(),
             idleMs=float(base.get("OPENMD_BROWSER_IDLE_SECONDS", settings.get("idle_timeout_seconds", 120))) * 1000,
             sound=base.get("OPENMD_BROWSER_SOUND") == "1", show=base.get("OPENMD_SHOW_BROWSER") == "1",
-            windowStrategy=base.get("OPENMD_BROWSER_WINDOW_STRATEGY", settings.get("window_strategy", "offscreen-reuse")))
+            windowStrategy=base.get("OPENMD_BROWSER_WINDOW_STRATEGY", settings.get("window_strategy", "existing-window")))
         if not reply.get("ok"):
             receipt = {"status": "joint_reload_required", "tabsClosed": None, "windowsClosed": None, "failures": None}
         else:

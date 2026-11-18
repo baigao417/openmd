@@ -29,8 +29,8 @@ def _process_items(
         if paused_login(args, item.url):
             paused_count += 1
             continue
-        selection = registry.select_backend(
-            item.platform,
+        selection = registry.select_backend_for_item(
+            item,
             _requested_backend(item.platform, args),
             allow_fallback=args.fallback,
         )
@@ -103,7 +103,13 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
-        result = extract_with_login(executor, item, selection.chain, args)
+        item_selector = getattr(registry, "select_backend_for_item", None)
+        item_selection = (
+            item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
+            if item_selector is not None
+            else selection
+        )
+        result = extract_with_login(executor, item, item_selection.chain, args)
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
@@ -236,6 +242,8 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
     skipped_count = 0
 
     paused_count = 0
+    last_result = None
+    last_output = None
     for item in items:
         if paused_login(args, item.url):
             paused_count += 1
@@ -270,10 +278,17 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
-        result = extract_with_login(executor, item, selection.chain, args)
+        item_selector = getattr(registry, "select_backend_for_item", None)
+        item_selection = (
+            item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
+            if item_selector is not None
+            else selection
+        )
+        result = extract_with_login(executor, item, item_selection.chain, args)
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
+        last_result = result
         output: OutputWriteResult | None = None
         if result.has_usable_text:
             try:
@@ -286,6 +301,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             else:
                 outputs.append(str(output.path))
                 success_count += 1
+                last_output = output
         else:
             failed_count += 1
 
@@ -299,6 +315,10 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         _append_execution_entry(args, entry)
 
     ok = failed_count == 0 and paused_count == 0 and bool(items)
+    recovery = recovery_fields(args)
+    recovery.setdefault("error_code", last_result.error_code if last_result is not None else None)
+    if "next_action" not in recovery and last_result is not None and last_result.error_code in {"engine_unavailable", "ai_chat_site_not_implemented"}:
+        recovery["next_action"] = last_result.error_summary
     return CliResult(
         ok=ok,
         command=command,
@@ -308,7 +328,11 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         skipped_count=skipped_count,
         outputs=outputs,
         paused_count=paused_count,
-        **recovery_fields(args),
+        **recovery,
+        status=last_result.status if last_result is not None else ("verified" if ok else "failed"),
+        source_level=last_result.source_level if last_result is not None else None,
+        completeness=(last_result.metadata.get("completeness") or {}) if last_result is not None else {},
+        sync={"operation": last_output.package_operation} if last_output and last_output.package_operation else {},
         message="completed" if ok else "completed with failures",
     )
 

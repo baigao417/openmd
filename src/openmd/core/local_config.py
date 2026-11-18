@@ -66,8 +66,8 @@ def load_local_config() -> dict[str, Any]:
         if (not isinstance(setting, dict) or set(setting) - {"idle_timeout_seconds", "window_strategy"}
                 or type(setting.get("idle_timeout_seconds", 120)) not in (int, float)
                 or not 1 <= setting.get("idle_timeout_seconds", 120) <= 86400
-                or not isinstance(setting.get("window_strategy", "offscreen-reuse"), str)
-                or setting.get("window_strategy", "offscreen-reuse") not in {"offscreen-reuse", "reuse", "existing-window"}):
+                or not isinstance(setting.get("window_strategy", "existing-window"), str)
+                or setting.get("window_strategy", "existing-window") not in {"offscreen-reuse", "reuse", "existing-window"}):
             raise ValueError("local_config_browser_invalid")
     if "asr_models" in value:
         setting = value["asr_models"]

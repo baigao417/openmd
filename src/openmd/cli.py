@@ -81,7 +81,11 @@ class CliResult:
     paused_count: int = 0
     error_code: str | None = None
     login: dict[str, str] | None = None
-    next_action: dict[str, str] | None = None
+    next_action: dict[str, str] | str | None = None
+    status: str = "failed"
+    source_level: str | None = None
+    completeness: dict[str, object] = field(default_factory=dict)
+    sync: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

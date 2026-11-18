@@ -337,6 +337,11 @@ def command_access(args: list[str]) -> str:
     """Read registry metadata without executing the requested adapter. Unknown fails closed."""
     if args == ["list"] or args[:1] == ["list"]:
         return "read"
+    if args in (["doctor"], ["status"], ["daemon", "status"], ["--help"], ["-h"]):
+        return "read"
+    if len(args) >= 2 and args[1] in {"--help", "-h"}:
+        known_sites = {"chatgpt", "deepseek", "claude", "doubao", "gemini", "qwen", "yuanbao", "grok", "douyin", "xiaohongshu", "youtube", "bilibili", "weixin", "x", "xiaoe", "browser", "openmd-douyin", "openmd-xiaohongshu"}
+        return "read" if args[0] in known_sites else "unknown"
     if len(args) < 2 or any(a.startswith("-") for a in args[:2]):
         return "unknown"
     env = command_environment()

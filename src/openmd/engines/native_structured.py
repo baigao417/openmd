@@ -90,3 +90,45 @@ def parse_epub(d):
 
 
 FORMATS.add('epub')
+
+
+def parse_fb2(d):
+    import base64
+    from .native_common import xml, name, attr
+    root = xml(d.path.read_bytes())
+    d.meta['parts_order'] = []
+
+    def inline(node):
+        value = node.text or ''
+        for child in node:
+            body = inline(child)
+            if name(child) == 'strong' and body.strip():
+                body = '**' + body + '**'
+            elif name(child) == 'emphasis' and body.strip():
+                body = '*' + body + '*'
+            elif name(child) == 'a' and attr(child, 'href'):
+                body = '[' + body + '](' + attr(child, 'href') + ')'
+            value += body + (child.tail or '')
+        return value
+
+    def walk(node, depth=1):
+        kind = name(node)
+        if kind == 'title':
+            value = ' '.join(inline(p) for p in node)
+            if value.strip():
+                d.add('#' * min(depth, 6) + ' ' + value)
+                d.meta['parts_order'].append(value)
+        elif kind in {'p','v','subtitle','text-author'}:
+            d.add(inline(node))
+        elif kind == 'table':
+            d.table([[inline(c) for c in row] for row in node if name(row) == 'tr'])
+        elif kind != 'image':
+            for child in node:
+                walk(child, depth+1 if kind == 'section' else depth)
+    for body in (n for n in root if name(n) == 'body'):
+        d.section(attr(body, 'name') or 'body', lambda body=body: walk(body))
+    for binary in (n for n in root if name(n) == 'binary'):
+        d.section('image:' + attr(binary, 'id'), lambda binary=binary: d.image(base64.b64decode(''.join(binary.itertext()).strip()), attr(binary, 'id'), attr(binary, 'content-type', 'application/octet-stream')))
+
+
+FORMATS.add('fb2')

@@ -73,6 +73,27 @@ pip install "openmd-cli[asr]"
 
 To connect Openmd to your own agent or automation pipeline, see the [tool integration guide](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md).
 
+## MCP for agents
+
+Use CLI + SKILL.md with shell access; use MCP for discoverable typed tools and per-tool client approval. Install the optional extra, then start the stdio server. Claude Code:
+
+```bash
+pip install "openmd-cli[mcp]"
+claude mcp add --transport stdio openmd -- openmd mcp
+```
+
+Claude Desktop: add this to its MCP configuration; use an absolute executable path if needed.
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+The four tools are `openmd_save`, `openmd_save_page`, `openmd_job` and `openmd_doctor`. Saves return a job ID immediately; poll `openmd_job`, optionally with `include_content=true` (32000 characters maximum). Output directories must be explicit absolute paths. HTML snapshots accept a string or an absolute file path, up to 2 MiB UTF-8. All five capability flags default off; explicitly grant `network`, `browser`, `media`, `asr` or `cloud`. The CLI capability flags are reused; MCP does not infer the daily CLI grants from an output directory and does not remember it. This stdio setup requires a local process launcher; remote connectors need their own transport bridge.
+
 ---
 
 ## Why it fits in front of AI and knowledge bases

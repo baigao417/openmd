@@ -71,7 +71,7 @@ def test_extension_settings_forward_thinking_option_without_live_chrome(tmp_path
 const fs=require('fs'), vm=require('vm');
 const event={addListener:()=>{}};
 const store={settings:{locations:[{id:'default',path:'synthetic'}],defaultId:'default'}};
-const chrome={runtime:{onInstalled:event,onMessage:event,onStartup:event},notifications:{onButtonClicked:event,onClosed:event},contextMenus:{onClicked:event},storage:{local:{get:async()=>store},onChanged:event},action:{onClicked:event,setPopup:async()=>{},setTitle:async()=>{}}};
+const chrome={runtime:{onInstalled:event,onMessage:event,onStartup:event,sendNativeMessage:(_h,_m,cb)=>cb({ok:true,protocol_version:1,extension_hash:'a'.repeat(64)})},alarms:{create:()=>{},onAlarm:event},notifications:{onButtonClicked:event,onClosed:event},contextMenus:{onClicked:event},storage:{local:{get:async()=>store,set:async()=>{}},onChanged:event},action:{onClicked:event,setPopup:async()=>{},setTitle:async()=>{}}};
 const ctx=vm.createContext({chrome,URL,setTimeout:()=>{}});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
 vm.runInContext(`var sent=[];captureSnapshot=async()=>({html:'<p>Synthetic</p>',url:'https://chatgpt.com/c/demo'});native=async(message)=>{sent.push(message);return {ok:true,job:{id:'synthetic'}}};track=async()=>{};`,ctx);

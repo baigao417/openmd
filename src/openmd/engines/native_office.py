@@ -2,13 +2,20 @@
 from __future__ import annotations
 
 import mimetypes
+import hashlib
+import posixpath
+import re
+import uuid
 from zipfile import ZipFile
-from .native_common import xml, name, html_markdown
+from .native_common import xml, name, attr, html_markdown
 
 
 def embedded_images(d, z):
     for part in z.namelist():
         if '/media/' in part and not part.endswith('/'):
+            digest = hashlib.sha256(z.read(part)).hexdigest()
+            if any(image['sha256'] == digest for image in d.images):
+                continue
             d.section('image:' + part, lambda part=part: d.image(z.read(part), part, mimetypes.guess_type(part)[0] or 'application/octet-stream'))
 
 
@@ -16,13 +23,26 @@ def parse_docx(d):
     import mammoth
     with ZipFile(d.path) as z:
         root = xml(z.read('word/document.xml'))
-        # Mammoth keeps semantic styles, lists, hyperlinks, footnotes and tables;
-        # images are extracted separately without its default data conversion.
-        def ignore_image(image):
-            return {'src': '', 'alt': ''}
+        # Opaque placeholders retain each image's paragraph/table location.
+        d.image_slots = {}
+        marker = 'OPENMDIMAGE' + uuid.uuid4().hex
+        image_parts = {hashlib.sha256(z.read(p)).hexdigest(): p for p in z.namelist() if '/media/' in p and not p.endswith('/')}
+        def include_image(image):
+            with image.open() as stream:
+                data = stream.read()
+            token = f'{marker}{len(d.image_slots)}END'
+            label = image_parts.get(hashlib.sha256(data).hexdigest(), 'embedded-image')
+            d.image_slots[token] = (data, label, image.content_type)
+            return {'src': '', 'alt': token}
         with d.path.open('rb') as stream:
-            value = mammoth.convert_to_html(stream, convert_image=mammoth.images.img_element(ignore_image))
-        d.add(html_markdown(d, value.value))
+            value = mammoth.convert_to_html(stream, convert_image=mammoth.images.img_element(include_image))
+        rendered = html_markdown(d, value.value)
+        pattern = '(' + '|'.join(re.escape(token) for token in d.image_slots) + ')'
+        for fragment in re.split(pattern, rendered) if d.image_slots else [rendered]:
+            if fragment in d.image_slots:
+                d.image(*d.image_slots[fragment])
+            else:
+                d.add(fragment)
         # Header/footer text isn't included by mammoth. Preserve it explicitly.
         for part in z.namelist():
             if part.startswith(('word/header', 'word/footer')) and part.endswith('.xml'):
@@ -55,6 +75,9 @@ def parse_pptx(d):
                     categories = [c.label for c in plot.categories]
                     values = [list(s.values) for s in series]
                     d.table([['Category', *[s.name for s in series]], *[[label, *[v[i] if i < len(v) else '' for v in values]] for i, label in enumerate(categories)]])
+            if hasattr(shape, 'image'):
+                image = shape.image
+                d.image(image.blob, f'ppt/slides/slide{index}.xml:shape-{shape.shape_id}', image.content_type)
             if hasattr(shape, 'shapes'):
                 shapes(shape.shapes)
 
@@ -82,10 +105,17 @@ def parse_xlsx(d):
     formulas = load_workbook(d.path, read_only=True, data_only=False, keep_links=False)
     d.meta.update(parts_order=values.sheetnames, formula_count=0)
     try:
-        for sheet in values:
+        for sheet_index, sheet in enumerate(values, 1):
             def include(sheet=sheet):
+                with ZipFile(d.path) as archive:
+                    anchored = sheet_images(archive, sheet_index)
+                by_row = {}
+                for row, column, part, data, mime in anchored:
+                    by_row.setdefault(row, []).append((column, part, data, mime))
                 rows = []
                 formula_count = missing = 0
+                if by_row:
+                    d.add('## ' + sheet.title)
                 for index, (cells, expressions) in enumerate(zip(sheet.iter_rows(), formulas[sheet.title].iter_rows())):
                     d.limits.remaining()
                     if index > d.limits.max_table_rows:
@@ -101,9 +131,20 @@ def parse_xlsx(d):
                                 value = '[Formula cached value unavailable]'
                         row.append(value)
                     rows.append(row)
-                if not any(any(v is not None for v in row) for row in rows):
-                    return
-                d.add('## ' + sheet.title)
+                    if index in by_row:
+                        d.table(rows)
+                        rows = []
+                        for column, part, data, mime in by_row.pop(index):
+                            d.add(f'图片位置：{sheet.title}!row={index + 1}, column={column + 1}')
+                            d.image(data, part, mime)
+                for anchor_row in sorted(by_row):
+                    d.table(rows)
+                    rows = []
+                    for column, part, data, mime in by_row[anchor_row]:
+                        d.add(f'图片位置：{sheet.title}!row={anchor_row + 1}, column={column + 1}')
+                        d.image(data, part, mime)
+                if not anchored and any(any(v is not None for v in row) for row in rows):
+                    d.add('## ' + sheet.title)
                 d.table(rows)
                 if formula_count:
                     d.add('含公式（显示文件中已保存的计算值；不执行公式）。')
@@ -116,6 +157,40 @@ def parse_xlsx(d):
         formulas.close()
     with ZipFile(d.path) as z:
         embedded_images(d, z)
+
+
+def sheet_images(archive, index):
+    """Resolve only embedded drawing relationships; never follow external URIs."""
+    def relationships(part):
+        directory, filename = posixpath.split(part)
+        rels = posixpath.join(directory, '_rels', filename + '.rels')
+        if rels not in archive.namelist():
+            return {}
+        return {node.get('Id'): posixpath.normpath(posixpath.join(directory, node.get('Target', '').lstrip('/'))) if not node.get('Target', '').startswith('/') else node.get('Target')[1:]
+                for node in xml(archive.read(rels)) if node.get('TargetMode', '').lower() != 'external'}
+    sheets = [node for node in xml(archive.read('xl/workbook.xml')).iter() if name(node) == 'sheet']
+    workbook_rels = relationships('xl/workbook.xml')
+    sheet = workbook_rels.get(attr(sheets[index - 1], 'id'), '')
+    if sheet not in archive.namelist():
+        return []
+    rels, images = relationships(sheet), []
+    for drawing in xml(archive.read(sheet)).iter():
+        if name(drawing) != 'drawing':
+            continue
+        part = rels.get(attr(drawing, 'id'))
+        if not part or part not in archive.namelist():
+            continue
+        targets = relationships(part)
+        for anchor in xml(archive.read(part)):
+            origin = next((n for n in anchor if name(n) == 'from'), None)
+            coordinates = list(origin) if origin is not None else []
+            row = next((int(n.text or 0) for n in coordinates if name(n) == 'row'), 0)
+            column = next((int(n.text or 0) for n in coordinates if name(n) == 'col'), 0)
+            for blip in anchor.iter():
+                target = targets.get(attr(blip, 'embed')) if name(blip) == 'blip' else None
+                if target and target in archive.namelist():
+                    images.append((row, column, target, archive.read(target), mimetypes.guess_type(target)[0] or 'application/octet-stream'))
+    return sorted(images, key=lambda item: (item[0], item[1]))
 
 
 def parse_xls(d):

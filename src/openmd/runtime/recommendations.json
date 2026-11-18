@@ -1,0 +1,483 @@
+{
+  "schema": "openmd.hardware-recommendations/v1",
+  "policy": "No telemetry; conservative proposals, not availability guarantees. No cell generalizes one machine receipt to all hardware.",
+  "tiers": {
+    "ocr:baseline": [
+      {
+        "artifact": "rapidocr-onnxruntime bundled PP-OCR ONNX weights",
+        "repository": "RapidAI/RapidOCR",
+        "license": "Apache-2.0",
+        "size_bytes": 14900000,
+        "size_kind": "approximate compressed wheel including weights",
+        "directory": "rapidocr"
+      }
+    ],
+    "ocr:balanced": [
+      {
+        "artifact": "MiniCPM-OCR-1_0-F16.gguf",
+        "repository": "openbmb/MiniCPM-OCR-1.0-gguf",
+        "revision": "a1f1e1efea7cb7717f5ab16be514aa4b5fd09435",
+        "license": "Apache-2.0",
+        "size_bytes": 1516288352,
+        "sha256": "49d08e4dfb3310df2873828257f23fec53d3defad1782ae1fc78cae76dda1859",
+        "size_kind": "pinned exact model file; runtime and layout detector extra",
+        "directory": "minicpm/MiniCPM-OCR-1_0-F16.gguf"
+      },
+      {
+        "artifact": "mmproj-model-f16-4x.gguf",
+        "repository": "openbmb/MiniCPM-OCR-1.0-gguf",
+        "revision": "a1f1e1efea7cb7717f5ab16be514aa4b5fd09435",
+        "license": "Apache-2.0",
+        "size_bytes": 901017536,
+        "sha256": "ceed82261b3b1380c3165f8b37c10117a50093be1362cbfeeb692fa036444682",
+        "size_kind": "pinned exact model file; runtime and layout detector extra",
+        "directory": "minicpm/mmproj-model-f16-4x.gguf"
+      }
+    ],
+    "ocr:chain": [
+      {
+        "artifact": "Ovis3 and MiniCPM OCR locally configured Ollama weights",
+        "repository": "ATH-MaaS/OvisOCR3; openbmb/MiniCPM-OCR-1.0-gguf; PaddlePaddle/PP-DocLayoutV3_safetensors",
+        "license": "Apache-2.0 for the pinned recognition checkpoints; review detector and runtime licenses",
+        "size_bytes": 4141398184,
+        "size_kind": "pinned main/projector total, layout weights and runtime extra",
+        "directory": "ollama"
+      }
+    ],
+    "asr:baseline": [
+      {
+        "artifact": "faster-whisper large-v3-turbo",
+        "repository": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        "license": "MIT",
+        "size_bytes": 1620000000,
+        "size_kind": "estimate; runtime dependencies extra",
+        "directory": "whisper-large-v3-turbo"
+      }
+    ],
+    "asr:balanced": [
+      {
+        "artifact": "Qwen3-ASR-1.7B",
+        "repository": "Qwen/Qwen3-ASR-1.7B",
+        "license": "Apache-2.0",
+        "size_bytes": 3500000000,
+        "size_kind": "estimate; VAD and runtime dependencies extra",
+        "directory": "qwen3-asr-1.7b"
+      }
+    ]
+  },
+  "cells": [
+    {
+      "os": "Windows",
+      "vram_gib": "0-4",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "0-4",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "0-4",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "4-8",
+      "ram_gib": "0-16",
+      "ocr": "ocr:balanced",
+      "asr": "asr:baseline",
+      "validation": "部分实测",
+      "ocr_validation": "实测组件",
+      "asr_validation": "未验证",
+      "evidence": [
+        {
+          "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+          "vram_mib": 8188,
+          "ram_gib": 15.62,
+          "os": "Windows",
+          "model": "MiniCPM-OCR-1.0 F16 + PP-DocLayoutV3 layout crops",
+          "pages_per_language": 6,
+          "languages": [
+            "zh",
+            "en"
+          ],
+          "measured_on": "2026-11-08",
+          "source": "2026-11-08-local-ocr-selection/final-report.md",
+          "scores_sha256": "6c307311180ae298cb67f8dbab320b86317345ee093da54c6aca6879f61af5ce",
+          "scope": "Recognition component only; production Ovis3/MiniCPM breaker composition and ASR were not measured in this benchmark."
+        }
+      ]
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "4-8",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "4-8",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "8-12",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "8-12",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "8-12",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "12+",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "12+",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Windows",
+      "vram_gib": "12+",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "0-4",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "0-4",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "0-4",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "4-8",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "4-8",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "4-8",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "8-12",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "8-12",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "8-12",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "12+",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "12+",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Linux",
+      "vram_gib": "12+",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "0-4",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "0-4",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "0-4",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "4-8",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "4-8",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "4-8",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "8-12",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "8-12",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "8-12",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "12+",
+      "ram_gib": "0-16",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "12+",
+      "ram_gib": "16-32",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    },
+    {
+      "os": "Darwin",
+      "vram_gib": "12+",
+      "ram_gib": "32+",
+      "ocr": "ocr:baseline",
+      "asr": "asr:baseline",
+      "validation": "未验证",
+      "ocr_validation": "未验证",
+      "asr_validation": "未验证",
+      "evidence": []
+    }
+  ]
+}

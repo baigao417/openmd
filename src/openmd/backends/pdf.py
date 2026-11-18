@@ -65,6 +65,19 @@ class PDFParserProvider:
 
         source = request.item.raw_meta.get("local_path") or request.item.url
         path = local_path_from_input(source)
+        if isinstance(self.parser, MarkItDownPDFParser) and path and path.is_file() and path.suffix.lower() in {'.docx', '.pptx', '.xlsx'}:
+            from zipfile import ZipFile, BadZipFile
+            from openmd.engines.base import EngineLimits
+            from openmd.engines.native import NativeEngine
+            from openmd.engines.registry import convert_document
+            try:
+                with ZipFile(path) as package:
+                    has_images = any('/media/' in name and not name.endswith('/') for name in package.namelist())
+            except (OSError, BadZipFile):
+                has_images = False
+            if has_images and NativeEngine(path.suffix).available()['ok']:
+                # Embedded originals need the native parser's source locations.
+                return convert_document(path, EngineLimits(allow_ocr=self.options.enable_asr_backends))
         probes = None
         if self.name == "pdf.markitdown" and path and path.is_file() and path.suffix.lower() == ".pdf":
             try:

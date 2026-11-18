@@ -23,6 +23,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
+    from openmd.runtime.recommendations import cmd_models_install, matrix
+    models = subparsers.add_parser('models', description='Local model installation plans; never downloads')
+    model_commands = models.add_subparsers(dest='models_command', required=True)
+    install = model_commands.add_parser('install', description='Print downloads, estimated sizes and destinations only')
+    install.add_argument('tier', choices=sorted(matrix()['tiers']))
+    from pathlib import Path
+    install.add_argument('--root', type=Path, help='planned model destination; no directory is created')
+    install.set_defaults(func=cmd_models_install)
+
     from .cli_commands import cmd_opencli
     passthrough = subparsers.add_parser("opencli", description="Managed OpenCLI; read-only unless --allow-write")
     passthrough.add_argument("--allow-write", action="store_true")

@@ -107,3 +107,15 @@ browserTab.command('open').argument('<url>').action(() => {});
 def test_inventory_includes_conditionally_injected_runtime_flags():
     from openmd.runtime.opencli_inventory import inventory
     assert {'--site-session', '--keep-tab'} <= set(inventory()['browser_runtime_args'])
+
+
+def test_owned_sources_skip_installed_node_modules(tmp_path):
+    # A developer checkout that ran `npm install` has third-party .js under
+    # node_modules; those are dependencies, not Openmd-owned cli definitions.
+    from openmd.runtime.opencli_inventory import owned_sources
+    plugin = tmp_path / 'integrations/opencli/openmd-example'
+    (plugin / 'node_modules/dep').mkdir(parents=True)
+    (plugin / 'node_modules/dep/index.js').write_text("cli({site:'x',name:'y',columns:cols})", encoding='utf-8')
+    (plugin / 'detail.ts').write_text('', encoding='utf-8')
+    (plugin / 'detail.test.ts').write_text('', encoding='utf-8')
+    assert [p.relative_to(tmp_path).as_posix() for p in owned_sources(tmp_path)] == ['integrations/opencli/openmd-example/detail.ts']

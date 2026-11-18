@@ -129,6 +129,14 @@ def _symbol(node: ast.AST, functions: dict, seen: tuple = ()) -> list[str]:
     return ['{' + ast.unparse(node) + '}']
 
 
+def owned_sources(root: Path) -> list[Path]:
+    """Openmd-owned OpenCLI plugin sources; installed dependencies are not ours."""
+    base = root / 'integrations/opencli'
+    return [path for path in sorted(base.rglob('*'))
+            if path.suffix in {'.ts', '.js'} and not path.name.endswith('.test.ts')
+            and 'node_modules' not in path.relative_to(base).parts]
+
+
 def inventory(root: Path = ROOT) -> dict:
     declaration = json.loads((root / 'src/openmd/routing/declarations.json').read_text(encoding='utf-8'))
     dependencies = declaration.get('opencli_contracts', {})
@@ -208,9 +216,7 @@ def inventory(root: Path = ROOT) -> dict:
                 add(argv, f'src/openmd/routing/declarations.json:cards/{name}/{cap["id"]}')
             elif executable == 'opencli':
                 add(['opencli', *argv], f'src/openmd/routing/declarations.json:cards/{name}/{cap["id"]}')
-    for path in sorted((root / 'integrations/opencli').rglob('*')):
-        if path.suffix not in {'.ts', '.js'} or path.name.endswith('.test.ts'):
-            continue
+    for path in owned_sources(root):
         for definition in cli_definitions(path.read_text(encoding='utf-8')):
             key = definition['site'], definition['command']
             if key not in records:

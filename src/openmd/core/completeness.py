@@ -127,7 +127,12 @@ def pdf_page_check(item: ContentItem, result: TranscriptResult, signals: Mapping
     present = {page.get("page") for page in pages if isinstance(page, dict) and type(page.get("page")) is int and page.get("status") == "verified"}
     missing = sorted(set(range(1, count + 1)) - present)
     if missing:
-        return Check("pdf_pages", "downgrade", "pdf_pages_missing", {"missing_pages": missing})
+        return Check(
+            "pdf_pages",
+            "downgrade",
+            "pdf_pages_missing",
+            {"missing_pages": missing, "output_pages": len(present), "total_pages": count},
+        )
     return Check("pdf_pages", "ok")
 
 

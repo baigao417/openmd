@@ -85,7 +85,9 @@ def test_pdf_missing_pages_and_duplicate_page_ids():
     result = transcript('page one', metadata={'pages': [{'page': 1, 'status': 'verified'}, {'page': 1, 'status': 'verified'}]})
     checked = check_completeness(item, result, signals={'pdf_page_count': 3})
     assert checked.status == 'partial'
-    assert checked.metadata['completeness']['checks'][0]['gap'] == {'missing_pages': [2, 3]}
+    assert checked.metadata['completeness']['checks'][0]['gap'] == {
+        'missing_pages': [2, 3], 'output_pages': 1, 'total_pages': 3,
+    }
 
 
 def test_frontmatter_and_runlog_retain_completeness(tmp_path):
@@ -95,6 +97,46 @@ def test_frontmatter_and_runlog_retain_completeness(tmp_path):
     checked = check_completeness(media(), transcript('[00:00 --> 01:00] speech'))
     path = write_item_result(media(), checked, tmp_path)
     assert 'completeness:' in path.read_text(encoding='utf-8')
-    assert '60' in path.read_text(encoding='utf-8')
+    assert '00:01:00' in path.read_text(encoding='utf-8')
     entry = append_runlog_entry(tmp_path / 'log.jsonl', build_item_runlog_entry(media(), checked))
     assert entry['completeness']['status'] == 'downgrade'
+
+
+def test_frontmatter_omits_ok_completeness(tmp_path):
+    from openmd.core.output import write_item_result
+    checked = transcript('[00:00:00-00:04:00] complete enough')
+    from openmd.core.completeness import check_completeness
+    path = write_item_result(media(), check_completeness(media(), checked), tmp_path)
+    text = path.read_text(encoding='utf-8')
+    assert 'completeness:' not in text
+
+
+def test_frontmatter_omits_unknown_completeness(tmp_path):
+    from openmd.core.output import write_item_result
+    from openmd.core.completeness import check_completeness
+    unknown_item = replace(media(), raw_meta={})
+    checked = check_completeness(unknown_item, transcript('[00:01] start only'))
+    path = write_item_result(unknown_item, checked, tmp_path)
+    assert 'completeness:' not in path.read_text(encoding='utf-8')
+
+
+def test_frontmatter_downgrade_is_human_readable_scalar(tmp_path):
+    from openmd.core.output import write_item_result
+    from openmd.core.completeness import check_completeness
+    path = write_item_result(media(), check_completeness(media(), transcript('[00:00:00-00:00:02] truncated')), tmp_path)
+    text = path.read_text(encoding='utf-8')
+    line = next(line for line in text.splitlines() if line.startswith('completeness:'))
+    assert '{' not in line and '\\"' not in line
+    assert 'partial' in line and '00:00:02' in line and '00:05:00' in line
+
+
+def test_pdf_frontmatter_downgrade_reports_output_pages(tmp_path):
+    from openmd.core.output import write_item_result
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('pdf', 'single', 'https://example.test/doc.pdf', source_type='document')
+    result = transcript('page one', metadata={'pages': [{'page': 1, 'status': 'verified'}]})
+    checked = check_completeness(item, result, signals={'pdf_page_count': 3})
+    path = write_item_result(item, checked, tmp_path)
+    line = next(line for line in path.read_text(encoding='utf-8').splitlines() if line.startswith('completeness:'))
+    assert 'partial' in line and '输出 1/3 页' in line
+    assert '{' not in line and '\\"' not in line

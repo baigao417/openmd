@@ -259,6 +259,11 @@ def _failure_hint(rows: list[dict[str, object]]) -> str:
         return "公众号返回了错误页（链接失效、已删除或已过期），没有正文；请在微信或浏览器中打开确认。"
     if "content_navigation_shell" in codes:
         return "页面只有导航或图片，没有正文；链接可能不存在（软 404）或需要登录，请在浏览器中打开确认。"
+    if "engine_unavailable" in codes:
+        for row in reversed(rows):
+            if row.get("error_code") == "engine_unavailable" and row.get("error_summary"):
+                return str(row["error_summary"])
+        return "所需文档引擎未安装；请按 next_action 安装对应引擎后重试。"
     attempts = [a for row in rows if isinstance(row.get("route_trace"), dict) for a in row["route_trace"].get("fallback_attempts") or []]
     opencli_missing = any(str(a.get("backend", "")).startswith("opencli.") and a.get("error_code") in {"backend_exit_127", "backend_not_found"} for a in attempts)
     content_verdict = any(word in codes for word in ("weixin_error_page", "not_found", "404"))
@@ -303,11 +308,25 @@ def issue_context(url: str, rows: list[dict[str, object]]) -> str:
 
 def _emit_saved(args: argparse.Namespace, *, target: Path, outputs: list[str], records: Path | None) -> None:
     if getattr(args, "json", False):
-        print(json.dumps({"ok": True, "command": "go", "saved_to": str(target), "outputs": outputs, "records": str(records) if records else None}, ensure_ascii=True))
+        result = getattr(args, "_go_result", None)
+        print(json.dumps({"ok": True, "command": "go", "saved_to": str(target), "outputs": outputs, "records": str(records) if records else None, **_go_receipt_fields(result, None, ok=True)}, ensure_ascii=True))
     else:
         print(f"已保存：{target}")
         if getattr(args, "verbose", False) and records:
             print(f"运行记录：{records}")
+
+
+def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool) -> dict[str, object]:
+    row = next((r for r in reversed(rows or []) if r.get("event_type") == "item"), {})
+    return {
+        "status": row.get("status") or getattr(result, "status", None) or ("verified" if ok else "failed"),
+        "source_level": row.get("source_level") or getattr(result, "source_level", None),
+        "completeness": row.get("completeness") or getattr(result, "completeness", {}) or {},
+        "sync": row.get("sync") or getattr(result, "sync", {}) or {},
+        "login": row.get("login") or getattr(result, "login", None),
+        "next_action": getattr(result, "next_action", None),
+        "error_code": row.get("error_code") or getattr(result, "error_code", None),
+    }
 
 
 def _attach_video(args: argparse.Namespace, url: str, markdown: Path) -> None:
@@ -380,6 +399,7 @@ def cmd_go(args: argparse.Namespace) -> int:
                 raise ValueError(start_error)
             try:
                 result = _process_input(url, run_args, command="go")
+                run_args._go_result = result
                 if run_args.receipt:
                     with contextlib.redirect_stdout(io.StringIO()):
                         receipt_code = _emit_result(run_args, result)
@@ -397,7 +417,7 @@ def cmd_go(args: argparse.Namespace) -> int:
                         print(f"错误记录：{retained}", file=sys.stderr)
                     if getattr(args, "json", False):
                         print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None,
-                                          **({"error_code": result.error_code, "login": result.login, "next_action": result.next_action} if result.next_action else {})}, ensure_ascii=True))
+                                          **_go_receipt_fields(result, rows, ok=False)}, ensure_ascii=True))
                     return 1
                 for output in result.outputs:
                     if Path(output).is_dir():

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import math
 import re
-import subprocess
 import sys
 import time
 import uuid
@@ -37,9 +36,9 @@ def queue():
 
 
 def _spawn():
-    def spawn(_command, **kwargs):
-        return subprocess.Popen([sys.executable, "-I", str(Path(__file__).resolve()), "--runner"], **kwargs)
-    host._spawn_runner(spawn)
+    # The runner executes this installed file (also inside editable worktrees);
+    # the hidden Windows launch itself stays in browser_host._spawn_runner.
+    host._spawn_runner(command=[sys.executable, "-I", str(Path(__file__).resolve()), "--runner"])
 
 
 def destination(value: str) -> Path:

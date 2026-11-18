@@ -61,7 +61,8 @@ def test_grok_multiturn_verbatim_markdown_and_anchor_never_truncates():
     result, calls = extract({"ok": True, "data": ROWS}, suffix=f"?rid={ANCHOR}")
     assert result.status == "verified"
     assert calls[0][3] == CID
-    assert [turn.role for turn in result.blocks] == [row["Role"] for row in ROWS]
+    # Roles are normalized to the standard lowercase set across all export routes.
+    assert [turn.role for turn in result.blocks] == [row["Role"].lower() for row in ROWS]
     assert [turn.text for turn in result.blocks] == [row["Text"] for row in ROWS]
     assert result.metadata["source_url"] == URL
     assert result.metadata["anchor_response_id"] == ANCHOR

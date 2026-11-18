@@ -148,7 +148,9 @@ def _runner_alive() -> bool:
         return False
 
 
-def _spawn_runner(spawn=subprocess.Popen) -> None:
+def _spawn_runner(spawn=subprocess.Popen, command: list[str] | None = None) -> None:
+    """Start a hidden queue runner; other queue owners (MCP) pass their own runner command
+    so every runner launch keeps one place for Windows flags and job-object breakaway."""
     flags = 0
     if os.name == "nt":
         # CREATE_NO_WINDOW gives the runner a hidden console that every child tool (openmd, opencli,
@@ -156,7 +158,7 @@ def _spawn_runner(spawn=subprocess.Popen) -> None:
         # be combined with it: Windows then ignores CREATE_NO_WINDOW and each console child opens
         # its own visible terminal window.
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-    command = [sys.executable, "-I", "-m", "openmd.browser_host", "--runner"]
+    command = command or [sys.executable, "-I", "-m", "openmd.browser_host", "--runner"]
     kwargs = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, cwd=str(jobs_root()))
     try:
         # Escape Chrome's job object so closing the browser host does not kill a long save.

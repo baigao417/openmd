@@ -16,7 +16,8 @@ def engine_chain(source_format: str):
     suffix = source_format.lower().lstrip('.')
     from .native import NativeEngine, PROMOTED
     if suffix in PROMOTED:
-        return [NativeEngine(suffix), MarkItDownEngine()]
+        fallback = [SofficeEngine()] if suffix in {'doc', 'ppt', 'xls', 'odt', 'odp', 'ods'} else []
+        return [NativeEngine(suffix), *fallback, MarkItDownEngine()]
     if suffix in {'html', 'htm'}:
         return [DefuddleEngine(), MarkItDownEngine()]
     if suffix == 'epub':

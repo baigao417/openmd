@@ -66,5 +66,8 @@ def main():
         if len(json.dumps(result).encode('utf-8')) > limits.max_output_bytes * 2:
             raise EngineError('document_output_limit')
     except Exception as exc:
-        result = {'worker_error': getattr(exc, 'code', 'document_extraction_failed')}
+        code = getattr(exc, 'code', 'document_extraction_failed')
+        if value['mode'] == 'native' and 'encrypted' in str(exc).lower():
+            code = 'document_encrypted'
+        result = {'worker_error': code}
     output.write_text(json.dumps(result, ensure_ascii=False), encoding='utf-8')

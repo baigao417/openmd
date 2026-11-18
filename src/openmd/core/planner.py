@@ -326,6 +326,9 @@ def build_plan(
     if local_path is not None and source_id == "pdf_office":
         suffix = local_path.suffix.lower().lstrip(".")
         required_engine = "soffice" if suffix in {"doc", "xls", "ppt", "odp", "ods"} else "calibre" if suffix in {"mobi", "azw3", "fb2"} else None
+        from openmd.engines.native import NativeEngine, PROMOTED
+        if required_engine and suffix in PROMOTED and NativeEngine(suffix).available()['ok']:
+            required_engine = None
         if required_engine:
             from openmd.engines.tools import CalibreEngine, SofficeEngine
             engine = SofficeEngine() if required_engine == "soffice" else CalibreEngine()

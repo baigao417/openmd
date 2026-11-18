@@ -116,3 +116,22 @@ def parse_xlsx(d):
         formulas.close()
     with ZipFile(d.path) as z:
         embedded_images(d, z)
+
+
+def parse_xls(d):
+    import xlrd
+    book = xlrd.open_workbook(d.path, on_demand=True)
+    d.meta['parts_order'] = book.sheet_names()
+    try:
+        for sheet in book.sheets():
+            def include(sheet=sheet):
+                rows = [sheet.row_values(i) for i in range(min(sheet.nrows, d.limits.max_table_rows + 1))]
+                if not any(any(str(v).strip() for v in row) for row in rows):
+                    return
+                d.add('## ' + sheet.name)
+                d.table(rows)
+                if sheet.nrows > len(rows):
+                    d.gap('table_row_limit', sheet.name + ':rows')
+            d.section(sheet.name, include)
+    finally:
+        book.release_resources()

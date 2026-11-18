@@ -13,6 +13,7 @@ from openmd.backends.ai_chat import (
 )
 from openmd.backends.base import BackendExtractRequest
 from openmd.backends.snapshot import SnapshotProvider
+import openmd.backends.snapshot as snapshot_backend
 from openmd.browser_host import handle
 from openmd.core.content_validation import validate_extraction_content
 from openmd.core.detector import detect_platform
@@ -52,6 +53,24 @@ def test_ai_chat_parser_preserves_code_and_rejects_empty_or_generating():
         raise AssertionError("generating chat should be rejected")
 
 
+def test_ai_chat_coverage_is_machine_enum_and_auth_text_does_not_scan正文():
+    turns, meta = parse_ai_chat_output(
+        {"messages": [{"role": "assistant", "content": "The author says sign in is optional."}]},
+        site="chatgpt",
+        source_url="https://chatgpt.com/c/x",
+    )
+    assert turns[0].text.startswith("The author")
+    assert meta["coverage"] == "visible_branch"
+
+
+def test_ai_chat_structured_auth_code_and_empty_result_are_distinct():
+    import pytest
+    with pytest.raises(ValueError, match="未登录"):
+        parse_ai_chat_output({"ok": False, "error": {"code": "AUTH_REQUIRED", "message": "author"}}, site="chatgpt", source_url="https://chatgpt.com/c/x")
+    with pytest.raises(ValueError, match="空会话"):
+        parse_ai_chat_output({"ok": False, "error": {"code": "EMPTY_RESULT", "message": "no rows"}}, site="chatgpt", source_url="https://chatgpt.com/c/x")
+
+
 def test_ai_chat_provider_uses_site_specific_detail_command():
     calls = []
     provider = OpenCliAiChatProvider("deepseek", DEEPSEEK_BACKEND, runner=lambda command, timeout: (calls.append(command) or (0, json.dumps({"messages": [{"role": "user", "text": "hi"}]}), "")))
@@ -66,7 +85,7 @@ def test_conversation_renderer_and_package_blocks(tmp_path):
     rendered = render_conversation_blocks(blocks, source_url="https://chatgpt.com/c/x", platform="chatgpt", exported_at="2026-11-18T00:00:00+00:00")
     assert "### user · 10:00" in rendered and "```js" in rendered and "轮次数：2" in rendered
     item = ContentItem(platform="ai_chat", input_type="single", url="https://chatgpt.com/c/x", source_type="conversation", raw_meta={"chat_site": "chatgpt"})
-    result = TranscriptResult(text="question\nanswer", status="verified", source_level="browser_rendered", backend=CHATGPT_BACKEND, blocks=blocks, metadata={"coverage": "当前可见分支"})
+    result = TranscriptResult(text="question\nanswer", status="verified", source_level="browser_rendered", backend=CHATGPT_BACKEND, blocks=blocks, metadata={"coverage": "visible_branch"})
     written = write_item_package(item, result, tmp_path)
     assert (written.package_path / "messages.json").is_file()
     assert validate_package(written.package_path).ok
@@ -77,16 +96,30 @@ def test_snapshot_backend_fixtures_and_validation(tmp_path):
     article.write_text("<html><head><title>Article</title></head><body><main><h1>Article</h1><p>Visible body text.</p></main></body></html>", encoding="utf-8")
     item = ContentItem(platform="page_snapshot", input_type="single", url="https://example.org/a", source_type="article", raw_meta={"snapshot_path": str(article)})
     result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
-    assert result.status == "verified" and result.metadata["coverage"] == "visible_only"
+    assert result.status == "verified" and result.metadata["coverage"] == "visible_branch"
     document = render_markdown_document(item, result)
     text = render_document(document)
-    assert 'captured_from: "browser_snapshot"' in text and 'coverage: "visible_only"' in text
+    assert 'captured_from: "browser_snapshot"' in text and 'coverage: "visible_branch"' in text
     wall = tmp_path / "wall.html"
     wall.write_text("<html><head><title>Just a moment</title></head><body>Checking your browser</body></html>", encoding="utf-8")
     wall_item = ContentItem(platform="page_snapshot", input_type="single", url="https://example.org/pay", source_type="article", raw_meta={"snapshot_path": str(wall)})
     wall_result = SnapshotProvider().extract(BackendExtractRequest(item=wall_item, backend_chain=("page_snapshot.defuddle",)))
     rejected = validate_extraction_content(wall_result, wall_item)
     assert rejected.status == "failed" or rejected.error_code == "browser_challenge_page"
+
+
+def test_snapshot_managed_defuddle_and_explicit_fallback(monkeypatch, tmp_path):
+    article = tmp_path / "article.html"
+    article.write_text("<html><head><title>Article</title></head><body><main><p>Managed body text.</p></main></body></html>", encoding="utf-8")
+    item = ContentItem(platform="page_snapshot", input_type="single", url="https://example.org/a", source_type="article", raw_meta={"snapshot_path": str(article)})
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *args, **kwargs: "# Managed\n\nManaged body text.")
+    managed = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert managed.source_level == "third_party_extractor"
+    assert managed.metadata["coverage"] == "visible_branch"
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *args, **kwargs: None)
+    fallback = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert fallback.source_level == "partial_extraction"
+    assert any("未使用 Defuddle，正文抽取为简易回退" in note for note in fallback.source_notes)
 
 
 def test_snapshot_host_rejects_bad_and_oversized_messages(tmp_path):

@@ -8,8 +8,8 @@ silently claiming broader page coverage.
 from __future__ import annotations
 
 import json
+import os
 import re
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -56,7 +56,7 @@ class SnapshotProvider:
     def health(self) -> BackendHealth:
         if self.runner is not None:
             return BackendHealth(ok=True, dependencies={"defuddle": "injected"})
-        return BackendHealth(ok=True, dependencies={"defuddle": "available" if shutil.which("defuddle") else "fallback"})
+        return BackendHealth(ok=True, dependencies={"defuddle": "managed" if _managed_defuddle_available() else "fallback"})
 
     def extract(self, request: BackendExtractRequest) -> TranscriptResult:
         item = request.item
@@ -73,48 +73,116 @@ class SnapshotProvider:
         except OSError:
             return _failed("snapshot_read_failed", "当前页快照无法读取。")
         title = item.title or _html_title(html) or "当前页快照"
-        markdown = self._defuddle(path, html)
+        markdown, used_managed = self._html_to_markdown(path, html, item.url)
         text = (markdown or "").strip()
         if text.startswith("# ") and text.splitlines()[0].strip().removeprefix("# ").strip() == title.strip():
             text = "\n".join(text.splitlines()[1:]).lstrip()
         if not text:
             return _failed("snapshot_empty", "当前页快照没有可保存的正文。")
         notes = ["当前页快照仅覆盖浏览器捕获的可见 DOM，不包含 cookie 或 storage。"]
+        if not used_managed:
+            notes.append("未使用 Defuddle，正文抽取为简易回退")
         hint = snapshot_acceleration_hint(item.url)
         if hint:
             notes.append(hint)
         return TranscriptResult(
             text=text.rstrip() + "\n",
             status="verified",
-            source_level="browser_rendered",
+            source_level="third_party_extractor" if used_managed else "partial_extraction",
             backend=self.name,
             title=title,
             source_notes=notes,
-            metadata={"captured_from": "browser_snapshot", "coverage": "visible_only", "snapshot_path": str(path)},
+            metadata={"captured_from": "browser_snapshot", "coverage": "visible_branch", "snapshot_path": str(path)},
         )
 
-    def _defuddle(self, path: Path, html: str) -> str:
+    def _html_to_markdown(self, path: Path, html: str, url: str) -> tuple[str, bool]:
         if self.runner is not None:
             result = self.runner(path, html)
             if isinstance(result, dict):
-                return str(result.get("contentMarkdown") or result.get("content") or "")
-            return str(result or "")
-        executable = shutil.which("defuddle")
-        if executable:
-            with tempfile.TemporaryDirectory(prefix="openmd-defuddle-") as tmp:
-                output = Path(tmp) / "content.json"
-                command = [executable, "parse", str(path), "--markdown", "--json", "-o", str(output)]
-                try:
-                    completed = run_interruptibly(command, capture_output=True, text=True, timeout=120, check=False, encoding="utf-8", errors="replace")
-                    if completed.returncode == 0 and output.is_file():
-                        payload = json.loads(output.read_text(encoding="utf-8"))
-                        return str(payload.get("contentMarkdown") or payload.get("content") or "") if isinstance(payload, dict) else ""
-                except (OSError, ValueError, subprocess.TimeoutExpired):
-                    pass
+                return str(result.get("contentMarkdown") or result.get("content") or ""), True
+            return str(result or ""), True
+        managed = _run_managed_defuddle(path, html, url)
+        if managed:
+            return managed, True
         try:
-            return html_to_markdown(html)
+            return html_to_markdown(html), False
         except Exception:
-            return re.sub(r"<[^>]+>", "\n", html)
+            return re.sub(r"<[^>]+>", "\n", html), False
+
+
+def _defuddle_card_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "routing" / "cards" / "defuddle.json"
+
+
+def _local_config_candidates() -> list[Path]:
+    values: list[Path] = []
+    configured = os.environ.get("OPENMD_CONFIG")
+    if configured:
+        values.append(Path(configured))
+    here = Path(__file__).resolve()
+    values.extend([Path.cwd() / "out" / "local-config.json", here.parents[5] / "out" / "local-config.json"])
+    return values
+
+
+def _managed_defuddle_spec() -> tuple[str, str, str, dict[str, Any]] | None:
+    try:
+        card = json.loads(_defuddle_card_path().read_text(encoding="utf-8"))
+        api = card["launcher"]["node_api"]
+        module = str(api["module"])
+        options = dict(api.get("options") or {})
+        config = next((p for p in _local_config_candidates() if p.is_file()), None)
+        if config is None:
+            return None
+        tools = json.loads(config.read_text(encoding="utf-8")).get("tools", {})
+        spec = tools.get("defuddle") or {}
+        node = str(spec.get("node") or "")
+        root = str(spec.get("root") or "")
+        if not node or not root or not Path(node).is_file() or not Path(root).is_dir():
+            return None
+        return node, root, module, options
+    except (OSError, TypeError, ValueError, KeyError):
+        return None
+
+
+def _managed_defuddle_available() -> bool:
+    return _managed_defuddle_spec() is not None
+
+
+def _run_managed_defuddle(path: Path, html: str, url: str) -> str | None:
+    spec = _managed_defuddle_spec()
+    if spec is None:
+        return None
+    node, root, module, options = spec
+    script = r"""
+const path = require('path');
+const fs = require('fs');
+const { Defuddle } = require(path.join(process.argv[1], process.argv[2]));
+const { parseHTML } = require(path.join(process.argv[1], 'linkedom'));
+(async () => {
+  const html = fs.readFileSync(process.argv[3], 'utf8');
+  const { document } = parseHTML(html);
+  const result = await Defuddle(document, process.argv[4], { ...JSON.parse(process.argv[5]), markdown: true });
+  process.stdout.write(JSON.stringify({ contentMarkdown: result.contentMarkdown || '', content: result.content || '' }));
+})().catch((error) => { process.stderr.write(String(error && error.stack || error)); process.exit(1); });
+"""
+    try:
+        completed = run_interruptibly(
+            [node, "-e", script, root, module, str(path), url, json.dumps(options)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            encoding="utf-8",
+            errors="replace",
+        )
+        if completed.returncode != 0:
+            return None
+        payload = json.loads(completed.stdout or "{}")
+        if isinstance(payload, dict):
+            return str(payload.get("contentMarkdown") or payload.get("content") or "") or None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+    return None
 
 
 def snapshot_acceleration_hint(url: str) -> str | None:

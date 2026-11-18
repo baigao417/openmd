@@ -8,6 +8,7 @@ raw browser payloads are never persisted.
 from __future__ import annotations
 
 import re
+import json
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -87,10 +88,12 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         payload = load_opencli_json(payload)
     if isinstance(payload, dict) and payload.get("ok") is False:
         error = payload.get("error")
+        code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
         detail = error.get("message") if isinstance(error, dict) else str(error or "")
-        lowered = detail.lower()
-        if any(word in lowered for word in ("login", "auth", "anonymous", "unauthorized", "sign in")):
+        if _is_auth_error_code(code) or _looks_like_auth_error(detail):
             raise AiChatError("ai_chat_not_logged_in", "平台当前未登录，未导出对话。")
+        if code == "EMPTY_RESULT":
+            raise AiChatError("ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
         raise AiChatError("ai_chat_detail_failed", "平台对话详情读取失败。")
     root = payload
     if isinstance(root, dict):
@@ -124,7 +127,7 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         raise AiChatError("ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
     meta = {
         "chat_site": site,
-        "coverage": "provider_declared_complete" if _declares_complete(payload) else "当前可见分支",
+        "coverage": "provider_declared_complete" if _declares_complete(payload) else "visible_branch",
         "turn_count": len(turns),
         "source_url": source_url,
     }
@@ -178,9 +181,14 @@ class OpenCliAiChatProvider:
         except Exception as exc:
             return _failed(self.name, "ai_chat_command_failed", sanitize_error_summary(exc) or "OpenCLI detail command failed.")
         if code:
-            text = (stdout + "\n" + stderr).lower()
-            if any(word in text for word in ("login", "auth", "anonymous", "unauthorized", "sign in")):
+            structured = _parse_error_payload(stdout)
+            error = structured.get("error") if isinstance(structured, dict) else None
+            error_code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
+            error_message = str(error.get("message") or "") if isinstance(error, dict) else ""
+            if _is_auth_error_code(error_code) or _looks_like_auth_error(error_message) or _looks_like_auth_error(stderr):
                 return _failed(self.name, "ai_chat_not_logged_in", "平台当前未登录，未导出对话。")
+            if error_code == "EMPTY_RESULT":
+                return _failed(self.name, "ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
             return _failed(self.name, f"backend_exit_{code}", "OpenCLI conversation detail command failed.")
         try:
             turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url)
@@ -243,6 +251,22 @@ def _declares_complete(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
     return value.get("complete") is True or value.get("coverage") in {"complete", "full"} or value.get("is_complete") is True
+
+
+def _is_auth_error_code(code: str) -> bool:
+    return code in {"AUTH_REQUIRED", "LOGIN_WALL", "NOT_LOGGED_IN", "SESSION_EXPIRED"}
+
+
+def _looks_like_auth_error(value: str) -> bool:
+    return bool(re.search(r"(?:未登录|登录|\blog(?:in|ged[ -]?in)\b|\bauth(?:entication|orization)?\b|\banonymous\b|\bunauthorized\b|\bsign[ -]?in\b)", value or "", re.IGNORECASE))
+
+
+def _parse_error_payload(value: str) -> dict[str, Any] | None:
+    try:
+        parsed = load_opencli_json(value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) and isinstance(parsed.get("error"), dict) else None
 
 
 def _failed(backend: str, code: str, summary: str) -> TranscriptResult:

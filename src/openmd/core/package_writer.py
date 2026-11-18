@@ -400,7 +400,7 @@ def render_package_index(
     if profile == "conversation" and result.blocks:
         from .renderer import render_conversation_blocks
 
-        text = render_conversation_blocks(result.blocks, source_url=item.url, platform=item.platform, exported_at=metadata["updated_at"], coverage=str(result.metadata.get("coverage") or "当前可见分支"), title=title).strip()
+        text = render_conversation_blocks(result.blocks, source_url=item.url, platform=item.platform, exported_at=metadata["updated_at"], coverage=str(result.metadata.get("coverage") or "visible_branch"), title=title).strip()
     if not text and result.status == "failed":
         text = sanitize_url_text(result.error_summary or "Extraction failed.")
 

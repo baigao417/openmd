@@ -38,6 +38,25 @@ _SOURCE_LABELS = {
     "partial_extraction": "部分提取",
 }
 
+_COVERAGE_LABELS = {
+    "provider_declared_complete": "提供方声明完整",
+    "visible_branch": "当前可见分支",
+    "visible_only": "当前可见页面",
+}
+_LEGACY_COVERAGE_VALUES = {
+    "当前可见分支": "visible_branch",
+    "提供方声明完整": "provider_declared_complete",
+}
+
+
+def coverage_machine_value(value: object) -> str:
+    machine = str(value or "visible_branch")
+    return _LEGACY_COVERAGE_VALUES.get(machine, machine)
+
+
+def coverage_label(value: object) -> str:
+    return _COVERAGE_LABELS.get(coverage_machine_value(value), str(value or "visible_branch"))
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -118,11 +137,11 @@ def render_markdown_document(
     if item.platform == "page_snapshot":
         frontmatter.update({
             "captured_from": "browser_snapshot",
-            "coverage": "visible_only",
+            "coverage": "visible_branch",
         })
     if item.source_type == "conversation" or result.blocks:
         frontmatter.update({
-            "coverage": str(result.metadata.get("coverage") or "当前可见分支"),
+            "coverage": coverage_machine_value(result.metadata.get("coverage")),
         })
         if result.blocks:
             content = render_conversation_blocks(
@@ -130,7 +149,7 @@ def render_markdown_document(
                 source_url=item.url,
                 platform=item.platform,
                 exported_at=captured_at or utc_now_iso(),
-                coverage=str(result.metadata.get("coverage") or "当前可见分支"),
+                coverage=coverage_machine_value(result.metadata.get("coverage")),
                 title=str(title),
             )
         else:
@@ -151,7 +170,7 @@ def render_conversation_blocks(
     source_url: str,
     platform: str,
     exported_at: str,
-    coverage: str = "当前可见分支",
+    coverage: str = "visible_branch",
     title: str = "对话",
 ) -> str:
     """Render each conversation turn without merging or summarizing it."""
@@ -185,7 +204,7 @@ def render_conversation_blocks(
         f"- 平台：{platform}",
         f"- 会话 URL：{sanitize_url_text(source_url)}",
         f"- 导出时刻：{exported_at}",
-        f"- 范围：{coverage}",
+        f"- 范围：{coverage_label(coverage)}",
         f"- 轮次数：{turn_count}",
         "",
     ])

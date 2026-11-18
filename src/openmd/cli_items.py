@@ -194,7 +194,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             url=original_url,
             title=None,
             source_type="article",
-            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_only"},
+            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_branch"},
         )
         adapter = None
         selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)

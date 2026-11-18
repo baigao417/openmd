@@ -35,7 +35,7 @@ def test_office_route_uses_local_document_binding(tmp_path):
     result = build_plan(str(path), available_gates={'local_compute'})
     assert result.detected_source == 'pdf_office'
     assert result.execution_ready
-    assert result.runtime_provider == 'pdf.markitdown'
+    assert result.runtime_provider == 'document.engines'
     assert result.blocked_reason is None
 
 

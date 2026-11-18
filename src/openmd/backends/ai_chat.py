@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
@@ -37,6 +38,17 @@ PLANNED_AI_CHAT_BACKENDS = (
     "opencli.yuanbao.detail",
 )
 
+AI_CHAT_BACKENDS = {
+    "chatgpt": CHATGPT_BACKEND,
+    "deepseek": DEEPSEEK_BACKEND,
+    "grok": GROK_BACKEND,
+    "claude": "opencli.claude.detail",
+    "doubao": "opencli.doubao.detail",
+    "gemini": "opencli.gemini.detail",
+    "qwen": "opencli.qwen.detail",
+    "yuanbao": "opencli.yuanbao.detail",
+}
+
 CommandRunner = Callable[[list[str], int], tuple[int, str, str]]
 
 
@@ -49,6 +61,15 @@ def register_backend_providers(registry: BackendProviderRegistry, options: Backe
             registry.register(DEEPSEEK_BACKEND, OpenCliAiChatProvider("deepseek", DEEPSEEK_BACKEND))
         if requested in {None, GROK_BACKEND}:
             registry.register(GROK_BACKEND, OpenCliAiChatProvider("grok", GROK_BACKEND))
+        for site, backend in AI_CHAT_BACKENDS.items():
+            if site in {"chatgpt", "deepseek", "grok"}:
+                continue
+            if requested in {None, backend}:
+                registry.register(backend, UnimplementedAiChatProvider(site, backend))
+
+
+def ai_chat_backend_for_site(site: str) -> str | None:
+    return AI_CHAT_BACKENDS.get(site)
 
 
 def conversation_id_for_url(site: str, value: str) -> str | None:
@@ -99,6 +120,8 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         if code == "EMPTY_RESULT":
             raise AiChatError("ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
         raise AiChatError("ai_chat_detail_failed", "平台对话详情读取失败。")
+    if _find_login_url(payload):
+        raise AiChatError("login_required", "平台当前位于登录页，未导出对话。", original_code="login_required")
     root = payload
     if isinstance(root, dict):
         for key in ("conversation", "chat", "data", "result"):
@@ -133,6 +156,7 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         "chat_site": site,
         "coverage": "provider_declared_complete" if _declares_complete(payload) else "visible_branch",
         "turn_count": len(turns),
+        "assistant_turn_count": sum(1 for turn in turns if str(turn.role).lower() == "assistant"),
         "source_url": source_url,
     }
     return turns, meta
@@ -181,27 +205,41 @@ class OpenCliAiChatProvider:
         conversation_id = conversation_id_for_url(self.site, item.url)
         if not conversation_id:
             return _failed(self.name, "ai_chat_invalid_url", "Conversation URL did not contain a valid conversation ID.")
-        try:
-            code, stdout, stderr = self.runner(build_opencli_detail_args(self.site, conversation_id), self.timeout)
-        except Exception as exc:
-            return _failed(self.name, "ai_chat_command_failed", sanitize_error_summary(exc) or "OpenCLI detail command failed.")
-        if code:
-            structured = _parse_error_payload(stdout)
-            error = structured.get("error") if isinstance(structured, dict) else None
-            error_code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
-            error_message = str(error.get("message") or "") if isinstance(error, dict) else ""
-            if code == 77 or _is_auth_error_code(error_code) or (not error_code and (_looks_like_auth_error(error_message) or _looks_like_auth_error(stderr))):
-                result = _failed(self.name, error_code or ("backend_exit_77" if code == 77 else "ai_chat_not_logged_in"), "平台当前未登录，未导出对话。")
+        command = build_opencli_detail_args(self.site, conversation_id)
+        turns = None
+        metadata = None
+        for attempt in range(3):
+            try:
+                code, stdout, stderr = self.runner(command, self.timeout)
+            except Exception as exc:
+                return _failed(self.name, "ai_chat_command_failed", sanitize_error_summary(exc) or "OpenCLI detail command failed.")
+            if code:
+                structured = _parse_error_payload(stdout)
+                error = structured.get("error") if isinstance(structured, dict) else None
+                error_code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
+                error_message = str(error.get("message") or "") if isinstance(error, dict) else ""
+                if code == 77 or _is_auth_error_code(error_code) or (not error_code and (_looks_like_auth_error(error_message) or _looks_like_auth_error(stderr))):
+                    result = _failed(self.name, error_code or ("backend_exit_77" if code == 77 else "ai_chat_not_logged_in"), "平台当前未登录，未导出对话。")
+                    return normalize_login_result(result, item)
+                if error_code == "EMPTY_RESULT":
+                    return _failed(self.name, "ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
+                return _failed(self.name, f"backend_exit_{code}", "OpenCLI conversation detail command failed.")
+            try:
+                turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url)
+            except AiChatError as exc:
+                result = _failed(self.name, exc.code, str(exc))
+                result.metadata["original_error_code"] = exc.original_code
                 return normalize_login_result(result, item)
-            if error_code == "EMPTY_RESULT":
-                return _failed(self.name, "ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
-            return _failed(self.name, f"backend_exit_{code}", "OpenCLI conversation detail command failed.")
-        try:
-            turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url)
-        except AiChatError as exc:
-            result = _failed(self.name, exc.code, str(exc))
-            result.metadata["original_error_code"] = exc.original_code
-            return normalize_login_result(result, item)
+            assistant_count = int((metadata or {}).get("assistant_turn_count") or 0)
+            stability_check = self.runner is _run_command
+            if self.site not in {"chatgpt", "deepseek"} or assistant_count > 0 or attempt == 2:
+                break
+            if stability_check:
+                time.sleep(0.4)
+        if turns is None or metadata is None:
+            return _failed(self.name, "ai_chat_not_stable", "平台对话详情在有限等待后仍未稳定。")
+        if self.runner is _run_command and self.site in {"chatgpt", "deepseek"} and not int(metadata.get("assistant_turn_count") or 0):
+            return _failed(self.name, "ai_chat_not_stable", "平台助手轮次未在有限等待后出现。")
         if self.site == "grok":
             metadata["source_url"] = f"https://grok.com/c/{conversation_id}"
             anchor = item.raw_meta.get("anchor_response_id") or parse_qs(urlparse(item.url).query).get("rid", [None])[0]
@@ -217,6 +255,20 @@ class OpenCliAiChatProvider:
             blocks=turns,
             source_notes=["OpenCLI detail returned conversation turns; no summary or turn merging was performed."],
         )
+
+
+class UnimplementedAiChatProvider:
+    def __init__(self, site: str, name: str) -> None:
+        self.site, self.name = site, name
+
+    def descriptor(self) -> BackendDescriptor:
+        return BackendDescriptor(name=self.name, layer="planned browser/session export", capabilities=(), description=f"{self.site} AI chat export is declared but not implemented.", provider=self.name)
+
+    def health(self) -> BackendHealth:
+        return BackendHealth(ok=False, error_code="ai_chat_site_not_implemented", error_summary=f"{self.site} AI chat export is not implemented.")
+
+    def extract(self, request: BackendExtractRequest) -> TranscriptResult:
+        return _failed(self.name, "ai_chat_site_not_implemented", f"AI chat site not implemented: {self.site}.")
 
 
 def _find_message_rows(value: Any) -> list[Any]:
@@ -258,6 +310,24 @@ def _is_generating(value: Any) -> bool:
             return True
     state = str(value.get("status") or value.get("state") or "").lower()
     return state in {"generating", "streaming", "in_progress", "pending"}
+
+
+def _find_login_url(value: Any) -> str | None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(child, str) and (key.lower() in {"url", "href", "location", "current_url"} or "url" in key.lower()):
+                parsed = urlparse(child)
+                if "/auth/login" in parsed.path.lower() or parsed.path.lower().rstrip("/") in {"/login", "/signin", "/sign-in"}:
+                    return child
+            found = _find_login_url(child)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_login_url(child)
+            if found:
+                return found
+    return None
 
 
 def _declares_complete(value: Any) -> bool:

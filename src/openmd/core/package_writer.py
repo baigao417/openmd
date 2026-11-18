@@ -318,6 +318,10 @@ def build_package_metadata(
         "source_platform": item.platform,
         "source_url": normalized_input_ref(item),
     }
+    from .renderer import document_source_format
+    source_format = document_source_format(item, result)
+    if source_format:
+        metadata["format"] = str(source_format).lower()
     if author:
         metadata["author"] = _single_line_text(author)
     if published_at:
@@ -386,6 +390,7 @@ def render_package_index(
         f"title: {_yaml_scalar(title)}",
         f"profile: {profile}",
         f"source_platform: {_yaml_scalar(str(metadata['source_platform']))}",
+        *([f"format: {metadata['format']}"] if metadata.get("format") else []),
         f"status: {metadata['status']}",
         f"source_level: {metadata['source_level']}",
         f"created_at: {metadata['created_at']}",
@@ -396,6 +401,7 @@ def render_package_index(
         "## Source",
         "",
         f"- Platform: {item.platform}",
+        *([f"- Format: {metadata['format']}"] if metadata.get("format") else []),
         f"- Input: {source['input_ref']}",
         f"- Backend: {metadata['backend']['name']}",
         f"- Status: {metadata['status']}",

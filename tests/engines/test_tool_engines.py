@@ -26,7 +26,7 @@ def test_pandoc_positive_preserves_chapter_order(tmp_path, monkeypatch, suffix):
     monkeypatch.setattr('openmd.engines.tools.executable', lambda tool: 'pandoc')
     def run(argv, directory, limits):
         assert '--sandbox' in argv and '--from=' + suffix in argv
-        assert '--to=gfm' in argv and '--wrap=none' in argv
+        assert any(arg.startswith('--to=gfm-raw_html') for arg in argv) and '--wrap=none' in argv
         return '# First chapter\n\nOriginal words.\n\n# Second chapter\n\nMore original words.\n'
     monkeypatch.setattr('openmd.engines.tools.run_command', run)
     result = PandocEngine().convert(path)

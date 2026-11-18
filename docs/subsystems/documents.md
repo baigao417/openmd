@@ -21,6 +21,14 @@ python -m openmd.engines.formats
 `document.engines` provider 处理。PDF/DOCX/PPTX/XLSX 的既有正文和 OCR 恢复语义保留。
 remote HTML/JSON URL 继续走网站路线，QQ 导出识别优先。
 
+执行器会在尝试 provider 之前按本地文档后缀过滤链：新增格式只进入
+`document.engines`，不生成旧 PDF/Office/OCR 的失败噪音；禁用 fallback 时同样
+先过滤再选首项。PDF/DOCX/PPTX/XLSX 保留原来的引擎顺序。
+DOC/XLS/PPT/ODP/ODS 的 plan 检查 LibreOffice，MOBI/AZW3/FB2 检查 Calibre；
+缺少时 `execution_ready=false`，`blocked_reason=engine_unavailable:<engine>`，
+并给出 `next_action`。该检查不读取输入正文，不执行转换。
+文档产物的 front matter 与 Source 小节均显示原始 `format`；车道 ID 和路径仍为 `pdf`。
+
 ## 可选工具
 
 - MarkItDown：安装 `openmd-cli[document]`；只允许文档后缀，显式禁用插件。
@@ -29,7 +37,8 @@ remote HTML/JSON URL 继续走网站路线，QQ 导出识别优先。
 - Defuddle：复用工具卡的 `tools.defuddle.root/node`。仅调用库解析本地 HTML；
   删除脚本和活动资源节点，禁用 fetch/http/https，不启动浏览器或加载页面资源。
 - Pandoc：PATH、`OPENMD_PANDOC` 或 `tools.pandoc.executable`；Windows 额外探测当前
-  用户的 LocalAppData/Pandoc。使用 sandbox，无过滤器与 Lua。
+  用户的 LocalAppData/Pandoc。使用 sandbox，无过滤器与 Lua；输出采用
+  `gfm-raw_html`，清除 HTML 包装并移除与文件名重复的起始书名标题。
 - LibreOffice：沿用 `soffice` / `OPENMD_SOFFICE` 和 PATH。每次使用独立 profile，
   禁用宏与外部更新；Writer 转 DOCX，Calc 转 XLSX，Impress 转 PPTX。
   Calc/Impress 不支持有意义的 DOCX 导出，保留其对应 OOXML 格式。

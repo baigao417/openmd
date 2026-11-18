@@ -52,10 +52,26 @@ def test_remote_office_is_rejected_before_parser_import(suffix):
     assert result.error_code == "document_local_file_required"
 
 
-def test_legacy_doc_has_static_binding_with_runtime_dependency_check(tmp_path):
+def test_legacy_doc_is_not_advertised_as_executable(tmp_path, monkeypatch):
+    monkeypatch.setattr("openmd.engines.tools.SofficeEngine.available", lambda self: {"ok": False, "reason": "missing", "version": None})
     path = tmp_path / "source.doc"
     path.write_bytes(b"fixture")
-    assert build_plan(str(path), available_gates={"local_compute"}).execution_ready
+    plan = build_plan(str(path), available_gates={"local_compute"})
+    assert not plan.execution_ready
+    assert plan.blocked_reason == "engine_unavailable:soffice"
+    assert plan.next_action
+
+
+def test_legacy_doc_plan_is_ready_when_soffice_is_available(tmp_path, monkeypatch):
+    path = tmp_path / "source.doc"
+    path.write_bytes(b"fixture")
+    monkeypatch.setattr(
+        "openmd.engines.tools.SofficeEngine.available",
+        lambda self: {"ok": True, "reason": "test", "version": "test"},
+    )
+    plan = build_plan(str(path), available_gates={"local_compute"})
+    assert plan.execution_ready
+    assert plan.blocked_reason is None
 
 
 @pytest.mark.parametrize("suffix", [".docx", ".pptx", ".xlsx"])

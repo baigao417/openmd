@@ -16,6 +16,23 @@ from .base import DocumentEngine, EngineError, EngineLimits, failure, success
 from .sniff import signature, validate_document
 
 
+def _clean_pandoc_markdown(text: str, title: str) -> str:
+    """Normalize Pandoc's document wrapper without preserving raw HTML."""
+    from openmd.core.content_validation import html_tag_residue, html_to_markdown
+
+    value = text.strip()
+    if html_tag_residue(value)[0]:
+        value = html_to_markdown(value)
+    lines = value.splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if lines and lines[0].lstrip().startswith("#") and lines[0].lstrip().lstrip("#").strip().casefold() == title.casefold():
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+    return "\n".join(lines).strip()
+
+
 def executable(tool: str) -> str | None:
     if tool == 'soffice':
         from openmd.ocr.office import soffice_path
@@ -100,7 +117,9 @@ class PandocEngine(ExecutableEngine):
                 root = Path(owned_root)
                 # No filters, Lua, citations or user-selected readers are run.
                 text = run_command([command, '--sandbox', '--from=' + path.suffix[1:].lower(),
-                    '--to=gfm', '--wrap=none', str(path.resolve())], root, limits)
+                    '--to=gfm-raw_html',
+                    '--wrap=none', str(path.resolve())], root, limits)
+                text = _clean_pandoc_markdown(text, path.stem)
             return success(self.id, path, text)
         except (EngineError, OSError, UnicodeError) as exc:
             return failure(self.id, path, getattr(exc, 'code', 'document_conversion_failed'), exc)

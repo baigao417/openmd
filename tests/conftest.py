@@ -125,3 +125,13 @@ def isolated_machine(tmp_path_factory, monkeypatch):
     root = tmp_path_factory.mktemp("machine")
     _isolate_machine(monkeypatch, root)
     return root
+
+
+@pytest.fixture(autouse=True)
+def isolated_browser_registration(monkeypatch):
+    # The Windows registry is independent of HOME/OPENMD_DATA_DIR. Host tests
+    # explicitly supply temporary registrations; ordinary tests must not probe
+    # the developer's interpreter or extension copy.
+    from openmd import browser_diagnostics
+
+    monkeypatch.setattr(browser_diagnostics, "registered_manifests", lambda: {})

@@ -29,7 +29,8 @@ def engine_chain(source_format: str):
     if suffix in {'rtf', 'odt', 'odp', 'ods'}:
         return [PandocEngine(), SofficeEngine()]
     if suffix in {'doc', 'xls', 'ppt'}:
-        return [SofficeEngine()]
+        from .native import FALLBACK_FORMATS
+        return [SofficeEngine(), *([NativeEngine(suffix)] if suffix in FALLBACK_FORMATS else [])]
     if suffix in {'mobi', 'azw3', 'fb2'}:
         return [CalibreEngine()]
     if suffix == 'zip':

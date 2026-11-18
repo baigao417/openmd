@@ -14,8 +14,10 @@ from .sniff import signature, validate_document
 DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx'), 'xlsx': ('openpyxl', 'openpyxl')}
 DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
 DEPENDENCIES['msg'] = ('olefile', 'olefile')
+DEPENDENCIES['doc'] = ('olefile', 'olefile')
 # Promotion is explicit and follows a saved per-format benchmark.
 ODF_FORMATS = {'odt'}
+FALLBACK_FORMATS = {'doc'}
 PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt', 'ods', 'odp', 'fb2', 'msg'}
 
 
@@ -62,9 +64,9 @@ def convert_local(path: Path, limits: EngineLimits):
     from .native_common import Document
     from .native_office import parse_docx, parse_pptx, parse_xlsx, parse_xls
     document = Document(path, limits)
-    if path.suffix.lower() == '.msg':
-        from .native_ole import parse_msg
-        parse_msg(document)
+    if path.suffix.lower() in {'.msg', '.doc'}:
+        from .native_ole import parse_msg, parse_doc
+        {'.msg': parse_msg, '.doc': parse_doc}[path.suffix.lower()](document)
         return document.result()
     if path.suffix.lower().lstrip('.') in ODF_FORMATS:
         from .native_odf import parse

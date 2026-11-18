@@ -50,3 +50,93 @@ def parse_msg(d):
         if attachments:
             d.meta['attachments'] = len(attachments)
             d.gap('msg_attachments_not_converted')
+
+
+def parse_doc(d):
+    """Read Fib/Clx/PlcPcd per Microsoft's public MS-DOC structures.
+
+    Only the main text story and basic cell delimiters are supported. Complex
+    layout, revision selection, drawing text and header stories are not certified.
+    """
+    import struct
+    import olefile
+    with olefile.OleFileIO(d.path) as ole:
+        word = stream(ole, 'WordDocument', d.limits)
+        if len(word) < 154 or struct.unpack_from('<H', word)[0] != 0xa5ec:
+            raise EngineError('document_invalid_content')
+        flags = struct.unpack_from('<H', word, 10)[0]
+        if flags & 0x8100:
+            raise EngineError('document_encrypted')
+        # FibRgW and FibRgLw have length fields; never assume a producer's size.
+        csw = struct.unpack_from('<H', word, 32)[0]
+        cslw_offset = 34 + csw*2
+        cslw = struct.unpack_from('<H', word, cslw_offset)[0]
+        lw = cslw_offset + 2
+        if cslw < 4:
+            raise EngineError('document_invalid_content')
+        expected = struct.unpack_from('<I', word, lw+12)[0]
+        fc_array_count = lw + cslw*4
+        count = struct.unpack_from('<H', word, fc_array_count)[0]
+        pieces = []
+        if count >= 34:
+            fc, length = struct.unpack_from('<II', word, fc_array_count+2+33*8)
+            table = stream(ole, '1Table' if flags & 0x0200 else '0Table', d.limits)
+            clx = table[fc:fc+length]
+            cursor = 0
+            while cursor < len(clx) and clx[cursor] == 1:
+                size = struct.unpack_from('<H', clx, cursor+1)[0]
+                cursor += 3 + size
+            if cursor < len(clx) and clx[cursor] == 2:
+                size = struct.unpack_from('<I', clx, cursor+1)[0]
+                plc = clx[cursor+5:cursor+5+size]
+                if len(plc) != size or size < 4 or (size-4) % 12:
+                    raise EngineError('document_invalid_content')
+                n = (size-4)//12
+                cps = struct.unpack_from('<' + 'I'*(n+1), plc)
+                for index in range(n):
+                    d.limits.remaining()
+                    begin, end = cps[index:index+2]
+                    if begin >= expected:
+                        break
+                    end = min(end, expected)
+                    if end < begin:
+                        raise EngineError('document_invalid_content')
+                    fc_compressed = struct.unpack_from('<I', plc, 4*(n+1)+index*8+2)[0]
+                    compressed = bool(fc_compressed & 0x40000000)
+                    offset = fc_compressed & 0x3fffffff
+                    width = 1 if compressed else 2
+                    if compressed:
+                        offset //= 2
+                    data = word[offset:offset+(end-begin)*width]
+                    if len(data) != (end-begin)*width:
+                        raise EngineError('document_invalid_content')
+                    pieces.append(data.decode('cp1252' if compressed else 'utf-16le'))
+        if not pieces and expected:
+            begin, end = struct.unpack_from('<II', word, 24)
+            data = word[begin:end]
+            pieces.append(data.decode('utf-16le' if len(data) == expected*2 else 'cp1252'))
+        original = ''.join(pieces)
+        d.meta['text_character_coverage'] = min(1, len(original.encode('utf-16le')) / max(1, expected*2))
+        # Fields store instructions separately from displayed results.
+        value = re.sub('\x13[^\x14\x15]*(?:\x14([^\x15]*))?\x15', lambda m: m.group(1) or '', original)
+        value = re.sub(r'[\x00-\x06\x08\x0b\x0e-\x12\x16-\x1f]', '', value)
+        rows = []
+        for paragraph in value.split('\r'):
+            if '\x07' in paragraph:
+                values = paragraph.split('\x07')
+                while values and not values[-1]:
+                    values.pop()
+                if values:
+                    rows.append(values)
+            else:
+                if rows:
+                    d.table(rows)
+                    rows = []
+                d.add(paragraph)
+        if rows:
+            d.table(rows)
+        if value.strip():
+            d.gap('legacy_doc_layout_unverified')
+            d.meta['text_recall_certified_95'] = False
+            d.meta['next_action'] = '安装 LibreOffice 可获得完整转换'
+            d.gaps.append('安装 LibreOffice 可获得完整转换')

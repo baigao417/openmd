@@ -39,6 +39,11 @@ copied. These optional libraries are installed by pip and retain their licenses:
 | xlrd (github.com/python-excel/xlrd) | BSD-3-Clause | XLS saved cell values |
 | olefile (github.com/decalage2/olefile) | BSD-2-Clause | MSG/DOC/PPT local OLE streams |
 
+The original legacy Word text reader follows Microsoft's public MS-DOC
+FibBase, FibRgLw97, FibRgFcLcb97, Clx, PlcPcd and Pcd structures
+(learn.microsoft.com/openspecs/office_file_formats/ms-doc/).
+It extracts text and basic table delimiters; it does not certify full layout.
+
 | Component | License | How it arrives |
 |---|---|---|
 | opencli (`@jackwener/opencli` 2.0.3) | Apache-2.0 | Downloaded from npm on first need into `~/.openmd/tools/opencli` |

@@ -19,6 +19,7 @@ from openmd.backends.base import BackendCapability, BackendDescriptor, BackendEx
 from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
+from openmd.core.login import normalize_login_result
 from openmd.core.opencli_output import load_opencli_json
 from openmd.core.secrets import sanitize_error_summary
 from openmd.runtime.interpreters import run_interruptibly
@@ -91,7 +92,7 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
         detail = error.get("message") if isinstance(error, dict) else str(error or "")
         if _is_auth_error_code(code) or _looks_like_auth_error(detail):
-            raise AiChatError("ai_chat_not_logged_in", "平台当前未登录，未导出对话。")
+            raise AiChatError("ai_chat_not_logged_in", "平台当前未登录，未导出对话。", original_code=code or "ai_chat_not_logged_in")
         if code == "EMPTY_RESULT":
             raise AiChatError("ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
         raise AiChatError("ai_chat_detail_failed", "平台对话详情读取失败。")
@@ -135,9 +136,10 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
 
 
 class AiChatError(ValueError):
-    def __init__(self, code: str, summary: str):
+    def __init__(self, code: str, summary: str, *, original_code: str | None = None):
         super().__init__(summary)
         self.code = code
+        self.original_code = original_code or code
 
 
 class OpenCliAiChatProvider:
@@ -185,15 +187,18 @@ class OpenCliAiChatProvider:
             error = structured.get("error") if isinstance(structured, dict) else None
             error_code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
             error_message = str(error.get("message") or "") if isinstance(error, dict) else ""
-            if _is_auth_error_code(error_code) or _looks_like_auth_error(error_message) or _looks_like_auth_error(stderr):
-                return _failed(self.name, "ai_chat_not_logged_in", "平台当前未登录，未导出对话。")
+            if code == 77 or _is_auth_error_code(error_code) or (not error_code and (_looks_like_auth_error(error_message) or _looks_like_auth_error(stderr))):
+                result = _failed(self.name, error_code or ("backend_exit_77" if code == 77 else "ai_chat_not_logged_in"), "平台当前未登录，未导出对话。")
+                return normalize_login_result(result, item)
             if error_code == "EMPTY_RESULT":
                 return _failed(self.name, "ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
             return _failed(self.name, f"backend_exit_{code}", "OpenCLI conversation detail command failed.")
         try:
             turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url)
         except AiChatError as exc:
-            return _failed(self.name, exc.code, str(exc))
+            result = _failed(self.name, exc.code, str(exc))
+            result.metadata["original_error_code"] = exc.original_code
+            return normalize_login_result(result, item)
         return TranscriptResult(
             text="\n\n".join(turn.text for turn in turns) + "\n",
             status="verified",

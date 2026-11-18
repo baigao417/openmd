@@ -96,10 +96,10 @@ def test_snapshot_backend_fixtures_and_validation(tmp_path):
     article.write_text("<html><head><title>Article</title></head><body><main><h1>Article</h1><p>Visible body text.</p></main></body></html>", encoding="utf-8")
     item = ContentItem(platform="page_snapshot", input_type="single", url="https://example.org/a", source_type="article", raw_meta={"snapshot_path": str(article)})
     result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
-    assert result.status == "verified" and result.metadata["coverage"] == "visible_branch"
+    assert result.status == "verified" and result.metadata["coverage"] == "visible_only"
     document = render_markdown_document(item, result)
     text = render_document(document)
-    assert 'captured_from: "browser_snapshot"' in text and 'coverage: "visible_branch"' in text
+    assert 'captured_from: "browser_snapshot"' in text and 'coverage: "visible_only"' in text
     wall = tmp_path / "wall.html"
     wall.write_text("<html><head><title>Just a moment</title></head><body>Checking your browser</body></html>", encoding="utf-8")
     wall_item = ContentItem(platform="page_snapshot", input_type="single", url="https://example.org/pay", source_type="article", raw_meta={"snapshot_path": str(wall)})
@@ -115,7 +115,7 @@ def test_snapshot_managed_defuddle_and_explicit_fallback(monkeypatch, tmp_path):
     monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *args, **kwargs: "# Managed\n\nManaged body text.")
     managed = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
     assert managed.source_level == "third_party_extractor"
-    assert managed.metadata["coverage"] == "visible_branch"
+    assert managed.metadata["coverage"] == "visible_only"
     monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *args, **kwargs: None)
     fallback = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
     assert fallback.source_level == "partial_extraction"

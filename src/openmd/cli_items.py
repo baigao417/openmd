@@ -1,6 +1,8 @@
 """CLI items responsibility; compatibility imports resolve at call time."""
 from __future__ import annotations
 
+from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields
+
 def _process_items(
     items: list[ContentItem],
     args: argparse.Namespace,
@@ -20,9 +22,13 @@ def _process_items(
     source_level_counts: dict[str, int] = {}
     failure_code_counts: dict[str, int] = {}
     coverage = CollectionCoverage()
+    paused_count = 0
 
     for index, item in enumerate(items, start=1):
         processed_count += 1
+        if paused_login(args, item.url):
+            paused_count += 1
+            continue
         selection = registry.select_backend(
             item.platform,
             _requested_backend(item.platform, args),
@@ -97,11 +103,7 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
-        result = executor.extract(
-            item,
-            selection.chain,
-            allow_fallback=args.fallback,
-        )
+        result = extract_with_login(executor, item, selection.chain, args)
         output: OutputWriteResult | None = None
         if result.has_usable_text:
             try:
@@ -159,7 +161,7 @@ def _process_items(
             _append_guardrail_stop_entry(args, command=command, index=index, total=len(items))
             break
 
-    ok = failed_count == 0 and bool(items)
+    ok = failed_count == 0 and paused_count == 0 and bool(items)
     return CliResult(
         ok=ok,
         command=command,
@@ -172,6 +174,8 @@ def _process_items(
         source_level_counts=source_level_counts,
         failure_code_counts=failure_code_counts,
         coverage=coverage.as_dict(),
+        paused_count=paused_count,
+        **recovery_fields(args),
         message="completed" if ok else ("guardrail stopped" if processed_count < len(items) else "completed with failures"),
     )
 
@@ -181,6 +185,9 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
 
     if getattr(args, "all", False):
         return _log_all_guard(input_url, args, command=command)
+
+    if login := paused_login(args, getattr(args, "snapshot_url", None) or input_url):
+        return paused_result(args, command, login)
 
     registry = create_default_registry()
     if getattr(args, "as_snapshot", False):
@@ -194,7 +201,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             url=original_url,
             title=None,
             source_type="article",
-            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_branch"},
+            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_only"},
         )
         adapter = None
         selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)
@@ -225,7 +232,11 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
     failed_count = 0
     skipped_count = 0
 
+    paused_count = 0
     for item in items:
+        if paused_login(args, item.url):
+            paused_count += 1
+            continue
         identity = executor.resolve_item_identity(item, selection.chain)
         if not identity.ok:
             failed_count += 1
@@ -256,11 +267,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
-        result = executor.extract(
-            item,
-            selection.chain,
-            allow_fallback=args.fallback,
-        )
+        result = extract_with_login(executor, item, selection.chain, args)
         output: OutputWriteResult | None = None
         if result.has_usable_text:
             try:
@@ -285,7 +292,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         )
         _append_execution_entry(args, entry)
 
-    ok = failed_count == 0 and bool(items)
+    ok = failed_count == 0 and paused_count == 0 and bool(items)
     return CliResult(
         ok=ok,
         command=command,
@@ -294,6 +301,8 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         failed_count=failed_count,
         skipped_count=skipped_count,
         outputs=outputs,
+        paused_count=paused_count,
+        **recovery_fields(args),
         message="completed" if ok else "completed with failures",
     )
 

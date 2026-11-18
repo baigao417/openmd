@@ -137,7 +137,7 @@ def render_markdown_document(
     if item.platform == "page_snapshot":
         frontmatter.update({
             "captured_from": "browser_snapshot",
-            "coverage": "visible_branch",
+            "coverage": "visible_only",
         })
     if item.source_type == "conversation" or result.blocks:
         frontmatter.update({

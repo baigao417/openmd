@@ -19,7 +19,8 @@ from urllib.parse import urlparse
 from openmd.backends.base import BackendCapability, BackendDescriptor, BackendExtractRequest, BackendHealth
 from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
-from openmd.core.content_validation import html_to_markdown
+from openmd.core.content_validation import html_to_markdown, login_wall_reason
+from openmd.core.login import normalize_login_result
 from openmd.core.models import TranscriptResult
 from openmd.runtime.interpreters import run_interruptibly
 
@@ -73,6 +74,8 @@ class SnapshotProvider:
         except OSError:
             return _failed("snapshot_read_failed", "当前页快照无法读取。")
         title = item.title or _html_title(html) or "当前页快照"
+        if login_wall_reason(html, title):
+            return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
         markdown, used_managed = self._html_to_markdown(path, html, item.url)
         text = (markdown or "").strip()
         if text.startswith("# ") and text.splitlines()[0].strip().removeprefix("# ").strip() == title.strip():
@@ -92,7 +95,7 @@ class SnapshotProvider:
             backend=self.name,
             title=title,
             source_notes=notes,
-            metadata={"captured_from": "browser_snapshot", "coverage": "visible_branch", "snapshot_path": str(path)},
+            metadata={"captured_from": "browser_snapshot", "coverage": "visible_only", "snapshot_path": str(path)},
         )
 
     def _html_to_markdown(self, path: Path, html: str, url: str) -> tuple[str, bool]:

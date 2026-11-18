@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from openmd.core.content_validation import validate_extraction_content
+from openmd.core.content_validation import login_wall_reason, validate_extraction_content
 from openmd.core.models import TranscriptResult
 
 from .runner import ToolError, ToolRun
@@ -98,6 +98,8 @@ def read_text(capability: dict[str, Any], run: ToolRun, workdir: Path) -> Transc
     else:
         raise ToolError("tool_reader_invalid")
     text = text.strip()
+    if "web_article" in capability.get("sources", []) and login_wall_reason(text, title):
+        raise ToolError("login_wall", "A login page is not source content.")
     if len(text) < capability.get("validation", {}).get("min_chars", 1):
         raise ToolError("tool_content_empty", "Tool returned insufficient source text.")
     if len(text) < 3000 and re.search(r"(?im)^\s*(?:#\s*)?(?:just a moment[.!…]*|verify you are human|请完成验证|请先登录|访问过于频繁|安全验证)\s*$", text):

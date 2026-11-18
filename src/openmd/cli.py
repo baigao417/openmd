@@ -78,6 +78,10 @@ class CliResult:
     failure_code_counts: dict[str, int] = field(default_factory=dict)
     coverage: dict[str, object] = field(default_factory=dict)
     message: str = ""
+    paused_count: int = 0
+    error_code: str | None = None
+    login: dict[str, str] | None = None
+    next_action: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

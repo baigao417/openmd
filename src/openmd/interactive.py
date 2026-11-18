@@ -246,6 +246,12 @@ def _source_summary(stage: Path, result) -> tuple[str, list[dict[str, object]]]:
 
 
 def _failure_hint(rows: list[dict[str, object]]) -> str:
+    from openmd.core.login import login_for_url, login_hint, is_login_code
+
+    for row in reversed(rows):
+        if is_login_code(row.get("error_code")):
+            login = row.get("login") or login_for_url(str(row.get("input_url") or ""), str(row.get("platform") or ""))
+            return login_hint(login)
     codes = " ".join(str(row.get("error_code") or "") for row in rows).lower()
     if "browser_challenge_page" in codes:
         return "被站点验证页拦截，未取得目标正文；请在浏览器中确认原链接可访问后重试。"
@@ -390,7 +396,8 @@ def cmd_go(args: argparse.Namespace) -> int:
                     if retained:
                         print(f"错误记录：{retained}", file=sys.stderr)
                     if getattr(args, "json", False):
-                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None}, ensure_ascii=True))
+                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None,
+                                          **({"error_code": result.error_code, "login": result.login, "next_action": result.next_action} if result.next_action else {})}, ensure_ascii=True))
                     return 1
                 for output in result.outputs:
                     if Path(output).is_dir():

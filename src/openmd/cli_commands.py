@@ -241,6 +241,11 @@ def cmd_batch(args: argparse.Namespace) -> int:
         aggregate.item_count += result.item_count
         aggregate.success_count += result.success_count
         aggregate.failed_count += result.failed_count
+        aggregate.paused_count += result.paused_count
+        if result.next_action and aggregate.next_action is None:
+            aggregate.next_action = result.next_action
+            aggregate.login = result.login
+            aggregate.error_code = result.error_code
         aggregate.outputs.extend(result.outputs)
         for signal in result.guardrail_signals:
             if signal not in aggregate.guardrail_signals:
@@ -248,7 +253,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
         if not result.ok:
             aggregate.ok = False
             aggregate.message = "completed with failures"
-            consecutive_failures += 1
+            if not result.paused_count:
+                consecutive_failures += 1
         else:
             consecutive_failures = 0
         if _guardrail_failure_streak_reached(args, consecutive_failures):

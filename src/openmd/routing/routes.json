@@ -180,7 +180,13 @@
         "media"
       ],
       "route_source": "bilibili",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "哔哩哔哩",
+      "login_url": "https://www.bilibili.com",
+      "login_hosts": [
+        "bilibili.com",
+        "b23.tv"
+      ]
     },
     {
       "source_id": "youtube",
@@ -214,7 +220,10 @@
         "article"
       ],
       "route_source": "weixin",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "微信公众号",
+      "login_url": "https://mp.weixin.qq.com",
+      "login_hosts": []
     },
     {
       "source_id": "xiaoyuzhou",
@@ -248,7 +257,12 @@
         "media"
       ],
       "route_source": "douyin",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "抖音",
+      "login_url": "https://www.douyin.com",
+      "login_hosts": [
+        "douyin.com"
+      ]
     },
     {
       "source_id": "tiktok",
@@ -280,7 +294,13 @@
         "media"
       ],
       "route_source": "xiaohongshu",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "小红书",
+      "login_url": "https://www.xiaohongshu.com",
+      "login_hosts": [
+        "xiaohongshu.com",
+        "xhslink.com"
+      ]
     },
     {
       "source_id": "xiaohongshu_creator",
@@ -312,7 +332,12 @@
         "media"
       ],
       "route_source": "xiaoe",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "小鹅通",
+      "login_url": "https://xiaoe-tech.com",
+      "login_hosts": [
+        "xiaoe-tech.com"
+      ]
     },
     {
       "source_id": "x",
@@ -327,7 +352,12 @@
         "article"
       ],
       "route_source": "x",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "X",
+      "login_url": "https://x.com",
+      "login_hosts": [
+        "twitter.com"
+      ]
     },
     {
       "source_id": "web_article",
@@ -501,7 +531,49 @@
         "conversation"
       ],
       "route_source": "ai_chat",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "login_sites": {
+        "chatgpt": {
+          "display_name": "ChatGPT",
+          "login_url": "https://chatgpt.com"
+        },
+        "claude": {
+          "display_name": "Claude",
+          "login_url": "https://claude.ai"
+        },
+        "deepseek": {
+          "display_name": "DeepSeek",
+          "login_url": "https://chat.deepseek.com"
+        },
+        "doubao": {
+          "display_name": "豆包",
+          "login_url": "https://www.doubao.com",
+          "login_hosts": [
+            "doubao.com"
+          ]
+        },
+        "gemini": {
+          "display_name": "Gemini",
+          "login_url": "https://gemini.google.com"
+        },
+        "qwen": {
+          "display_name": "千问",
+          "login_url": "https://chat.qwen.ai",
+          "login_hosts": [
+            "qianwen.aliyun.com",
+            "www.qianwen.com",
+            "tongyi.aliyun.com"
+          ]
+        },
+        "yuanbao": {
+          "display_name": "元宝",
+          "login_url": "https://yuanbao.tencent.com"
+        },
+        "grok": {
+          "display_name": "Grok",
+          "login_url": "https://grok.com"
+        }
+      }
     }
   ]
 }

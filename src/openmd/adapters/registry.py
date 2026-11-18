@@ -27,6 +27,7 @@ OPENCLI_ADAPTER_PLATFORMS: frozenset[str] = frozenset(
         "xiaohongshu",
         "xiaoe",
         "x",
+        "ai_chat",
     }
 )
 

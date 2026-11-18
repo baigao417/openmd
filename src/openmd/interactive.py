@@ -62,6 +62,8 @@ def _authorize(args: argparse.Namespace, url: str, *, tty: bool) -> bool:
     # Open-source ease of use (user decision 2026-11-15): a non-interactive run
     # that names a destination gets the same daily gates as the terminal flow.
     # Explicit capability flags stay a narrow grant; cloud is never implied.
+    if getattr(args, "as_snapshot", False):
+        return True
     _preview(args, url)
     explicit = [gate for gate, option in _GATE_OPTIONS.items() if getattr(args, option, False)]
     if getattr(args, "enable_cloud_backends", False):
@@ -334,6 +336,11 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not url:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
+        if getattr(args, "as_snapshot", False):
+            source_url = str(getattr(args, "snapshot_url", "") or "").strip()
+            if not re.match(r"^https?://[^\s]+$", source_url):
+                print("openmd go: --as-snapshot 需要 --url <原始 http(s) URL>", file=sys.stderr)
+                return 2
         from openmd.core.input_validation import INPUT_HINT, network_preflight, valid_daily_input
 
         if not valid_daily_input(url):
@@ -347,7 +354,7 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not _authorize(args, url, tty=tty):
             _say(args, "已取消。")
             return 0
-        if args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
+        if not getattr(args, "as_snapshot", False) and args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
             failure = network_preflight(url)
             if failure:
                 print(failure, file=sys.stderr)

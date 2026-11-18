@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from .filename import short_hash
 from .execution_policy import require_matching_fingerprint
-from .models import ContentItem, TranscriptResult
+from .models import ContentItem, TranscriptResult, block_as_dict
 from .package_contract import (
     OPENMD_PACKAGE_VERSION,
     PACKAGE_SCHEMA_VERSION,
@@ -255,6 +255,23 @@ def _write_package_files(
             encoding="utf-8",
             newline="\n",
         )
+    if metadata["profile"] == "conversation" and result.blocks:
+        messages = []
+        for index, block in enumerate(result.blocks, start=1):
+            value = block_as_dict(block)
+            if value.get("type") != "turn":
+                continue
+            messages.append({
+                "id": value.get("message_id") or f"turn_{index:04d}",
+                "timestamp": value.get("time") or "unknown",
+                "speaker": value.get("role") or "unknown",
+                "text": value.get("text") or "",
+                "attachments": [],
+                "links": [],
+                "source_map": [{"target": f"index.md#turn-{index}", "source_ref": {"source_id": "src_001"}}],
+            })
+        if messages:
+            _write_json(package_path / "messages.json", {"messages": messages})
 
 
 def build_package_metadata(
@@ -334,6 +351,8 @@ def build_package_metadata(
         from .secrets import sanitize_document_metadata
 
         metadata["document_metadata"] = sanitize_document_metadata({key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata})
+    if result.blocks:
+        metadata["blocks"] = [block_as_dict(block) for block in result.blocks]
     return metadata
 
 
@@ -378,6 +397,10 @@ def render_package_index(
     title = _single_line_text(str(metadata["title"]))
     source = sources["sources"][0]
     text = sanitize_url_text(result.text.strip())
+    if profile == "conversation" and result.blocks:
+        from .renderer import render_conversation_blocks
+
+        text = render_conversation_blocks(result.blocks, source_url=item.url, platform=item.platform, exported_at=metadata["updated_at"], coverage=str(result.metadata.get("coverage") or "当前可见分支"), title=title).strip()
     if not text and result.status == "failed":
         text = sanitize_url_text(result.error_summary or "Extraction failed.")
 

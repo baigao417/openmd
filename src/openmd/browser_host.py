@@ -27,7 +27,8 @@ from openmd.runtime.interpreters import owned_popen, communicate_interruptibly, 
 from openmd.runtime.services import ensure_opencli_daemon
 
 HOST_NAME = "com.openmd.host"
-MAX_MESSAGE = 1024 * 1024
+MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
+MAX_MESSAGE = MAX_SNAPSHOT_BYTES + 2 * 1024 * 1024
 RECENT_JOBS = 8
 GO_FLAGS = ["--yes", "--enable-network-backends", "--enable-browser-backends", "--enable-media-download", "--enable-asr", "--json"]
 
@@ -201,6 +202,48 @@ def start_job(url: object, save_to: object = None, *, video: object = None, spaw
     return status
 
 
+def start_snapshot_job(
+    html: object,
+    url: object,
+    title: object = None,
+    save_to: object = None,
+    *,
+    spawn=subprocess.Popen,
+) -> dict[str, Any]:
+    """Queue one user initiated current-page DOM snapshot without browser storage."""
+    source_url = _validate_url(url)
+    if not isinstance(html, str):
+        raise ValueError("invalid_snapshot_html")
+    payload = html.encode("utf-8")
+    if not payload:
+        raise ValueError("empty_snapshot_html")
+    if len(payload) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("snapshot_too_large")
+    destination = _validate_destination(save_to)
+    if title is not None and (not isinstance(title, str) or len(title) > 1000):
+        raise ValueError("invalid_snapshot_title")
+    job_id = uuid.uuid4().hex
+    job_dir = jobs_root() / job_id
+    job_dir.mkdir(parents=True, exist_ok=False)
+    snapshot_path = job_dir / "snapshot.html"
+    snapshot_path.write_bytes(payload)
+    status = {
+        "id": job_id,
+        "state": "queued",
+        "url": source_url,
+        "title": str(title or ""),
+        "snapshot_path": str(snapshot_path),
+        "save_to": str(destination),
+        "created": time.time(),
+        "seq": _next_seq(),
+        "attempts": 0,
+        "snapshot": True,
+    }
+    _write_status(job_dir, status)
+    _spawn_runner(spawn)
+    return status
+
+
 def start_batch(urls: object, save_to: object = None, *, video: object = None, spawn=subprocess.Popen) -> dict[str, Any]:
     """Queue several links; they run one after another so ASR never overloads the GPU."""
     if not isinstance(urls, list) or not urls:
@@ -330,7 +373,10 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
     status.update(state="running", started=time.time(), pid=os.getpid(), attempts=int(status.get("attempts", 0)) + 1)
     status.pop("note", None)
     _write_status(job_dir, status)
-    command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+    if status.get("snapshot"):
+        command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["snapshot_path"], "--as-snapshot", "--url", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+    else:
+        command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
     try:
         if runner is None:
             done = _run_openmd(command, job_dir, status)
@@ -353,6 +399,13 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
     status.pop("pid", None)
     status.pop("child_pid", None)
     _write_status(job_dir, status)
+    if status.get("snapshot"):
+        try:
+            snapshot_path = Path(str(status.get("snapshot_path") or "")).resolve()
+            if snapshot_path.parent == job_dir.resolve() and snapshot_path.name == "snapshot.html":
+                snapshot_path.unlink(missing_ok=True)
+        except OSError:
+            pass
     return status
 
 
@@ -433,6 +486,8 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "version": 1, "save_to": str(default_save_directory())}
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
+        if kind == "save_snapshot":
+            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"))}
         if kind == "save_many":
             return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"))}
         if kind == "status":

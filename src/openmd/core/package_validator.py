@@ -153,6 +153,33 @@ def _validate_metadata(metadata: dict[str, Any], errors: list[str]) -> None:
     if not isinstance(metadata.get("backend"), dict):
         errors.append("metadata.json backend must be an object")
     _validate_extraction_components(metadata, errors)
+    if "blocks" in metadata:
+        _validate_blocks(metadata.get("blocks"), errors)
+
+
+def _validate_blocks(blocks: Any, errors: list[str]) -> None:
+    if not isinstance(blocks, list):
+        errors.append("metadata.json blocks must be an array")
+        return
+    for index, block in enumerate(blocks):
+        label = f"metadata.json blocks[{index}]"
+        if not isinstance(block, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        kind = block.get("type")
+        if kind == "turn":
+            for field_name in ("role", "text"):
+                if not isinstance(block.get(field_name), str):
+                    errors.append(f"{label}.{field_name} must be a string")
+        elif kind == "cue":
+            for field_name in ("start", "end", "text"):
+                if field_name not in block:
+                    errors.append(f"{label} missing required field: {field_name}")
+        elif kind == "table":
+            if not isinstance(block.get("rows"), list):
+                errors.append(f"{label}.rows must be an array")
+        else:
+            errors.append(f"{label}.type is not allowed")
 
 
 def _validate_extraction_components(metadata: dict[str, Any], errors: list[str]) -> None:

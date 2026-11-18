@@ -21,6 +21,8 @@ Generated from bundled cards and routes, version `2026-11-10.1`.
 | generic_media | transcript | asr.fallback |
 | pdf | content | pdf.markitdown → pdf.textlayer → ocr.chain |
 | screenshot | content | ocr.chain → ocr.rapidocr → ocr.tesseract |
+| page_snapshot | content | page_snapshot.defuddle |
+| ai_chat | content | opencli.chatgpt.detail → opencli.deepseek.detail → opencli.claude.detail → opencli.doubao.detail → opencli.gemini.detail → opencli.qwen.detail → opencli.yuanbao.detail → opencli.grok.detail |
 
 Tools run only with the gates declared in their cards. Media steps require local ASR before producing text.
 

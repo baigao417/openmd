@@ -177,32 +177,49 @@ def _process_items(
 
 
 def _process_input(input_url: str, args: argparse.Namespace, *, command: str) -> CliResult:
-    from .cli import CliResult, OutputWriteResult, PackageValidationError, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
+    from .cli import CliResult, OutputWriteResult, PackageValidationError, Path, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
 
     if getattr(args, "all", False):
         return _log_all_guard(input_url, args, command=command)
 
     registry = create_default_registry()
-    adapter = registry.adapter_for(input_url)
-    selection = registry.select_backend(
-        adapter.id,
-        _requested_backend(adapter.id, args),
-        allow_fallback=args.fallback,
-    )
+    if getattr(args, "as_snapshot", False):
+        from openmd.core.models import ContentItem
+
+        snapshot_path = Path(input_url).expanduser().resolve()
+        original_url = str(getattr(args, "snapshot_url", None) or "https://snapshot.invalid/local")
+        item = ContentItem(
+            platform="page_snapshot",
+            input_type="single",
+            url=original_url,
+            title=None,
+            source_type="article",
+            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_only"},
+        )
+        adapter = None
+        selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)
+        items = [item]
+    else:
+        adapter = registry.adapter_for(input_url)
+        selection = registry.select_backend(
+            adapter.id,
+            _requested_backend(adapter.id, args),
+            allow_fallback=args.fallback,
+        )
+        items = [
+            apply_platform_extraction_contract(item)
+            for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
+        ]
     if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
         from openmd.runtime.managed_tools import ensure_opencli
 
         # One `pip install openmd-cli` is enough: fetch the pinned opencli on first need.
         ensure_opencli()
-    items = [
-        apply_platform_extraction_contract(item)
-        for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
-    ]
     if command == "ingest":
         items = _prepare_compact_collection(args, items)
     elif command == "batch":
         _register_resolved_batch_items(args, input_url, items)
-    executor = _build_backend_executor(args, platform=adapter.id)
+    executor = _build_backend_executor(args, platform="page_snapshot" if getattr(args, "as_snapshot", False) else adapter.id)
     outputs: list[str] = []
     success_count = 0
     failed_count = 0

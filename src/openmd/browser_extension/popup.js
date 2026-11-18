@@ -48,6 +48,19 @@ async function init() {
     li.append(button);
     list.append(li);
   }
+  const snapshot = $("snapshot");
+  snapshot.disabled = !tab?.id || !tabs.length;
+  snapshot.onclick = async () => {
+    snapshot.disabled = true;
+    const reply = await chrome.runtime.sendMessage({ cmd: "snapshot", locationId: settings.defaultId });
+    if (reply?.ok) {
+      message(`正在把当前页快照保存到「${reply.location}」`, true);
+      setTimeout(() => window.close(), 900);
+    } else {
+      snapshot.disabled = false;
+      message("没能保存当前页，详情见通知。");
+    }
+  };
 }
 
 $("settings").addEventListener("click", (event) => {

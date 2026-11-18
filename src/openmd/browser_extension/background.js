@@ -109,6 +109,33 @@ async function saveMany(items, locationId, video) {
   return { ok: true, count: jobs.length, location: location.name };
 }
 
+async function saveSnapshot(tabId, locationId) {
+  const location = await locationFor(locationId);
+  if (!location) {
+    chrome.runtime.openOptionsPage();
+    return fail("先设置一个保存位置", "已打开设置页。");
+  }
+  try {
+    const [{ result } = {}] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => ({
+        html: document.documentElement?.outerHTML || "",
+        url: location.href,
+        title: document.title || location.href,
+      }),
+    });
+    if (!result?.html || !/^https?:\/\//.test(result.url || "")) {
+      return fail("没法保存当前页", "当前页面不是可保存的 http(s) 页面。");
+    }
+    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path });
+    if (!reply.ok) return fail("没能保存当前页", reply.error);
+    await track([reply.job], reply.job.id, location.name);
+    return { ok: true, count: 1, location: location.name };
+  } catch (err) {
+    return fail("读不到这个页面", String(err?.message || err));
+  }
+}
+
 async function highlightedTabs(tab) {
   const tabs = await chrome.tabs.query({ highlighted: true, windowId: tab.windowId });
   // Clicking the icon on a tab outside the highlighted set saves just that tab.
@@ -222,6 +249,7 @@ chrome.storage.onChanged.addListener((changes) => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.cmd === "save") { saveMany(msg.items, msg.locationId).then(reply); return true; }
+  if (msg?.cmd === "snapshot") { chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => saveSnapshot(tab?.id, msg.locationId)).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
   return false;
 });

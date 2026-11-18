@@ -141,6 +141,27 @@
         "ocr.rapidocr",
         "ocr.tesseract"
       ]
+    },
+    {
+      "source": "page_snapshot",
+      "capability": "content",
+      "chain": [
+        "page_snapshot.defuddle"
+      ]
+    },
+    {
+      "source": "ai_chat",
+      "capability": "content",
+      "chain": [
+        "opencli.chatgpt.detail",
+        "opencli.deepseek.detail",
+        "opencli.claude.detail",
+        "opencli.doubao.detail",
+        "opencli.gemini.detail",
+        "opencli.qwen.detail",
+        "opencli.yuanbao.detail",
+        "opencli.grok.detail"
+      ]
     }
   ],
   "capabilities": [
@@ -453,6 +474,34 @@
       ],
       "route_source": "qq_group",
       "runtime_binding": null
+    },
+    {
+      "source_id": "page_snapshot",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article"
+      ],
+      "route_source": "page_snapshot",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "ai_chat",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "conversation"
+      ],
+      "route_source": "ai_chat",
+      "runtime_binding": "route"
     }
   ]
 }

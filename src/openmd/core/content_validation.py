@@ -274,7 +274,7 @@ def validate_extraction_content(
         return _reject_content(result, "content_metadata_only", "The backend produced metadata rather than the requested source content.")
     if metadata.get("page_shell") is True or metadata.get("content_kind") in {"shell", "navigation"}:
         return _reject_content(result, "content_shell", "The backend produced a page shell rather than the requested source content.")
-    if item is not None and item.platform == "web_article" and navigation_shell_reason(result.text):
+    if item is not None and item.platform in {"web_article", "page_snapshot"} and navigation_shell_reason(result.text):
         return _reject_content(result, "content_navigation_shell", "页面只有导航或图片，没有正文；链接可能不存在或需要登录。")
     if not result.text.strip():
         # OCR document routes intentionally preserve terminal gaps for review.

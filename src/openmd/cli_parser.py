@@ -23,6 +23,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
+    from .mcp_server import cmd_mcp
+    mcp = subparsers.add_parser("mcp", description="Run the optional stdio MCP server")
+    mcp.set_defaults(func=cmd_mcp)
+
     from openmd.runtime.recommendations import cmd_models_install, matrix
     models = subparsers.add_parser('models', description='Local model installation plans; never downloads')
     model_commands = models.add_subparsers(dest='models_command', required=True)

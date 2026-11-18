@@ -95,7 +95,7 @@ class OutputWriteResult:
     package_operation: str | None = None
 
 
-ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr")
+ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr", "mcp")
 GO_DAILY_OPTIONS = {"help", "url", "save_to", "video", "raw", "json", "verbose"}
 
 
@@ -259,13 +259,15 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_interactive():
             actual = ["go"]
-    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "asr", "opencli", "models"} and not actual[0].startswith("-"):
+    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "asr", "opencli", "models", "mcp"} and not actual[0].startswith("-"):
         actual.insert(0, "go")
     parser = build_parser()
     try:
         args = parser.parse_args(actual)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 1
+    if getattr(args, "command", None) == "mcp":
+        return args.func(args)  # stdio server startup must not mutate tool/cache state
     from openmd.runtime.managed_tools import activate as activate_managed_tools
 
     if getattr(args, "command", None) != "doctor":

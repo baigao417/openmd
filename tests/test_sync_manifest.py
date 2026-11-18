@@ -88,6 +88,25 @@ def test_sync_writer_reports_operations_and_never_overwrites_edited_update(tmp_p
     assert receipt == {'operation': 'conflict_kept_user_edit'}
 
 
+def test_sync_manifest_append_keeps_one_document_and_preserves_previous_content(tmp_path):
+    from openmd.core.sync_manifest import SyncManifest
+    manifest = SyncManifest(tmp_path)
+    first = manifest.write(
+        'wechat_chat:fixture', 'wechat_chat/title.md',
+        '---\ntitle: T\n---\n\n# T\n\n### A\n\nold\n\n## Source\n\nfooter\n',
+    )
+    second = manifest.write(
+        'wechat_chat:fixture', 'wechat_chat/title.md',
+        '---\ntitle: T\n---\n\n# T\n\n### B\n\nnew\n\n## Source\n\nfooter\n',
+        append=True, cursor='m2',
+    )
+    text = second.path.read_text(encoding='utf-8')
+    assert second.operation == 'updated'
+    assert second.path == first.path
+    assert 'old' in text and 'new' in text
+    assert text.count('## Source') == 1
+
+
 def test_syncable_package_explicitly_rejected_before_stale_skip(tmp_path):
     import argparse
     import pytest

@@ -103,6 +103,8 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
+        from .core.sync_manifest import prepare_sync_item
+        item = prepare_sync_item(item, args.out)
         item_selector = getattr(registry, "select_backend_for_item", None)
         item_selection = (
             item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
@@ -114,7 +116,7 @@ def _process_items(
 
         result = check_completeness(item, result)
         output: OutputWriteResult | None = None
-        if result.has_usable_text:
+        if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
                 output = _write_extraction_output(item, result, args, execution_fingerprint=fingerprint)
             except PackageValidationError as exc:
@@ -278,6 +280,8 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
+        from .core.sync_manifest import prepare_sync_item
+        item = prepare_sync_item(item, args.out)
         item_selector = getattr(registry, "select_backend_for_item", None)
         item_selection = (
             item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
@@ -290,7 +294,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         result = check_completeness(item, result)
         last_result = result
         output: OutputWriteResult | None = None
-        if result.has_usable_text:
+        if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
                 output = _write_extraction_output(item, result, args, execution_fingerprint=fingerprint)
             except PackageValidationError as exc:

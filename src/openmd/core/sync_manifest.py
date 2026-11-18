@@ -7,7 +7,7 @@ import os
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,6 +42,18 @@ def source_id_for(item) -> str:
 
         return "chatgpt:" + (conversation_id_for_url("chatgpt", item.url) or identifier)
     return f"{item.platform}:{identifier}"
+
+
+def prepare_sync_item(item, output_dir):
+    """Supply a provider's persisted cursor without changing explicit inputs."""
+    if not item.raw_meta.get("sync_cursor_enabled") or not is_syncable(item):
+        return item
+    manifest = SyncManifest(output_dir)
+    entry = manifest.read(source_id_for(item))
+    if not entry or not manifest._target(entry["path"]).is_file():
+        return item
+    return replace(item, raw_meta={**item.raw_meta, "sync_cursor": entry.get("cursor"),
+                                   "sync_source_id": entry["source_id"]})
 
 
 def _sha(content: bytes) -> str:
@@ -145,7 +157,16 @@ class SyncManifest:
             counter += 1
         return candidate
 
-    def write(self, source_id: str, relative_path: str, content: str, *, cursor=None, content_identity: str | None = None) -> SyncWriteResult:
+    def read(self, source_id: str):
+        if not self.path.exists():
+            return None
+        with _file_lock(self.path.with_suffix(".lock")):
+            entries = self._load()["entries"]
+            return next((dict(entry) for entry in entries.values()
+                         if entry["source_id"] == source_id or source_id in entry.get("aliases", [])), None)
+
+    def write(self, source_id: str, relative_path: str, content: str, *, cursor=None, append: bool = False,
+              aliases=(), no_delta: bool = False, content_identity: str | None = None) -> SyncWriteResult:
         proposed = self._target(relative_path)
         encoded = content.encode("utf-8")
         digest = _sha(encoded)
@@ -153,17 +174,28 @@ class SyncManifest:
             data = self._load()
             entry = data["entries"].get(source_id)
             target = self._target(entry["path"]) if entry else self._free_target(proposed)
+            if no_delta:
+                if not entry or not target.is_file():
+                    raise ValueError("sync_no_delta_without_artifact")
+                return SyncWriteResult(target, "unchanged")
             operation = "created"
             if entry:
                 if not target.exists():
                     operation = "restored_missing"
                 elif not target.is_file() or _sha(target.read_bytes()) != entry["content_sha256"]:
+                    if append and target.is_file():
+                        encoded = _append_markdown(target.read_text(encoding="utf-8"), content).encode("utf-8")
                     update = self._free_target(target.with_name(f"{target.stem}.openmd-update.md"), encoded)
                     if not update.exists():
                         _atomic_write(update, encoded)
                     # Retain the canonical path and last canonical hash: future
                     # runs must continue to protect the user's edited original.
                     return SyncWriteResult(update, "conflict_kept_user_edit")
+                elif append:
+                    content = _append_markdown(target.read_text(encoding="utf-8"), content)
+                    encoded = content.encode("utf-8")
+                    digest = _sha(encoded)
+                    operation = "updated"
                 elif digest == entry["content_sha256"] or (content_identity is not None and content_identity == entry.get("content_identity")):
                     operation = "unchanged"
                     digest = entry["content_sha256"]
@@ -174,8 +206,35 @@ class SyncManifest:
             data["entries"][source_id] = {
                 "source_id": source_id, "path": target.relative_to(self.root).as_posix(),
                 "content_sha256": digest, "cursor": cursor,
+                "aliases": sorted(set((entry or {}).get("aliases", [])) | set(aliases)),
                 "last_synced": datetime.now(timezone.utc).isoformat(), "schema": SCHEMA,
                 **({"content_identity": content_identity} if content_identity is not None else {}),
             }
             _atomic_write(self.path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
             return SyncWriteResult(target, operation)
+
+
+def _append_markdown(existing: str, incoming: str) -> str:
+    """Append conversation body while keeping one front matter/source footer."""
+    if not existing.strip():
+        return incoming
+    # The conversation renderer uses this footer; ## Source is format-only.
+    marker = "\n---\n\n来源说明："
+    old_footer, new_footer = existing.rfind(marker), incoming.rfind(marker)
+    heading_end = incoming.find("\n\n", incoming.find("\n# ") + 1)
+    if old_footer >= 0 and new_footer >= 0 and heading_end >= 0:
+        return existing[:old_footer].rstrip() + "\n\n" + incoming[heading_end + 2:new_footer].strip() + incoming[new_footer:]
+    old_source = existing.find("\n## Source\n")
+    new_source = incoming.find("\n## Source\n")
+    if old_source < 0 or new_source < 0:
+        return existing.rstrip() + "\n\n" + incoming.lstrip()
+    old_body = existing[:old_source]
+    new_body = incoming[:new_source]
+    # Drop the incoming document heading/front matter; retain only new turns.
+    heading = new_body.find("\n# ")
+    if heading >= 0:
+        new_body = new_body[heading:]
+    first_break = new_body.find("\n\n")
+    if first_break >= 0:
+        new_body = new_body[first_break + 2:]
+    return old_body.rstrip() + "\n\n" + new_body.strip() + incoming[new_source:]

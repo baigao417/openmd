@@ -140,3 +140,45 @@ def test_pdf_frontmatter_downgrade_reports_output_pages(tmp_path):
     line = next(line for line in path.read_text(encoding='utf-8').splitlines() if line.startswith('completeness:'))
     assert 'partial' in line and '输出 1/3 页' in line
     assert '{' not in line and '\\"' not in line
+
+
+def test_conversation_stats_count_downgrades_short_export():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('wechat_chat', 'collection', 'wechat:fixture', source_type='conversation')
+    result = TranscriptResult(
+        text='body', status='verified', source_level='manual_export', backend='wx-cli.export',
+        metadata={'exported_count': 2, 'stats_count': 3, 'limit': 500},
+    )
+    checked = check_completeness(item, result)
+    assert checked.status == 'partial'
+    assert checked.metadata['completeness']['checks'][0]['reason'] == 'export_count_below_stats'
+
+
+def test_conversation_limit_hit_downgrades_verified_export():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('wechat_chat', 'collection', 'wechat:fixture', source_type='conversation')
+    result = TranscriptResult(
+        text='body', status='verified', source_level='manual_export', backend='wx-cli.export',
+        metadata={'exported_count': 3, 'stats_count': 3, 'limit': 3, 'limit_hit': True},
+    )
+    assert check_completeness(item, result).status == 'partial'
+
+
+def test_conversation_checks_combine_turn_and_count_evidence():
+    # A conversation carries both a page-turn check and an export/stats count
+    # check; usually only one has evidence. One proven check with the other
+    # unknown is still independently complete; any proven gap still downgrades.
+    from openmd.core.completeness import check_completeness
+    from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
+    item = ContentItem('ai_chat', 'single', 'https://grok.com/c/fixture', source_type='conversation')
+    result = TranscriptResult('body', 'verified', 'browser_rendered', 'fixture',
+                              blocks=[TurnBlock('user', 'q'), TurnBlock('assistant', 'a')])
+    ok = check_completeness(item, result, signals={'conversation_turn_count': 2})
+    assert ok.status == 'verified'
+    assert ok.metadata['completeness']['status'] == 'ok'
+    short = replace(result, metadata={'exported_count': 2, 'stats_count': 5})
+    gap = check_completeness(item, short, signals={'conversation_turn_count': 2})
+    assert gap.status == 'partial'
+    assert gap.metadata['completeness']['status'] == 'downgrade'
+    neither = check_completeness(item, result, signals={})
+    assert neither.metadata['completeness']['status'] == 'unknown'

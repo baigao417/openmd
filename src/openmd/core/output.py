@@ -60,13 +60,24 @@ def write_item_result(
         )
     content = render_document(document, raw=raw)
     if syncable:
+        append = bool(result.metadata.get("sync_append"))
         identity = None
-        if item.source_type == "conversation":
+        if item.source_type == "conversation" and not append:
             import hashlib
 
             stable = render_document(render_markdown_document(item, result, captured_at="export-time"), raw=raw)
             identity = hashlib.sha256(stable.encode("utf-8")).hexdigest()
-        synced = SyncManifest(out_dir).write(source_id_for(item), output_path.relative_to(Path(out_dir)).as_posix(), content, content_identity=identity)
+        manifest_source_id = result.metadata.get("source_id") or source_id_for(item)
+        synced = SyncManifest(out_dir).write(
+            str(manifest_source_id),
+            output_path.relative_to(Path(out_dir)).as_posix(),
+            content,
+            append=append,
+            cursor=result.metadata.get("cursor"),
+            aliases=(source_id_for(item),),
+            no_delta=bool(result.metadata.get("sync_no_delta")),
+            content_identity=identity,
+        )
         if sync_receipt is not None:
             sync_receipt["operation"] = synced.operation
         return synced.path

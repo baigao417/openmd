@@ -73,6 +73,27 @@ pip install "openmd-cli[asr]"
 
 如果你想把 Openmd 接入自己的 Agent 或自动化工具链，可以阅读 [工具集成指南](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)。
 
+## Agent 的 MCP 接口
+
+有 shell 时用 CLI + SKILL.md；需要工具发现、类型化参数与客户端逐工具授权时用 MCP。安装可选 extra，再启动 stdio 服务。Claude Code：
+
+```bash
+pip install "openmd-cli[mcp]"
+claude mcp add --transport stdio openmd -- openmd mcp
+```
+
+Claude Desktop：在 MCP 配置中加入以下内容；必要时把可执行文件改成绝对路径。
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+四个工具为 `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor`。保存立即返回任务 ID，再轮询 `openmd_job`；`include_content=true` 可返回最多 32000 字符正文。输出目录必须显式提供绝对路径。HTML 快照接收字符串或绝对文件路径，UTF-8 上限 2 MiB。五个能力参数默认关闭，需显式开启 `network`、`browser`、`media`、`asr` 或 `cloud`。复用 CLI 的能力开关；MCP 不因给出输出目录推断日常 CLI 的自动授权，也不记住该目录。stdio 配置需要客户端可启动本地进程；远程 connector 需要另接传输桥。
+
 ---
 
 ## 为什么适合作为 AI 与知识库的前置入口

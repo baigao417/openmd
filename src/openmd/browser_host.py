@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import uuid
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -31,6 +32,7 @@ PROTOCOL_VERSION = 1
 MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
 MAX_MESSAGE = MAX_SNAPSHOT_BYTES + 2 * 1024 * 1024
 RECENT_JOBS = 8
+JOB_NAMESPACE = ContextVar("openmd_job_namespace", default="browser-jobs")
 GO_FLAGS = ["--yes", "--enable-network-backends", "--enable-browser-backends", "--enable-media-download", "--enable-asr", "--json"]
 
 
@@ -59,7 +61,7 @@ def write_message(stream, value: dict[str, Any]) -> None:
 # ---------------------------------------------------------------- jobs
 
 def jobs_root() -> Path:
-    return data_directory() / "browser-jobs"
+    return data_directory() / JOB_NAMESPACE.get()
 
 
 def default_save_directory() -> Path:
@@ -349,7 +351,7 @@ def _child_env() -> dict[str, str]:
 def _run_openmd(command: list[str], job_dir: Path, status: dict[str, Any]) -> subprocess.CompletedProcess:
     # This runner is outside the per-job owner. A daemon started by the child
     # controller would inherit that outer Job even if detached from its own Job.
-    if "--enable-browser-backends" in command and any(command[index:index + 2] == ["-m", "openmd"] for index in range(len(command) - 1)):
+    if (status.get("mcp") and status.get("permissions", {}).get("browser") is True) or ("--enable-browser-backends" in command and any(command[index:index + 2] == ["-m", "openmd"] for index in range(len(command) - 1))):
         ensure_opencli_daemon(["opencli", "browser-job-read"], env=_child_env(), cwd=str(job_dir))
     process = owned_popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                text=True, encoding="utf-8", errors="replace", cwd=str(job_dir), env=_child_env(), **process_options())
@@ -374,7 +376,10 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
     status.update(state="running", started=time.time(), pid=os.getpid(), attempts=int(status.get("attempts", 0)) + 1)
     status.pop("note", None)
     _write_status(job_dir, status)
-    if status.get("snapshot"):
+    if status.get("mcp"):
+        from openmd.mcp_jobs import command as mcp_command
+        command = mcp_command(status)
+    elif status.get("snapshot"):
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["snapshot_path"], "--as-snapshot", "--url", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
     else:
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
@@ -388,12 +393,17 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
             return current
         lines = [line for line in (done.stdout or "").splitlines() if line.strip().startswith("{")]
         result = json.loads(lines[-1]) if lines else {}
+        if status.get("mcp"):
+            from openmd.mcp_jobs import receipt
+            status["receipt"] = receipt(result)
         if done.returncode == 0 and result.get("ok"):
             saved = result.get("saved_to") or ""
             status.update(state="done", saved_to=saved, title=Path(saved).stem if saved else "")
         else:
             hint = [line for line in (done.stderr or "").splitlines() if line.strip()]
             status.update(state="failed", error=sanitize_error_summary(result.get("error") or (hint[0] if hint else f"exit {done.returncode}")))
+            if status.get("mcp"):
+                status["error"] = "extraction_failed"
             if result.get("error_code") == "login_required":
                 from openmd.core.login import login_for_url, login_hint
 
@@ -403,7 +413,7 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
                 status.update(error_code="login_required", login=login, error=login_hint(login))
                 _pause_login_jobs(status, login)
     except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
-        status.update(state="failed", error=sanitize_error_summary(exc) or "job_failed")
+        status.update(state="failed", error="job_failed" if status.get("mcp") else sanitize_error_summary(exc) or "job_failed")
     status["finished"] = time.time()
     status.pop("pid", None)
     status.pop("child_pid", None)

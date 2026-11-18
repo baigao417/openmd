@@ -73,6 +73,27 @@ pip install "openmd-cli[asr]"
 
 Openmd を自分のエージェントや自動化ツールチェーンに組み込みたい場合は、[ツール連携ガイド](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)をご覧ください。
 
+## エージェント向け MCP
+
+シェルが使える場合は CLI + SKILL.md、ツール検出、型付き引数、クライアント側のツール別承認には MCP を使います。オプション extra をインストールして stdio サーバーを起動します。Claude Code：
+
+```bash
+pip install "openmd-cli[mcp]"
+claude mcp add --transport stdio openmd -- openmd mcp
+```
+
+Claude Desktop：MCP 設定に以下を追加します。必要に応じて実行ファイルを絶対パスにします。
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+ツールは `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor` の4つです。保存は直ちにジョブ ID を返し、`openmd_job` で確認します。`include_content=true` は最大32000文字の本文を返します。出力先は明示的な絶対パスが必要です。HTML は文字列または絶対ファイルパスで指定し、UTF-8で最大2 MiBです。5つの能力は初期状態では無効です。`network`、`browser`、`media`、`asr`、`cloud` を明示的に許可します。CLI と同じ能力フラグを使いますが、MCP は出力先から日常 CLI の自動許可を推定せず、保存先も記憶しません。stdio はローカルプロセスを起動できるクライアント用です。リモート connector には別途トランスポートブリッジが必要です。
+
 ---
 
 ## AI とナレッジベースの入口に向いている理由

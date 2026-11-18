@@ -33,6 +33,7 @@ Issues = "https://github.com/baigao417/openmd/issues"
 Changelog = "https://github.com/baigao417/openmd/commits/main"
 
 [project.optional-dependencies]
+mcp = ["mcp==1.26.0"]
 asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7", "psutil>=5.9"]
 web = []  # kept for compatibility; trafilatura is now a core dependency
 pandoc = ["pypandoc-binary>=1.14,<2"]  # optional local structure enhancement

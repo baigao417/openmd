@@ -73,6 +73,27 @@ pip install "openmd-cli[asr]"
 
 Openmd를 여러분의 에이전트나 자동화 도구 체인에 연결하려면 [도구 연동 가이드](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)를 참고하세요.
 
+## 에이전트용 MCP
+
+셸을 사용할 수 있으면 CLI + SKILL.md를, 도구 검색과 형식이 지정된 인수 및 클라이언트의 도구별 승인이 필요하면 MCP를 사용하세요. 선택 extra를 설치한 뒤 stdio 서버를 시작합니다. Claude Code:
+
+```bash
+pip install "openmd-cli[mcp]"
+claude mcp add --transport stdio openmd -- openmd mcp
+```
+
+Claude Desktop: MCP 설정에 다음을 추가하세요. 필요한 경우 실행 파일을 절대 경로로 지정하세요.
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+도구는 `openmd_save`, `openmd_save_page`, `openmd_job`, `openmd_doctor` 네 개입니다. 저장은 즉시 작업 ID를 반환하며 `openmd_job`으로 조회합니다. `include_content=true`는 최대 32000자의 본문을 반환합니다. 출력 폴더는 절대 경로로 명시해야 합니다. HTML 스냅샷은 문자열 또는 절대 파일 경로를 받으며 UTF-8 기준 최대 2 MiB입니다. 다섯 권한은 기본적으로 꺼져 있습니다. `network`, `browser`, `media`, `asr`, `cloud`를 명시적으로 허용하세요. CLI의 권한 플래그를 재사용하지만 MCP는 출력 폴더에서 일상 CLI의 자동 권한을 추론하지 않고 저장 위치도 기억하지 않습니다. stdio는 로컬 프로세스를 시작할 수 있는 클라이언트용입니다. 원격 connector에는 별도의 전송 브리지가 필요합니다.
+
 ---
 
 ## AI와 지식 베이스의 입구로 적합한 이유

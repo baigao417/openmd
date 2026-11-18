@@ -1,71 +1,31 @@
 """ChatGPT official conversation trees, projected along current_node only."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
 from pathlib import Path
-import zipfile
 
 from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
-
-MAX_EXPORT_BYTES = 100 * 1024 * 1024
+from .common import (MAX_EXPORT_BYTES, conversation_id, is_export, iso_time, read_export,
+                     select_conversations, timestamp, write_import)
 
 
 def _read_export(path: Path):
-    if zipfile.is_zipfile(path):
-        with zipfile.ZipFile(path) as archive:
-            members = [i for i in archive.infolist() if i.filename == "conversations.json"]
-            if len(members) != 1 or members[0].file_size > MAX_EXPORT_BYTES:
-                raise ValueError("chatgpt_export_missing_or_oversized_conversations")
-            # Never unpack user-controlled paths, or read unrelated account files.
-            with archive.open(members[0]) as stream:
-                data = stream.read(MAX_EXPORT_BYTES + 1)
-    else:
-        with path.open("rb") as stream:
-            data = stream.read(MAX_EXPORT_BYTES + 1)
-    if len(data) > MAX_EXPORT_BYTES:
-        raise ValueError("chatgpt_export_too_large")
-    try:
-        rows = json.loads(data.decode("utf-8-sig"))
-    except (ValueError, UnicodeError) as exc:
-        raise ValueError("chatgpt_export_invalid_json") from exc
+    rows = read_export(path, provider="chatgpt", max_bytes=MAX_EXPORT_BYTES)
     if not isinstance(rows, list) or not all(isinstance(r, dict) and isinstance(r.get("mapping"), dict) for r in rows):
         raise ValueError("chatgpt_export_invalid_structure")
     return rows
 
 
 def is_chatgpt_export(value: str) -> bool:
-    path = Path(value).expanduser()
-    if path.suffix.lower() not in {".zip", ".json"} or not path.is_file():
-        return False
-    try:
-        _read_export(path)
-        return True
-    except (OSError, ValueError, zipfile.BadZipFile):
-        return False
+    return is_export(value, _read_export)
 
 
 def _timestamp(value) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (ValueError, TypeError):
-        try:
-            stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-            return stamp.replace(tzinfo=timezone.utc).timestamp() if stamp.tzinfo is None else stamp.timestamp()
-        except (ValueError, TypeError, OverflowError) as exc:
-            raise ValueError("chatgpt_export_invalid_time") from exc
+    return timestamp(value, provider="chatgpt")
 
 
 def _iso_time(value) -> str | None:
-    stamp = _timestamp(value)
-    if stamp is None:
-        return None
-    try:
-        return datetime.fromtimestamp(stamp, timezone.utc).isoformat()
-    except (ValueError, OverflowError, OSError) as exc:
-        raise ValueError("chatgpt_export_invalid_time") from exc
+    return iso_time(value, provider="chatgpt")
 
 
 def _content_text(content: dict) -> str:
@@ -90,16 +50,9 @@ def _content_text(content: dict) -> str:
 
 def load_conversations(path, *, title: str | None = None, since=None, until=None):
     rows = _read_export(Path(path).expanduser())
-    lower, upper = _timestamp(since), _timestamp(until)
-    if lower is not None and upper is not None and lower > upper:
-        raise ValueError("chatgpt_export_invalid_time_range")
     output = []
-    for row in rows:
-        if title and title.casefold() not in str(row.get("title") or "").casefold():
-            continue
-        stamp = _timestamp(row.get("create_time"))
-        if (lower is not None and (stamp is None or stamp < lower)) or (upper is not None and (stamp is None or stamp > upper)):
-            continue
+    for row in select_conversations(rows, provider="chatgpt", title_field="title", time_field="create_time",
+                                     title=title, since=since, until=until):
         mapping, cursor = row["mapping"], row.get("current_node")
         if not mapping:
             continue
@@ -129,9 +82,7 @@ def load_conversations(path, *, title: str | None = None, since=None, until=None
                                    message_id=str(message.get("id") or node_id)))
         if not turns:
             continue
-        cid = str(row.get("id") or row.get("conversation_id") or "")
-        if not cid or any(c in cid for c in "/\\?#\r\n"):
-            raise ValueError("chatgpt_export_invalid_conversation_id")
+        cid = conversation_id(row.get("id") or row.get("conversation_id"), provider="chatgpt")
         source_id = "chatgpt:" + cid
         alternative_count = sum(max(0, len(n.get("children") or []) - 1) for n in mapping.values() if isinstance(n, dict))
         item = ContentItem(platform="ai_chat", input_type="single", url="https://chatgpt.com/c/"+cid,
@@ -152,25 +103,6 @@ def load_conversations(path, *, title: str | None = None, since=None, until=None
 
 def cmd_import(args, value: str, *, tty: bool) -> int:
     """Local multi-conversation projection using the shared renderer and sync writer."""
-    from openmd.core.output import write_item_result
-
     rows = load_conversations(value, title=getattr(args, "chatgpt_title", None),
                               since=getattr(args, "chatgpt_since", None), until=getattr(args, "chatgpt_until", None))
-    destination = args.save_to or args.out
-    if not destination and tty:
-        destination = input("保存目录：").strip()
-    if not destination:
-        raise ValueError("chatgpt_export_output_directory_required")
-    outputs, conversations = [], []
-    for item, result in rows:
-        sync = {}
-        target = write_item_result(item, result, destination, raw=True, sync_receipt=sync)
-        outputs.append(str(target))
-        conversations.append({**result.metadata, "sync": sync, "path": str(target)})
-    receipt = {"ok": True, "command": "go", "source_level": "manual_export", "status": "verified",
-               "saved_to": str(Path(destination).resolve()), "outputs": outputs, "conversations": conversations}
-    if getattr(args, "json", False):
-        print(json.dumps(receipt, ensure_ascii=True))
-    else:
-        print(f"已保存 {len(outputs)} 份对话：{Path(destination).resolve()}")
-    return 0
+    return write_import(args, rows, provider="chatgpt", tty=tty)

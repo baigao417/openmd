@@ -70,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     go.add_argument("--chatgpt-title", help="官方导入：标题关键词")
     go.add_argument("--chatgpt-since", help="官方导入：创建时间下限（ISO 日期或 Unix 秒）")
     go.add_argument("--chatgpt-until", help="官方导入：创建时间上限（含边界）")
+    go.add_argument("--claude-export", action="store_true", help="离线导入 Claude 官方 conversations.json 或 zip")
+    go.add_argument("--claude-title", help="Claude 官方导入：标题关键词")
+    go.add_argument("--claude-since", help="Claude 官方导入：创建时间下限（ISO 日期或 Unix 秒）")
+    go.add_argument("--claude-until", help="Claude 官方导入：创建时间上限（含边界）")
     for action in go._actions:
         if action.dest == "raw":
             action.help = "保留原始逐行时间戳 / 表格，不合并段落"

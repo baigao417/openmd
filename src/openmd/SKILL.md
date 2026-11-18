@@ -11,6 +11,26 @@ openmd batch <links.txt> --out <output-directory> --json
 
 Use an explicit output directory for automation. Do not parse human-readable prose when `--json` is available. The saved Markdown remains the source text; Openmd does not summarize, translate, or polish it.
 
+## Official conversation exports (offline)
+
+Use `openmd go <export.zip|conversations.json> -o <output-directory> --claude-export --json`
+for Claude, or `--chatgpt-export` for ChatGPT. Valid export formats are also detected
+automatically; use an explicit format for an empty Claude JSON array. Only the root
+`conversations.json` ZIP member is read; other account files are not opened or extracted.
+No browser, network or attachment download is needed. Each Claude conversation
+produces one Markdown file using the existing synchronization manifest.
+
+Filter Claude by `--claude-title <keyword>`, `--claude-since <ISO-date-or-Unix-seconds>`,
+and `--claude-until <inclusive-upper-bound>`; ChatGPT uses the corresponding
+`--chatgpt-*` flags. Filters use conversation creation time. Preserve turn order and
+verbatim text. Claude non-text blocks (including tools and thinking) and attachments
+are placeholders with `omission_counts` in each conversation receipt; unknown fields
+are counted without serializing their values. Such omissions yield `partial`.
+Empty Claude conversations produce a partial artifact with zero turns; ChatGPT
+keeps its existing empty-conversation skipping behavior. Claude identities are `claude:<uuid>`; ChatGPT
+identities are `chatgpt:<id>`. A repeat import reports `unchanged`; user changes are
+kept and a separate update file reports `conflict_kept_user_edit`.
+
 ## JSON receipt fields
 
 Every `--json` receipt exposes these fields at the top level when the route reaches the CLI result:

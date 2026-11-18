@@ -61,3 +61,34 @@ def test_grok_timeout_keeps_machine_error_code():
     result = provider.extract(BackendExtractRequest(item=item,backend_chain=(provider.name,)))
     assert result.error_code == "ai_chat_timeout"
     assert result.metadata["original_error_code"] == "TIMEOUT"
+
+
+def test_deepseek_detail_skips_redundant_home_and_waits_for_late_reply(tmp_path):
+    from openmd.runtime.ai_chat_loading import detail_loading_environment
+    node=shutil.which("node")
+    if not node:pytest.skip("Node not installed")
+    module=tmp_path/"clis/deepseek/detail.js"
+    module.parent.mkdir(parents=True)
+    (tmp_path/"package.json").write_text('{"type":"module"}',encoding="utf-8")
+    module.write_text('''
+const cli=x=>x;
+const ensureOnDeepSeek=async()=>{throw Error('redundant home navigation');};
+const getVisibleMessages=page=>page.messages();
+export const command=cli({site: 'deepseek',
+    func: async (page, kwargs) => {
+        await ensureOnDeepSeek(page);
+        await page.goto('https://chat.deepseek.com/a/chat/s/fixture');
+        const messages = await getVisibleMessages(page);
+        return messages;
+    },
+});
+''',encoding="utf-8")
+    probe=tmp_path/"probe.mjs"
+    probe.write_text('''
+import {command} from './clis/deepseek/detail.js';
+let tick=0;globalThis.setTimeout=(fn)=>{tick++;fn();};Date.now=()=>tick*1000;
+const rows=await command.func({goto:async()=>{},evaluate:async(code)=>code.includes('.length')?2:false,messages:async()=>tick<3?[]:[{Role:'user',Text:'fixture'},{Role:'assistant',Text:'reply'}]},{});
+if(rows.length!==2||tick<5)throw Error('late reply omitted');
+''',encoding="utf-8")
+    done=subprocess.run([node,str(probe)],env=detail_loading_environment("deepseek"),capture_output=True,text=True,timeout=10)
+    assert done.returncode==0,done.stderr

@@ -77,7 +77,8 @@ if (bubbles.length > 0 && bubbles.some(b => /^assistant$/i.test(b.role)) && grok
             ["if (!bubbles.length)", "if (bubbles.length && !grokStable) throw Object.assign(new Error('grok_detail_not_stable'), {code:'AI_CHAT_NOT_STABLE',exitCode:75});\nif (!bubbles.length)"],
         ]
     elif site == "deepseek":
-        edits = [["const messages = await getVisibleMessages(page);", "const messages = await openmdStableRows(page, () => getVisibleMessages(page));"]]
+        edits = [["await ensureOnDeepSeek(page);", "// Navigate to the explicit conversation once; no redundant home wait."],
+                 ["const messages = await getVisibleMessages(page);", "const messages = await openmdStableRows(page, () => getVisibleMessages(page));"]]
     elif site == "gemini":
         edits = [["const turns = await getGeminiVisibleTurns(page);", "const turns = await openmdStableRows(page, () => getGeminiVisibleTurns(page));"]]
     elif site == "doubao":
@@ -105,6 +106,7 @@ export async function load(url, context, nextLoad) {
   const result = await nextLoad(url, context);
   if (!new URL(url).pathname.endsWith('/clis/' + selected + '/' + operation + '.js')) return result;
   let source = typeof result.source === 'string' ? result.source : new TextDecoder().decode(result.source);
+  source = source.replace(/\r\n/g, '\n');
   for (const [before, after] of edits) {
     if (source.split(before).length !== 2) throw new Error(selected + '_detail_patch_incompatible');
     source = source.replace(before, after);
@@ -125,5 +127,6 @@ export async function load(url, context, nextLoad) {
     loader_url = "data:text/javascript," + quote(loader, safe="")
     bootstrap = "import {register} from 'node:module'; register(" + json.dumps(loader_url) + ", import.meta.url);"
     env = dict(os.environ)
+    env.setdefault("OPENCLI_BROWSER_COMMAND_TIMEOUT", "120")
     env["NODE_OPTIONS"] = (env.get("NODE_OPTIONS", "") + " --max-old-space-size=1536 --import=data:text/javascript," + quote(bootstrap, safe="")).strip()
     return env

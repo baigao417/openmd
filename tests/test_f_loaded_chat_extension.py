@@ -62,3 +62,24 @@ console.log(JSON.stringify(results));
 def test_popup_supplies_tab_identity():
     source = (ROOT / "src/openmd/browser_extension/popup.js").read_text(encoding="utf-8")
     assert "tabId: t.id" in source
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node is needed for the extension harness")
+def test_extension_settings_forward_thinking_option_without_live_chrome(tmp_path):
+    script = tmp_path / "thinking.cjs"
+    script.write_text(r'''
+const fs=require('fs'), vm=require('vm');
+const event={addListener:()=>{}};
+const store={settings:{locations:[{id:'default',path:'synthetic'}],defaultId:'default'}};
+const chrome={runtime:{onInstalled:event,onMessage:event,onStartup:event},notifications:{onButtonClicked:event,onClosed:event},contextMenus:{onClicked:event},storage:{local:{get:async()=>store},onChanged:event},action:{onClicked:event,setPopup:async()=>{},setTitle:async()=>{}}};
+const ctx=vm.createContext({chrome,URL,setTimeout:()=>{}});
+vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
+vm.runInContext(`var sent=[];captureSnapshot=async()=>({html:'<p>Synthetic</p>',url:'https://chatgpt.com/c/demo'});native=async(message)=>{sent.push(message);return {ok:true,job:{id:'synthetic'}}};track=async()=>{};`,ctx);
+(async()=>{for(const value of [undefined,false,true]){store.settings.includeThinking=value;await vm.runInContext('saveSnapshot(42)',ctx);}console.log(JSON.stringify(ctx.sent));})().catch(e=>{console.error(e);process.exitCode=1;});
+''', encoding="utf-8")
+    run = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
+    assert [message["include_thinking"] for message in json.loads(run.stdout)] == [False, False, True]
+    html = (ROOT / "src/openmd/browser_extension/options.html").read_text(encoding="utf-8")
+    js = (ROOT / "src/openmd/browser_extension/options.js").read_text(encoding="utf-8")
+    assert 'id="include-thinking"' in html
+    assert 'settings.includeThinking' in js and '.checked' in js

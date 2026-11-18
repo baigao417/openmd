@@ -44,6 +44,7 @@ def test_empty_placeholder_is_not_a_conversation():
         parse_ai_chat_output([{"Role":"System","Text":"No messages found. Verify the conversation ID."}],site="doubao",source_url=SITES["doubao"])
     # Legitimate source prose mentioning sign-in is never scanned as auth.
     turns,_=parse_ai_chat_output([{"Role":"Assistant","Text":"Discuss login and sign in."}],site="doubao",source_url=SITES["doubao"])
+    assert turns[0].role == "assistant"
     assert turns[0].text=="Discuss login and sign in."
 
 

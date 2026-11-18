@@ -21,6 +21,10 @@ OpenCLI **2.0.3** package. `clis/<site>/detail.js` delegates to these helpers:
 | Qwen | `utils.js`, `getMessageBubbles` | data-chat-question-wrap / data-chat-answers-wrap |
 | Yuanbao | `shared.js`, `getYuanbaoMessageBubbles` | human / ai list items, hyc-content body |
 
+ChatGPT also recognizes standalone `data-author` and user-message bubbles.
+A separate user-container sweep is compared with parsed user turns; a missing
+user turn downgrades the result even if the general turn selector misses it.
+
 The common Python parser preserves DOM order and repeated identical turns;
 overlapping containers are removed by node identity. Code whitespace and
 language are preserved with fenced literals; tables keep their original cell
@@ -48,3 +52,38 @@ experimental fallback; this parser does not change its loaders or navigation.
 Synthetic fixtures cover all seven structures. Actual extension reload/click
 requires joint acceptance after integration; fixture checks do not establish
 live availability of every site.
+
+## Thinking sections
+
+By default, recognized assistant thinking sections are omitted and counted in
+source notes (`已省略思考过程：N 段`). Use `--include-thinking` with `go`, set
+`include_thinking: true` in a native `save_snapshot` request, or enable
+**AI 对话 → 保留思考过程** in extension settings to place them in a separate
+`思考过程` subsection before that turn's final answer. They do not add turns.
+Login retries retain the queued option. Existing extension settings default to
+omission; reloading the updated extension requires joint acceptance.
+
+Exact DOM signals are defined in `THINKING_SELECTORS` and
+`COMMON_THINKING_SELECTOR`. DeepSeek's `.ds-markdown--think` is based on the
+managed helper's explicit separation. ChatGPT, Gemini, Doubao, Qwen and Yuanbao
+variants have synthetic regression coverage and await authorized live DOM
+acceptance. Gemini custom turn elements also retain thinking siblings outside
+`.model-response-text`. Unknown structures and prose are preserved unchanged;
+the parser never guesses a boundary from words such as “Thought for”.
+The experimental detail path honors separately supplied thinking fields; when
+its upstream has flattened them into `Text`, that text is preserved with a note.
+
+## Output quality
+
+Math uses `annotation[encoding="application/x-tex"]` when present, with `$…$`
+inline and `$$…$$` in display blocks. Missing annotations keep MathML or visible
+text and add a formula-fidelity warning. Oversized data-URI images (over 8192
+UTF-8 bytes in the URI) become counted placeholders, retaining alt text and
+figure captions. Small images explicitly marked as icons or at most 32×32 are
+removed; other small images and external image links retain existing behavior.
+
+Both routes share title cleanup: remove a recognized site suffix; for generic
+site titles use the current DOM/session title, then the first user message's
+first 30 characters. The existing sync manifest continues to retain filenames.
+`TurnBlock` and legacy block projections normalize the four standard roles to
+`user`, `assistant`, `system`, `tool`; unknown speaker identities are preserved.

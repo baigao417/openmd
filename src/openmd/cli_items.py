@@ -221,6 +221,10 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             apply_platform_extraction_contract(item)
             for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
         ]
+    if getattr(args, "include_thinking", False):
+        from dataclasses import replace
+
+        items = [replace(item, raw_meta={**item.raw_meta, "include_thinking": True}) for item in items]
     if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
         from openmd.runtime.managed_tools import ensure_opencli
 

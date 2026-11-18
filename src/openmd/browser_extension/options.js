@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let settings = { locations: [], defaultId: null, clickMode: "auto", videoMode: "note" };
+let settings = { locations: [], defaultId: null, clickMode: "auto", videoMode: "note", includeThinking: false };
 
 function native(message) {
   return chrome.runtime.sendMessage({ cmd: "native", message });
@@ -81,6 +81,7 @@ function render() {
   for (const loc of settings.locations) rows.append(row(loc));
   document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.clickMode; });
   document.querySelectorAll('input[name="video"]').forEach((r) => { r.checked = r.value === (settings.videoMode || "note"); });
+  $("include-thinking").checked = settings.includeThinking === true;
 }
 
 async function init() {
@@ -108,6 +109,11 @@ $("add").addEventListener("click", () => {
 
 document.querySelectorAll('input[name="mode"]').forEach((r) => {
   r.addEventListener("change", () => { settings.clickMode = r.value; persist(); });
+});
+
+$("include-thinking").addEventListener("change", () => {
+  settings.includeThinking = $("include-thinking").checked;
+  persist();
 });
 
 init();

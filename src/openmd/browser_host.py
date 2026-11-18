@@ -211,10 +211,13 @@ def start_snapshot_job(
     title: object = None,
     save_to: object = None,
     *,
+    include_thinking: object = False,
     spawn=subprocess.Popen,
 ) -> dict[str, Any]:
     """Queue one user initiated current-page DOM snapshot without browser storage."""
     source_url = _validate_url(url)
+    if type(include_thinking) is not bool:
+        raise ValueError("invalid_include_thinking")
     if not isinstance(html, str):
         raise ValueError("invalid_snapshot_html")
     payload = html.encode("utf-8")
@@ -241,6 +244,7 @@ def start_snapshot_job(
         "seq": _next_seq(),
         "attempts": 0,
         "snapshot": True,
+        "include_thinking": include_thinking,
     }
     _write_status(job_dir, status)
     _spawn_runner(spawn)
@@ -383,6 +387,8 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["snapshot_path"], "--as-snapshot", "--url", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
     else:
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+    if status.get("include_thinking") is True:
+        command.append("--include-thinking")
     try:
         if runner is None:
             done = _run_openmd(command, job_dir, status)
@@ -585,7 +591,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
         if kind == "save_snapshot":
-            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"))}
+            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"), include_thinking=message.get("include_thinking", False))}
         if kind == "save_many":
             return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"))}
         if kind == "status":

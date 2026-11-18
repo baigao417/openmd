@@ -110,7 +110,7 @@ const isLoadedAiChat = (url) => {
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
-  return { videoMode: "note", ...(settings || { locations: [], defaultId: null, clickMode: "auto" }) };
+  return { videoMode: "note", includeThinking: false, ...(settings || { locations: [], defaultId: null, clickMode: "auto" }) };
 }
 
 async function applyClickMode() {
@@ -335,7 +335,8 @@ async function saveSnapshotImpl(tabId, locationId) {
     if (!result?.html || !/^https?:\/\//.test(result.url || "")) {
       return fail("没法保存当前页", "当前页面不是可保存的 http(s) 页面。");
     }
-    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path });
+    const { includeThinking } = await getSettings();
+    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path, include_thinking: includeThinking === true });
     if (!reply.ok) return fail("没能保存当前页", reply.error);
     await track([{ ...reply.job, tabId }], reply.job.id, location.name);
     return { ok: true, count: 1, location: location.name };

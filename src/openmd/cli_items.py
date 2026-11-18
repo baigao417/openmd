@@ -103,10 +103,11 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
-        item_selection = registry.select_backend_for_item(
-            item,
-            _requested_backend(item.platform, args),
-            allow_fallback=args.fallback,
+        item_selector = getattr(registry, "select_backend_for_item", None)
+        item_selection = (
+            item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
+            if item_selector is not None
+            else selection
         )
         result = extract_with_login(executor, item, item_selection.chain, args)
         from .core.completeness import check_completeness
@@ -277,10 +278,11 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
-        item_selection = registry.select_backend_for_item(
-            item,
-            _requested_backend(item.platform, args),
-            allow_fallback=args.fallback,
+        item_selector = getattr(registry, "select_backend_for_item", None)
+        item_selection = (
+            item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
+            if item_selector is not None
+            else selection
         )
         result = extract_with_login(executor, item, item_selection.chain, args)
         from .core.completeness import check_completeness

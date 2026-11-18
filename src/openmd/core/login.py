@@ -36,12 +36,19 @@ def structured_login_code(stdout: str) -> str | None:
 
 
 def login_for_url(url: str, platform: str | None = None) -> dict[str, str]:
-    """Use declared destinations for known sites, otherwise the exact origin."""
+    """Shop logins use the source origin; fixed platform logins use declarations."""
     from openmd.routing.loader import load_catalog
 
     parsed = urlsplit(url)
     host = (parsed.hostname or "").lower()
+    # No path, signed query, userinfo, or fragment belongs in a login action.
+    origin = f"{parsed.scheme}://{'[' + host + ']' if ':' in host else host}" if parsed.scheme in {"http", "https"} and host else ""
+    if origin and parsed.port:
+        origin += f":{parsed.port}"
     records = load_catalog().capability_metadata
+    for record in records:
+        if record.get("source_id") == platform and record.get("login_strategy") == "origin":
+            return {"site": str(record["display_name"]), "url": origin or str(record.get("login_url") or "")}
     for record in records:
         candidates = list((record.get("login_sites") or {}).values())
         if record.get("login_url"):
@@ -51,11 +58,7 @@ def login_for_url(url: str, platform: str | None = None) -> dict[str, str]:
             declared_host = urlsplit(destination).hostname or ""
             hosts = [declared_host, *candidate.get("login_hosts", [])]
             if host and any(host == h or host.endswith("." + h) for h in hosts if h):
-                return {"site": str(candidate["display_name"]), "url": destination}
-    # Keep only the origin: no path, signed query, userinfo, or fragment.
-    origin = f"{parsed.scheme}://{host}" if parsed.scheme in {"http", "https"} and host else ""
-    if origin and parsed.port:
-        origin += f":{parsed.port}"
+                return {"site": str(candidate["display_name"]), "url": (origin or destination) if candidate.get("login_strategy") == "origin" else destination}
     return {"site": host or str(platform or "网站"), "url": origin}
 
 

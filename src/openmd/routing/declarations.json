@@ -336,9 +336,13 @@
         "route_source": "xiaoe",
         "runtime_binding": "route",
         "display_name": "小鹅通",
+        "login_strategy": "origin",
         "login_url": "https://xiaoe-tech.com",
         "login_hosts": [
-          "xiaoe-tech.com"
+          "xiaoe-tech.com",
+          "xiaoeknow.com",
+          "xet.citv.cn",
+          "xet.pomoho.com"
         ]
       },
       {

@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import re
 import json
+import os
 import shutil
 import subprocess
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from openmd.backends.base import BackendCapability, BackendDescriptor, BackendExtractRequest, BackendHealth
 from openmd.backends.executor import BackendProviderRegistry
@@ -27,13 +28,13 @@ from openmd.runtime.interpreters import run_interruptibly
 
 CHATGPT_BACKEND = "opencli.chatgpt.detail"
 DEEPSEEK_BACKEND = "opencli.deepseek.detail"
+GROK_BACKEND = "opencli.grok.detail"
 PLANNED_AI_CHAT_BACKENDS = (
     "opencli.claude.detail",
     "opencli.doubao.detail",
     "opencli.gemini.detail",
     "opencli.qwen.detail",
     "opencli.yuanbao.detail",
-    "opencli.grok.detail",
 )
 
 CommandRunner = Callable[[list[str], int], tuple[int, str, str]]
@@ -46,6 +47,8 @@ def register_backend_providers(registry: BackendProviderRegistry, options: Backe
             registry.register(CHATGPT_BACKEND, OpenCliAiChatProvider("chatgpt", CHATGPT_BACKEND))
         if requested in {None, DEEPSEEK_BACKEND}:
             registry.register(DEEPSEEK_BACKEND, OpenCliAiChatProvider("deepseek", DEEPSEEK_BACKEND))
+        if requested in {None, GROK_BACKEND}:
+            registry.register(GROK_BACKEND, OpenCliAiChatProvider("grok", GROK_BACKEND))
 
 
 def conversation_id_for_url(site: str, value: str) -> str | None:
@@ -78,7 +81,7 @@ def conversation_id_for_url(site: str, value: str) -> str | None:
 
 def build_opencli_detail_args(site: str, conversation_id: str) -> list[str]:
     command = ["opencli", site, "detail", conversation_id, "-f", "json"]
-    if site == "chatgpt":
+    if site in {"chatgpt", "grok"}:
         command.extend(["--markdown", "true"])
     return command
 
@@ -91,7 +94,7 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         error = payload.get("error")
         code = str(error.get("code") or "").upper() if isinstance(error, dict) else ""
         detail = error.get("message") if isinstance(error, dict) else str(error or "")
-        if _is_auth_error_code(code) or _looks_like_auth_error(detail):
+        if _is_auth_error_code(code) or (not code and _looks_like_auth_error(detail)):
             raise AiChatError("ai_chat_not_logged_in", "平台当前未登录，未导出对话。", original_code=code or "ai_chat_not_logged_in")
         if code == "EMPTY_RESULT":
             raise AiChatError("ai_chat_empty", "平台返回了空会话，未取得任何轮次。")
@@ -111,9 +114,9 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         if not isinstance(row, dict):
             continue
         role = _first_text(row, "role", "Role", "speaker", "author", "sender") or "unknown"
-        text = _first_text(row, "text", "Text", "content", "message", "markdown", "body")
+        text = _first_text(row, "text", "Text", "content", "message", "markdown", "body", strip=False)
         if isinstance(row.get("content"), dict):
-            text = _first_text(row["content"], "text", "parts", "value") or text
+            text = _first_text(row["content"], "text", "parts", "value", strip=False) or text
         if isinstance(text, list):
             text = "\n".join(str(part) for part in text if part is not None)
         if not text or not str(text).strip():
@@ -199,6 +202,11 @@ class OpenCliAiChatProvider:
             result = _failed(self.name, exc.code, str(exc))
             result.metadata["original_error_code"] = exc.original_code
             return normalize_login_result(result, item)
+        if self.site == "grok":
+            metadata["source_url"] = f"https://grok.com/c/{conversation_id}"
+            anchor = item.raw_meta.get("anchor_response_id") or parse_qs(urlparse(item.url).query).get("rid", [None])[0]
+            if anchor:
+                metadata["anchor_response_id"] = anchor
         return TranscriptResult(
             text="\n\n".join(turn.text for turn in turns) + "\n",
             status="verified",
@@ -232,11 +240,11 @@ def _find_message_rows(value: Any) -> list[Any]:
     return []
 
 
-def _first_text(value: dict[str, Any], *keys: str) -> str | list[Any] | None:
+def _first_text(value: dict[str, Any], *keys: str, strip: bool = True) -> str | list[Any] | None:
     for key in keys:
         candidate = value.get(key)
         if isinstance(candidate, (str, int, float)) and str(candidate).strip():
-            return str(candidate).strip()
+            return str(candidate).strip() if strip else str(candidate)
         if isinstance(candidate, list) and candidate:
             return candidate
     return None
@@ -278,9 +286,51 @@ def _failed(backend: str, code: str, summary: str) -> TranscriptResult:
     return TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code=code, error_summary=summary, source_notes=["AI conversation provider returned a structured failure."])
 
 
+def _grok_loading_environment() -> dict[str, str]:
+    """Replay the pinned detail loading fix in this Node process only.
+
+    Grok hydrates user bubbles before assistant bubbles. OpenCLI 2.0.3 breaks
+    on the first nonempty result, silently exporting only the user prompts.
+    A scoped Node loader patches that one module without editing shared npm
+    files, profile/config, or any other provider. Marker drift fails closed.
+    """
+    loader = r'''
+export async function load(url, context, nextLoad) {
+  const result = await nextLoad(url, context);
+  if (!new URL(url).pathname.endsWith('/clis/grok/detail.js')) return result;
+  let source = typeof result.source === 'string' ? result.source : new TextDecoder().decode(result.source);
+  const edits = [
+    ['let bubbles = [];', "let bubbles = []; let grokPrevious = ''; let grokStablePolls = 0; let grokStable = false;"],
+    ['const POLL_DEADLINE_MS = 20_000;', 'const POLL_DEADLINE_MS = 45_000;'],
+    ['if (bubbles.length > 0) break;', `
+      const signature = JSON.stringify(bubbles.map(b => [b.role, b.text, b.html]));
+      grokStablePolls = signature === grokPrevious ? grokStablePolls + 1 : 0;
+      grokPrevious = signature;
+      if (bubbles.length > 0 && bubbles.some(b => b.role === 'Assistant') && grokStablePolls >= 2) {
+        grokStable = true;
+        break;
+      }`],
+    ['if (!bubbles.length)', "if (bubbles.length && !grokStable) throw new Error('grok_detail_not_stable: conversation loading did not finish');\nif (!bubbles.length)"],
+  ];
+  for (const [before, after] of edits) {
+    if (source.split(before).length !== 2) throw new Error('grok_detail_patch_incompatible');
+    source = source.replace(before, after);
+  }
+  return {...result, source};
+}
+'''
+    loader_url = "data:text/javascript," + quote(loader, safe="")
+    bootstrap = "import {register} from 'node:module'; register(" + json.dumps(loader_url) + ", import.meta.url);"
+    bootstrap_url = "data:text/javascript," + quote(bootstrap, safe="")
+    env = dict(os.environ)
+    env["NODE_OPTIONS"] = (env.get("NODE_OPTIONS", "") + " --max-old-space-size=1536 --import=" + bootstrap_url).strip()
+    return env
+
+
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
     try:
-        completed = run_interruptibly(command, capture_output=True, text=True, timeout=timeout, check=False, encoding="utf-8", errors="replace")
+        kwargs = {"env": _grok_loading_environment()} if command[1:3] == ["grok", "detail"] else {}
+        completed = run_interruptibly(command, capture_output=True, text=True, timeout=timeout, check=False, encoding="utf-8", errors="replace", **kwargs)
     except FileNotFoundError:
         return 127, "", "opencli executable not found"
     except subprocess.TimeoutExpired:

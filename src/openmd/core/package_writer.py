@@ -8,7 +8,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from .filename import short_hash
 from .execution_policy import require_matching_fingerprint
@@ -353,6 +353,11 @@ def build_package_metadata(
         metadata["document_metadata"] = sanitize_document_metadata({key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata})
     if result.blocks:
         metadata["blocks"] = [block_as_dict(block) for block in result.blocks]
+    if item.platform == "ai_chat" and result.metadata.get("anchor_response_id"):
+        try:
+            metadata["anchor_response_id"] = str(UUID(str(result.metadata["anchor_response_id"])))
+        except ValueError:
+            pass  # Reply anchors are UUIDs; arbitrary query data is not persisted.
     return metadata
 
 

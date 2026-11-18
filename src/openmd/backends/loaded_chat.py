@@ -20,7 +20,7 @@ from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
 
 
 SELECTORS = {
-    "chatgpt": '[data-message-author-role], article[data-testid*="conversation-turn"], [data-chatgpt-search-unit-key]',
+    "chatgpt": '[data-message-author-role], [data-author], [data-user-message-bubble], article[data-testid*="conversation-turn"], [data-chatgpt-search-unit-key]',
     "grok": '[data-testid="user-message"], [data-testid="assistant-message"]',
     "deepseek": '.ds-message',
     "doubao": '[data-testid="message-list"] [data-testid="union_message"]',
@@ -34,6 +34,7 @@ HOSTS = {
     "gemini.google.com": "gemini", "www.qianwen.com": "qwen", "qianwen.com": "qwen",
     "qianwen.aliyun.com": "qwen", "tongyi.aliyun.com": "qwen", "yuanbao.tencent.com": "yuanbao",
 }
+CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-testid="user-message"]'
 
 
 def loaded_chat_site(url: str) -> str | None:
@@ -75,11 +76,11 @@ def _outermost(nodes: list[Tag]) -> list[Tag]:
 
 def _role_content(site: str, node: Tag) -> tuple[str, Tag]:
     if site == "chatgpt":
-        author = node if node.has_attr("data-message-author-role") else node.select_one('[data-message-author-role], [data-author]')
+        author = node if node.has_attr("data-message-author-role") or node.has_attr("data-author") else node.select_one('[data-message-author-role], [data-author]')
         role = str((author or node).get("data-message-author-role") or (author or node).get("data-author") or "")
         if not role:
             hints = " ".join(str(node.get(key) or "") for key in ("data-chatgpt-search-unit-key", "data-testid", "aria-label"))
-            role = "assistant" if re.search("assistant|chatgpt", hints, re.I) else ("user" if re.search("user|you", hints, re.I) else "unknown")
+            role = "user" if node.has_attr("data-user-message-bubble") else ("assistant" if re.search("assistant|chatgpt", hints, re.I) else ("user" if re.search("user|you", hints, re.I) else "unknown"))
         content = node.select_one('[data-markdown-copy="contents"], [data-markdown-text-style="assistant-message"], [data-user-message-bubble] [data-search-result-target]')
         content = content if content is not None else node.select_one('.markdown')
         return role.lower(), content if content is not None else (author if author is not None else node)
@@ -157,6 +158,9 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     soup = BeautifulSoup(html, "html.parser")
     roots = _outermost([node for node in soup.select(SELECTORS[site]) if _visible(node)])
     independent_count = len(roots)
+    # Separate evidence sweep: a missing role/content selector must not certify
+    # an assistant-only export when user bubbles are present in the page.
+    user_count = len(_outermost([node for node in soup.select(CHATGPT_USER_CONTAINERS) if _visible(node)])) if site == "chatgpt" else None
     if site == "gemini" and not roots:
         # Upstream's legacy layout sweep lacks an independent turn container.
         roots = _outermost([node for node in soup.select('[data-testid*="message"], [data-test-id*="message"], [class*="message"], [class*="conversation-turn"], [class*="query-text"], [class*="response-text"]') if _visible(node)])
@@ -184,7 +188,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
         error_code="ai_chat_not_stable" if generating else None,
         error_summary="当前页仍在生成，请等待完成后重新读取。" if generating else None,
         metadata={"chat_site": site, "captured_from": "browser_snapshot", "coverage": "visible_branch",
-                  "turn_count": len(turns), "independent_turn_count": independent_count, "generating": generating,
+                  "turn_count": len(turns), "independent_turn_count": independent_count, "independent_user_turn_count": user_count, "generating": generating,
                   "selector_source": f"OpenCLI 2.0.3 clis/{site}/detail.js",
                   "assistant_turn_count": sum(turn.role == "assistant" for turn in turns)},
         source_notes=["读取当前已加载页面；仅覆盖 DOM 中已加载的分支，未验证未加载的历史消息。"],

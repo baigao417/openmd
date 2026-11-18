@@ -72,7 +72,12 @@ class PDFParserProvider:
                 if any(not page["reliable"] for page in probes):
                     return document_failure(self.name, request.item.title or path.stem, "pdf_ocr_required", "One or more pages require OCR; continue to the page router.")
             except PDFDependencyMissing as exc:
-                return document_failure(self.name, request.item.title or path.stem, "pymupdf_missing", str(exc))
+                # Native pdfminer can run in [document] without the optional
+                # page/OCR dependencies. Existing OCR-capable installs keep
+                # their established probe and fallback order.
+                import importlib.util
+                if importlib.util.find_spec('pdfminer') is None:
+                    return document_failure(self.name, request.item.title or path.stem, "pymupdf_missing", str(exc))
             except (OSError, ValueError, RuntimeError):
                 return document_failure(self.name, request.item.title or path.stem, "pdf_probe_failed", "PyMuPDF could not inspect the local PDF.")
         adapter = PdfDocumentAdapter("pdf", request.primary_backend)

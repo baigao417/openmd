@@ -38,6 +38,7 @@ copied. These optional libraries are installed by pip and retain their licenses:
 | openpyxl (openpyxl.readthedocs.io) | MIT | XLSX saved values and formulas |
 | xlrd (github.com/python-excel/xlrd) | BSD-3-Clause | XLS saved cell values |
 | olefile (github.com/decalage2/olefile) | BSD-2-Clause | MSG/DOC/PPT local OLE streams |
+| pdfminer.six (github.com/pdfminer/pdfminer.six) | MIT | Native PDF text and page boundaries |
 
 The original legacy Word text reader follows Microsoft's public MS-DOC
 FibBase, FibRgLw97, FibRgFcLcb97, Clx, PlcPcd and Pcd structures

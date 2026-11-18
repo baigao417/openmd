@@ -16,6 +16,7 @@ DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
 DEPENDENCIES['msg'] = ('olefile', 'olefile')
 DEPENDENCIES['doc'] = ('olefile', 'olefile')
 DEPENDENCIES['ppt'] = ('olefile', 'olefile')
+DEPENDENCIES['pdf'] = ('pdfminer', 'pdfminer.six')
 # Promotion is explicit and follows a saved per-format benchmark.
 ODF_FORMATS = {'odt'}
 FALLBACK_FORMATS = {'doc', 'ppt'}
@@ -65,6 +66,10 @@ def convert_local(path: Path, limits: EngineLimits):
     from .native_common import Document
     from .native_office import parse_docx, parse_pptx, parse_xlsx, parse_xls
     document = Document(path, limits)
+    if path.suffix.lower() == '.pdf':
+        from .native_pdf import parse
+        parse(document)
+        return document.result()
     if path.suffix.lower() in {'.msg', '.doc', '.ppt'}:
         from .native_ole import parse_msg, parse_doc, parse_ppt
         {'.msg': parse_msg, '.doc': parse_doc, '.ppt': parse_ppt}[path.suffix.lower()](document)

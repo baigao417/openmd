@@ -92,3 +92,29 @@ if(rows.length!==2||tick<5)throw Error('late reply omitted');
 ''',encoding="utf-8")
     done=subprocess.run([node,str(probe)],env=detail_loading_environment("deepseek"),capture_output=True,text=True,timeout=10)
     assert done.returncode==0,done.stderr
+
+
+def test_gemini_history_keeps_owned_tab_in_background(tmp_path):
+    from openmd.runtime.ai_chat_loading import detail_loading_environment
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node not installed")
+    module = tmp_path / "clis/gemini/history.js"
+    module.parent.mkdir(parents=True)
+    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    module.write_text('''
+const cli=x=>x;
+export const command=cli({site: 'gemini',
+    func: async (page, kwargs) => {
+        await page.selectTab('owned-hidden-tab');
+        return [];
+    },
+});
+''', encoding="utf-8")
+    probe = tmp_path / "probe.mjs"
+    probe.write_text('''
+import {command} from './clis/gemini/history.js';
+await command.func({selectTab:async()=>{throw Error('tab activated');}},{});
+''', encoding="utf-8")
+    done = subprocess.run([node, str(probe)], env=detail_loading_environment("gemini", "history"), capture_output=True, text=True, timeout=10)
+    assert done.returncode == 0, done.stderr

@@ -11,6 +11,9 @@ from urllib.parse import quote
 _HELPERS = r'''
 function openmdBackgroundPage(page) {
   return new Proxy(page, {get(target, key) {
+    // The session already owns its target. Gemini's helper selects the same
+    // hidden target to activate animations; reading must not steal focus.
+    if (key === 'selectTab') return async () => {};
     if (key === 'goto') return (url, options) => target.goto(url, {...options, waitUntil: 'none'});
     if (key === 'wait') return async (options) => {
       if (typeof options === 'number') return new Promise(r => setTimeout(r, options * 1000));

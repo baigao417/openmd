@@ -132,6 +132,8 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
     if _is_generating(root):
         raise AiChatError("ai_chat_generating", "对话仍在生成中，请等待生成完成后重试。")
     rows = _find_message_rows(root)
+    if any(_is_generating(row) for row in rows):
+        raise AiChatError("ai_chat_generating", "对话仍在生成中，请等待生成完成后重试。")
     turns: list[TurnBlock] = []
     for index, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
@@ -159,6 +161,9 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         "assistant_turn_count": sum(1 for turn in turns if str(turn.role).lower() == "assistant"),
         "source_url": source_url,
     }
+    independent_counts = [row.get("OpenmdPageTurnCount") for row in rows if isinstance(row, dict) and type(row.get("OpenmdPageTurnCount")) is int and row["OpenmdPageTurnCount"] >= 0]
+    if independent_counts:
+        meta["independent_turn_count"] = max(independent_counts)
     return turns, meta
 
 
@@ -309,8 +314,8 @@ def _first_text(value: dict[str, Any], *keys: str, strip: bool = True) -> str | 
 def _is_generating(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
-    for key in ("generating", "is_generating", "in_progress", "streaming"):
-        if value.get(key) is True:
+    for key in ("generating", "Generating", "is_generating", "in_progress", "streaming"):
+        if value.get(key) is True or str(value.get(key, "")).lower() in {"true", "yes"}:
             return True
     state = str(value.get("status") or value.get("state") or "").lower()
     return state in {"generating", "streaming", "in_progress", "pending"}

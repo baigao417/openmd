@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -191,12 +192,16 @@ class CalibreEngine(ExecutableEngine):
                 return failure(self.id, path, 'engine_unavailable', self.install_hint)
             with owned_temporary_directory(prefix='openmd-calibre-') as owned_root:
                 root = Path(owned_root)
-                output = root / 'converted.epub'
+                output = root / (path.stem + '.epub')
                 run_command([command, str(path.resolve()), str(output)], root, limits)
                 if not output.is_file():
                     raise EngineError('document_conversion_failed')
                 from .registry import convert_document
                 result = convert_document(output, limits)
+                # Older intermediates can contribute a filename-only heading.
+                # Remove that wrapper without changing source chapter order.
+                text = re.sub(r'\A\s*(?:#{1,6}\s+converted\s*\n|converted\s*\n[=-]+\s*\n)\s*', '', result.text, count=1, flags=re.I)
+                result = replace(result, text=text)
             return replace(result, backend=self.id, title=path.stem,
                 metadata={**result.metadata, 'source_format': path.suffix[1:].lower(), 'converted_by': self.id})
         except (EngineError, OSError, UnicodeError) as exc:

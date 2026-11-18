@@ -35,3 +35,5 @@ def parse(d):
     if suffix in {'csv', 'tsv'}:
         return parse_table(d)
     return globals()['parse_' + suffix](d)
+
+FORMATS.add('tsv')

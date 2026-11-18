@@ -24,7 +24,7 @@ SELECTORS = {
     "grok": '[data-testid="user-message"], [data-testid="assistant-message"]',
     "deepseek": '.ds-message',
     "doubao": '[data-testid="message-list"] [data-testid="union_message"]',
-    "gemini": '.query-text, .model-response-text',
+    "gemini": 'user-query, model-response, .query-text, .model-response-text',
     "qwen": '[data-chat-question-wrap], [data-chat-answers-wrap]',
     "yuanbao": '.agent-chat__list__item--human, .agent-chat__list__item--ai',
 }
@@ -36,6 +36,17 @@ HOSTS = {
 }
 CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-testid="user-message"]'
 EMBEDDED_IMAGE_LIMIT = 8 * 1024  # UTF-8 bytes of the inline URI, before decoding.
+# Exact structural signals only. Site-specific variants require live acceptance;
+# prose such as "Thought for ..." is never enough to discard answer text.
+THINKING_SELECTORS = {
+    "chatgpt": '[data-testid="reasoning-summary"], .reasoning-summary',
+    "deepseek": '.ds-markdown--think, .ds-thinking-content',
+    "gemini": 'model-thoughts, .thoughts-container, .thoughts-content',
+    "doubao": '[data-testid="thinking_content"], [data-testid="think_content"]',
+    "qwen": '[data-chat-thinking-wrap], .qwen-thinking',
+    "yuanbao": '.hyc-component-reasoner, .hyc-content-think, .agent-chat__thinking',
+}
+COMMON_THINKING_SELECTOR = '.thinking-container, [data-message-type="reasoning"], [data-testid="reasoning"], [data-testid="thinking"]'
 
 
 def loaded_chat_site(url: str) -> str | None:
@@ -96,9 +107,10 @@ def _role_content(site: str, node: Tag) -> tuple[str, Tag]:
         content = node.select_one('[data-testid="message_text_content"]')
         return role, content if content is not None else node
     if site == "gemini":
-        hints = " ".join(str(node.get(key) or "") for key in ("class", "data-message-author-role", "data-role", "aria-label"))
+        hints = node.name + " " + " ".join(str(node.get(key) or "") for key in ("class", "data-message-author-role", "data-role", "aria-label"))
         role = "user" if re.search("user|query", hints, re.I) else ("assistant" if re.search("assistant|model|response|gemini", hints, re.I) else "unknown")
-        return role, node
+        content = node.select_one('.query-text' if role == "user" else '.model-response-text')
+        return role, content if content is not None else node
     if site == "qwen":
         role = "assistant" if node.has_attr("data-chat-answers-wrap") else "user"
         content = node.select_one('#qk-markdown-react, [class*="markdown"]') if role == "assistant" else None
@@ -115,7 +127,7 @@ def _role_content(site: str, node: Tag) -> tuple[str, Tag]:
 def _markdown(node: Tag, stats: dict[str, int] | None = None) -> str:
     stats = stats if stats is not None else {}
     body = BeautifulSoup(str(node), "html.parser")
-    for child in list(body.select('script, style, noscript, button, .sr-only, .cdk-visually-hidden, .thinking-container, [data-prompt-link-href]')):
+    for child in list(body.select('script, style, noscript, button, .sr-only, .cdk-visually-hidden, [data-prompt-link-href]')):
         if child.parent is not None:
             child.decompose()
     literals = {}
@@ -191,6 +203,26 @@ def _generating(soup: BeautifulSoup) -> bool:
     return False
 
 
+def _turn_markdown(site: str, node: Tag, role: str, stats: dict[str, int], *, include_thinking: bool) -> str:
+    if role != "assistant":
+        return _markdown(_role_content(site, node)[1], stats)
+    # Work at the turn root: thinking can sit beside the final markdown region.
+    clone = BeautifulSoup(str(node), "html.parser").find()
+    thoughts = []
+    selector = COMMON_THINKING_SELECTOR + ", " + THINKING_SELECTORS.get(site, COMMON_THINKING_SELECTOR)
+    for thought in _outermost(list(clone.select(selector))):
+        if _visible(thought) and thought.get_text(strip=True):
+            key = "thinking_included_count" if include_thinking else "thinking_omitted_count"
+            stats[key] += 1
+            if include_thinking:
+                thoughts.append(_markdown(thought, stats))
+        thought.decompose()
+    answer = _markdown(_role_content(site, clone)[1], stats)
+    if thoughts:
+        return "#### 思考过程\n\n" + "\n\n".join(thoughts) + ("\n\n#### 最终回答\n\n" + answer if answer else "")
+    return answer
+
+
 def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> TranscriptResult:
     site = loaded_chat_site(item.url)
     soup = BeautifulSoup(html, "html.parser")
@@ -209,11 +241,13 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     if login_path or login_form or (not roots and login_cta):
         return normalize_login_result(TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code="login_required"), item)
     turns = []
-    stats: dict[str, int] = {"math_fallback_count": 0, "embedded_image_omitted_count": 0, "embedded_icon_removed_count": 0}
+    stats: dict[str, int] = {"math_fallback_count": 0, "embedded_image_omitted_count": 0, "embedded_icon_removed_count": 0, "thinking_omitted_count": 0, "thinking_included_count": 0}
     for node in roots:
         role, content = _role_content(site, node)
-        text = _markdown(content, stats)
-        if role not in {"user", "assistant", "system", "tool"} or not text:
+        if role not in {"user", "assistant", "system", "tool"}:
+            continue
+        text = _turn_markdown(site, node, role, stats, include_thinking=item.raw_meta.get("include_thinking") is True)
+        if not text:
             continue
         turns.append(TurnBlock(role=role, text=text, message_id=node.get("data-message-id") or node.get("data-conv-id")))
     if not turns:
@@ -233,5 +267,8 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
         source_notes=["读取当前已加载页面；仅覆盖 DOM 中已加载的分支，未验证未加载的历史消息。",
                       *([f"公式可能失真：{stats['math_fallback_count']} 处未找到 TeX annotation，保留 MathML 或可见文本。"] if stats["math_fallback_count"] else []),
                       *([f"已省略内嵌图片：{stats['embedded_image_omitted_count']} 张；保留替代文本和图注。"] if stats["embedded_image_omitted_count"] else []),
-                      *([f"已删除内嵌小图标：{stats['embedded_icon_removed_count']} 个。"] if stats["embedded_icon_removed_count"] else [])],
+                      *([f"已删除内嵌小图标：{stats['embedded_icon_removed_count']} 个。"] if stats["embedded_icon_removed_count"] else []),
+                      *([f"已省略思考过程：{stats['thinking_omitted_count']} 段。"] if stats["thinking_omitted_count"] else []),
+                      *([f"已保留思考过程：{stats['thinking_included_count']} 段。"] if stats["thinking_included_count"] else []),
+                      "思考过程仅按明确 DOM 区块识别；未识别的结构保留原样。"],
     )

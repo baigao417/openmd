@@ -107,7 +107,7 @@ def build_opencli_detail_args(site: str, conversation_id: str) -> list[str]:
     return command
 
 
-def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[list[TurnBlock], dict[str, Any]]:
+def parse_ai_chat_output(payload: Any, *, site: str, source_url: str, include_thinking: bool = False) -> tuple[list[TurnBlock], dict[str, Any]]:
     """Parse a fixture or OpenCLI payload into verbatim turns."""
     if isinstance(payload, str):
         payload = load_opencli_json(payload)
@@ -137,6 +137,7 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
     if any(_is_generating(row) for row in rows):
         raise AiChatError("ai_chat_generating", "对话仍在生成中，请等待生成完成后重试。")
     turns: list[TurnBlock] = []
+    thinking_count = 0
     for index, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
             continue
@@ -148,6 +149,11 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
             text = "\n".join(str(part) for part in text if part is not None)
         if not text or not str(text).strip():
             continue
+        thinking = _first_text(row, "thinking", "Thinking", "reasoning_content", "reasoning", "thoughts", strip=False)
+        if str(role).lower() == "assistant" and isinstance(thinking, str) and thinking.strip():
+            thinking_count += 1
+            if include_thinking:
+                text = "#### 思考过程\n\n" + thinking.strip() + "\n\n#### 最终回答\n\n" + str(text)
         turns.append(TurnBlock(
             role=str(role),
             text=str(text),
@@ -162,6 +168,8 @@ def parse_ai_chat_output(payload: Any, *, site: str, source_url: str) -> tuple[l
         "turn_count": len(turns),
         "assistant_turn_count": sum(1 for turn in turns if str(turn.role).lower() == "assistant"),
         "source_url": source_url,
+        "thinking_omitted_count": 0 if include_thinking else thinking_count,
+        "thinking_included_count": thinking_count if include_thinking else 0,
     }
     independent_counts = [row.get("OpenmdPageTurnCount") for row in rows if isinstance(row, dict) and type(row.get("OpenmdPageTurnCount")) is int and row["OpenmdPageTurnCount"] >= 0]
     if independent_counts:
@@ -268,7 +276,7 @@ class OpenCliAiChatProvider:
                     return failure
                 return _failed(self.name, f"backend_exit_{code}", "OpenCLI conversation detail command failed.")
             try:
-                turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url)
+                turns, metadata = parse_ai_chat_output(stdout, site=self.site, source_url=item.url, include_thinking=item.raw_meta.get("include_thinking") is True)
             except AiChatError as exc:
                 result = _failed(self.name, exc.code, str(exc))
                 result.metadata["original_error_code"] = exc.original_code
@@ -296,7 +304,10 @@ class OpenCliAiChatProvider:
             title=item.title or f"{self.site} conversation {conversation_id}",
             metadata=metadata,
             blocks=turns,
-            source_notes=["OpenCLI detail returned conversation turns; no summary or turn merging was performed."],
+            source_notes=["OpenCLI detail returned conversation turns; no summary or turn merging was performed.",
+                          *([f"已省略思考过程：{metadata['thinking_omitted_count']} 段。"] if metadata["thinking_omitted_count"] else []),
+                          *([f"已保留思考过程：{metadata['thinking_included_count']} 段。"] if metadata["thinking_included_count"] else []),
+                          "detail 仅按独立思考字段识别；未分离的思考文字保持原样，待真实 DOM 验证。"],
         )
 
 

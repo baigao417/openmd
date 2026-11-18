@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 
 from openmd.backends import loaded_chat
 from openmd.core.completeness import check_completeness
@@ -91,3 +92,76 @@ def test_embedded_large_images_are_counted_and_external_images_preserved(site):
 def test_small_meaningful_embedded_image_is_preserved():
     result = extract('<div data-message-author-role="assistant"><img src="data:image/png;base64,AAAA" width="300" alt="Synthetic plot"></div>')
     assert 'data:image/png;base64,AAAA' in result.text
+
+
+THINKING_MARKUP = {
+    "chatgpt": '<div data-testid="reasoning-summary">Synthetic reasoning.</div>',
+    "deepseek": '<div class="ds-markdown ds-markdown--think">Synthetic reasoning.</div>',
+    "gemini": '<model-thoughts><div class="thoughts-content">Synthetic reasoning.</div></model-thoughts>',
+    "doubao": '<div data-testid="thinking_content">Synthetic reasoning.</div>',
+    "qwen": '<div data-chat-thinking-wrap>Synthetic reasoning.</div>',
+    "yuanbao": '<div class="hyc-component-reasoner">Synthetic reasoning.</div>',
+}
+
+
+@pytest.mark.parametrize("site", THINKING_MARKUP)
+def test_thinking_default_omits_and_option_restores_before_own_answer(site):
+    soup = BeautifulSoup(answer_html(site, 'Synthetic final answer.'), 'html.parser')
+    root = loaded_chat._outermost(list(soup.select(loaded_chat.SELECTORS[site])))[1]
+    # Thinking can be a sibling of the selected final-answer markdown region.
+    root.insert(0, BeautifulSoup(THINKING_MARKUP[site], 'html.parser'))
+    default = extract(str(soup), site)
+    assert 'Synthetic reasoning.' not in default.text
+    assert 'Synthetic final answer.' in default.blocks[1].text
+    assert default.metadata['thinking_omitted_count'] == 1
+    assert any('已省略思考过程：1 段' in note for note in default.source_notes)
+    included = extract(str(soup), site, include_thinking=True)
+    assert included.blocks[1].text.index('#### 思考过程') < included.blocks[1].text.index('Synthetic reasoning.') < included.blocks[1].text.index('Synthetic final answer.')
+    assert 'Synthetic reasoning.' not in included.blocks[3].text
+    assert len(included.blocks) == len(default.blocks) == 4
+    assert included.metadata['thinking_included_count'] == 1
+
+
+def test_unknown_thinking_prose_and_user_example_are_never_guessed_away():
+    result = extract('<div data-message-author-role="user"><div class="thinking-container">Synthetic user example.</div></div><div data-message-author-role="assistant"><p>Thought for 3 seconds. Synthetic ordinary answer.</p></div>')
+    assert 'Synthetic user example.' in result.blocks[0].text
+    assert 'Thought for 3 seconds.' in result.blocks[1].text
+    assert result.metadata['thinking_omitted_count'] == 0
+
+
+def test_cli_thinking_flag_and_snapshot_use_same_option(tmp_path, capsys):
+    import json
+    from openmd.cli import main
+    page = tmp_path / 'page.html'
+    page.write_text('<div data-message-author-role="user">Synthetic question.</div><div data-message-author-role="assistant"><div class="thinking-container">Synthetic reasoning.</div><p>Synthetic final answer.</p></div>', encoding='utf-8')
+    command = ['go', str(page), '--as-snapshot', '--url', URLS['chatgpt'], '--include-thinking', '-o', str(tmp_path / 'out'), '--json']
+    assert main(command) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    saved = Path(receipt['saved_to']).read_text(encoding='utf-8')
+    assert '#### 思考过程' in saved and 'Synthetic reasoning.' in saved
+
+
+def test_snapshot_host_forwards_validated_thinking_option(tmp_path, monkeypatch):
+    import subprocess
+    from openmd import browser_host
+    monkeypatch.setenv('OPENMD_DATA_DIR', str(tmp_path / 'data'))
+    job = browser_host.start_snapshot_job('<p>Synthetic</p>', URLS['chatgpt'], save_to=str(tmp_path / 'out'), include_thinking=True, spawn=lambda *a, **k: None)
+    commands = []
+    def runner(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, '{"ok":true,"saved_to":"synthetic.md"}', '')
+    browser_host.run_job(Path(job['snapshot_path']).parent, runner=runner)
+    assert '--include-thinking' in commands[0]
+    with pytest.raises(ValueError, match='invalid_include_thinking'):
+        browser_host.start_snapshot_job('<p>Synthetic</p>', URLS['chatgpt'], save_to=str(tmp_path / 'out'), include_thinking='false', spawn=lambda *a, **k: None)
+
+
+def test_detail_explicit_thinking_field_obeys_same_option():
+    from openmd.backends.ai_chat import parse_ai_chat_output
+    payload = {'messages': [{'role': 'assistant', 'text': 'Synthetic final answer.', 'thinking': 'Synthetic reasoning.'}]}
+    turns, meta = parse_ai_chat_output(payload, site='deepseek', source_url=URLS['deepseek'])
+    assert turns[0].text == 'Synthetic final answer.'
+    assert meta['thinking_omitted_count'] == 1
+    turns, meta = parse_ai_chat_output(payload, site='deepseek', source_url=URLS['deepseek'], include_thinking=True)
+    assert turns[0].text.index('#### 思考过程') < turns[0].text.index('Synthetic final answer.')
+    assert meta['thinking_included_count'] == 1

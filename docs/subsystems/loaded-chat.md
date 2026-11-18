@@ -48,3 +48,23 @@ experimental fallback; this parser does not change its loaders or navigation.
 Synthetic fixtures cover all seven structures. Actual extension reload/click
 requires joint acceptance after integration; fixture checks do not establish
 live availability of every site.
+
+## Thinking sections
+
+By default, recognized assistant thinking sections are omitted and counted in
+source notes (`已省略思考过程：N 段`). Use `--include-thinking` with `go`, set
+`include_thinking: true` in a native `save_snapshot` request, or enable
+**AI 对话 → 保留思考过程** in extension settings to place them in a separate
+`思考过程` subsection before that turn's final answer. They do not add turns.
+Login retries retain the queued option. Existing extension settings default to
+omission; reloading the updated extension requires joint acceptance.
+
+Exact DOM signals are defined in `THINKING_SELECTORS` and
+`COMMON_THINKING_SELECTOR`. DeepSeek's `.ds-markdown--think` is based on the
+managed helper's explicit separation. ChatGPT, Gemini, Doubao, Qwen and Yuanbao
+variants have synthetic regression coverage and await authorized live DOM
+acceptance. Gemini custom turn elements also retain thinking siblings outside
+`.model-response-text`. Unknown structures and prose are preserved unchanged;
+the parser never guesses a boundary from words such as “Thought for”.
+The experimental detail path honors separately supplied thinking fields; when
+its upstream has flattened them into `Text`, that text is preserved with a note.

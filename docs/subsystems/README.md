@@ -131,6 +131,10 @@ ASR 在下载完成后开始。AES-128 内容密钥仅在内存，core 生成的
 ## 9. 浏览器插件
 - 入口：`src/openmd/browser_extension/`（MV3 插件）、`browser_setup.py`（注册 Native Messaging、复制插件到 `~/.openmd/browser/extension`）、`browser_host.py`（后台队列）。
 - 合同：不开本地端口，只有固定插件 ID 能连；目前仅 Windows。
+- 升级同步：原生宿主 ping 用 `browser_extension_sync.py` 的内容哈希比较包内文件和稳定副本；差异先复制并校验 staging，再在进程锁内切换整个目录，失败保留或恢复旧副本并返回错误。Windows 目录切换含两次 rename 的短暂缺失窗口，不会发布半份新旧文件。
+- 扩展启动和每 30 分钟握手；本地保存提交与已登记任务均结束后才 `runtime.reload()`。待重载哈希及已尝试哈希持久化，同一哈希最多自动重载一次。只读诊断可共用 `extension_file_hashes` / `extension_content_hash`，不应启动会写副本的 ping。
+- 初次安装仍需 `browser-setup` 和加载扩展；旧版尚无握手代码时需要一次手工重载。宿主解释器失效、同步目录不可写或协议无法自动修复时，通知提示“运行 openmd browser-setup 后重新加载扩展”。启动脚本不会在后台自动重写。
+- 离线回归：`python -m pytest tests/test_extension_sync.py tests/test_extension_reload.py tests/test_browser_host.py tests/test_f_loaded_chat_extension.py tests/test_c_snapshot_chat.py tests/test_package_extension.py`。真实 Chrome 自动重载仍需联合验收。
 
 ## 10. OpenCLI 上游同步
 

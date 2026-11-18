@@ -111,6 +111,49 @@ const scenario = process.argv[3];
     upgrade(s); await s.run('checkExtensionUpdate()'); assert.equal(s.reloads,0);
     const restarted=boot(s.store,s.api.response); await settle();
     assert.equal(restarted.reloads,1,'pending reload survives service worker restart');
+  } else if(scenario === 'protocol_repair') {
+    upgrade(s); s.api.response.protocol_version=2;
+    s.api.response.protocol_compatible=false;
+    await s.run('checkExtensionUpdate()'); await settle();
+    assert.equal(s.reloads,1,'refreshing the packaged worker can repair an old protocol');
+    const restarted=boot(s.store,s.api.response); await settle();
+    assert.equal(restarted.reloads,0);
+    assert(restarted.notices.some(n=>n.message.includes('运行 openmd browser-setup 后重新加载扩展')));
+  } else if(scenario === 'protocol_unrepairable') {
+    s.api.response={ok:true,extension_updated:false,extension_hash:HASH,protocol_version:99,protocol_compatible:false};
+    await s.run('checkExtensionUpdate()'); await s.run('checkExtensionUpdate()'); await settle();
+    assert.equal(s.reloads,0);
+    assert.equal(s.notices.length,1,'deduplicate repeated setup notices');
+    assert(s.notices[0].message.includes('运行 openmd browser-setup 后重新加载扩展'));
+    assert(s.requests.filter(x=>x.type==='ping').every(x=>x.protocol_version===1));
+  } else if(scenario === 'launcher_dead') {
+    s.error('Native host has exited.');
+    await s.run('checkExtensionUpdate()'); await s.run('checkExtensionUpdate()'); await settle();
+    assert.equal(s.reloads,0);
+    assert.equal(s.notices.length,1);
+    assert(s.notices[0].message.includes('运行 openmd browser-setup 后重新加载扩展'));
+  } else if(scenario === 'legacy_host') {
+    s.api.response={ok:true,version:1,save_to:'synthetic'};
+    await s.run('checkExtensionUpdate()'); await settle();
+    assert.equal(s.reloads,0);
+    assert(s.notices.some(n=>n.message.includes('运行 openmd browser-setup 后重新加载扩展')));
+  } else if(scenario === 'sync_failure') {
+    s.api.response={ok:false,error_code:'extension_sync_failed',error:'Synthetic write denial'};
+    await s.run('checkExtensionUpdate()'); await settle();
+    assert.equal(s.reloads,0);
+    assert(s.notices.some(n=>n.message.includes('Synthetic write denial') && n.message.includes('browser-setup')));
+  } else if(scenario === 'concurrent_handshake_poll') {
+    s.store.extensionUpdate={currentHash:HASH,pendingHash:NEXT,reloadedHashes:[]};
+    let release;
+    s.api.holdSet=values=>{
+      if(values.extensionSetupNotice!==null) return;
+      s.api.holdSet=null;
+      return new Promise(resolve=>{release=resolve;});
+    };
+    upgrade(s); const check=s.run('checkExtensionUpdate()'); await settle();
+    const completed=s.run('maybeReloadExtension()'); await settle();
+    release(); await Promise.all([check,completed]); await settle();
+    assert.equal(s.reloads,1,'poll and handshake must not overwrite the persisted reload history');
   } else { throw new Error('unknown scenario: '+scenario); }
   console.log(JSON.stringify({scenario,ok:true,reloads:s.reloads,requests:s.requests.length}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
@@ -132,4 +175,9 @@ def run_scenario(tmp_path, scenario):
 @pytest.mark.parametrize("scenario", ["startup_alarm", "idle_restart", "hash_mismatch", "busy_poll",
                                      "snapshot_inflight", "save_during_commit", "restart_pending"])
 def test_extension_update_lifecycle(tmp_path, scenario):
+    run_scenario(tmp_path, scenario)
+
+
+@pytest.mark.parametrize("scenario", ["protocol_repair", "protocol_unrepairable", "launcher_dead", "legacy_host", "sync_failure", "concurrent_handshake_poll"])
+def test_extension_protocol_and_setup_notice(tmp_path, scenario):
     run_scenario(tmp_path, scenario)

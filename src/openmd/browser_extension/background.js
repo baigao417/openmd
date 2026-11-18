@@ -6,14 +6,15 @@ import "./vendor/opencli-bridge/background.js";
 // Daily flow: click the toolbar icon -> save the current page (or every highlighted tab) to the
 // default location. Right-click a selection -> save every link inside it. Jobs run one by one.
 const HOST = "com.openmd.host";
+const PROTOCOL_VERSION = 1;
 const POLL_MS = 2000;
-const SETUP_HINT = "还没连上本机 openmd：请在终端运行 openmd browser-setup，然后重新加载插件。";
+const SETUP_HINT = "请运行 openmd browser-setup 后重新加载扩展。";
 
 function native(message) {
   return new Promise((resolve) => {
     chrome.runtime.sendNativeMessage(HOST, message, (reply) => {
       const err = chrome.runtime.lastError;
-      if (err) resolve({ ok: false, error: /not found|forbidden/i.test(err.message) ? SETUP_HINT : err.message });
+      if (err) resolve({ ok: false, error: `${SETUP_HINT}（${err.message}）` });
       else resolve(reply || { ok: false, error: "本机 openmd 没有回应" });
     });
   });
@@ -25,7 +26,13 @@ const UPDATE_ALARM = "openmd-extension-update";
 let activeSaves = 0;
 let saveEpoch = 0;
 let updateChecking = null;
-let reloadChecking = false;
+let updateStateTail = Promise.resolve();
+
+function withUpdateState(action) {
+  const result = updateStateTail.then(action);
+  updateStateTail = result.catch(() => {});
+  return result;
+}
 
 async function saving(action) {
   activeSaves += 1;
@@ -37,42 +44,59 @@ async function saving(action) {
   }
 }
 
-async function maybeReloadExtension() {
-  if (reloadChecking) return;
-  reloadChecking = true;
+function maybeReloadExtension() {
+  return withUpdateState(reloadExtensionWhenIdle);
+}
+
+async function reloadExtensionWhenIdle() {
   const epoch = saveEpoch;
-  try {
-    const { extensionUpdate = {}, jobs = {} } = await chrome.storage.local.get(["extensionUpdate", "jobs"]);
-    const hash = extensionUpdate.pendingHash;
-    const reloaded = extensionUpdate.reloadedHashes || [];
-    if (!hash || reloaded.includes(hash) || activeSaves || Object.keys(jobs).length) return;
-    await chrome.storage.local.set({ extensionUpdate: {
-      ...extensionUpdate, currentHash: hash, pendingHash: null, reloadedHashes: [...reloaded, hash],
-    } });
-    // Saving may begin while storage.set yields. Give it priority and retain
-    // the pending update without consuming this hash's one reload attempt.
-    if (activeSaves || saveEpoch !== epoch) {
-      await chrome.storage.local.set({ extensionUpdate });
-      return;
-    }
-    chrome.runtime.reload();
-  } finally { reloadChecking = false; }
+  const { extensionUpdate = {}, jobs = {} } = await chrome.storage.local.get(["extensionUpdate", "jobs"]);
+  const hash = extensionUpdate.pendingHash;
+  const reloaded = extensionUpdate.reloadedHashes || [];
+  if (!hash || reloaded.includes(hash) || activeSaves || Object.keys(jobs).length) return;
+  await chrome.storage.local.set({ extensionUpdate: {
+    ...extensionUpdate, currentHash: hash, pendingHash: null, reloadedHashes: [...reloaded, hash],
+  } });
+  // Saving may begin while storage.set yields. Give it priority and retain
+  // the pending update without consuming this hash's one reload attempt.
+  if (activeSaves || saveEpoch !== epoch) {
+    await chrome.storage.local.set({ extensionUpdate });
+    return;
+  }
+  chrome.runtime.reload();
+}
+
+async function showSetupNotice(reason) {
+  const { extensionSetupNotice } = await chrome.storage.local.get("extensionSetupNotice");
+  if (extensionSetupNotice === reason) return;
+  await chrome.storage.local.set({ extensionSetupNotice: reason });
+  fail("Openmd 扩展需要修复", `${reason} ${SETUP_HINT}`);
 }
 
 function checkExtensionUpdate() {
   if (updateChecking) return updateChecking;
   updateChecking = (async () => {
-    const reply = await native({ type: "ping" });
-    if (!reply.ok || !/^[a-f0-9]{64}$/.test(reply.extension_hash || "")) return;
-    const { extensionUpdate = {} } = await chrome.storage.local.get("extensionUpdate");
-    const hash = reply.extension_hash;
-    const changed = reply.extension_updated || (extensionUpdate.currentHash && extensionUpdate.currentHash !== hash);
-    await chrome.storage.local.set({ extensionUpdate: {
-      ...extensionUpdate, currentHash: extensionUpdate.currentHash || hash,
-      pendingHash: changed ? hash : extensionUpdate.pendingHash,
-    } });
-    await maybeReloadExtension();
-  })().finally(() => { updateChecking = null; });
+    const reply = await native({ type: "ping", protocol_version: PROTOCOL_VERSION });
+    if (!reply.ok) return showSetupNotice(reply.error || "本机 openmd 无法启动。");
+    if (!/^[a-f0-9]{64}$/.test(reply.extension_hash || "")) return showSetupNotice("本机 openmd 尚不支持扩展自动同步。");
+    return withUpdateState(async () => {
+      const { extensionUpdate = {} } = await chrome.storage.local.get("extensionUpdate");
+      const hash = reply.extension_hash;
+      const changed = reply.extension_updated || (extensionUpdate.currentHash && extensionUpdate.currentHash !== hash);
+      const incompatible = reply.protocol_version !== PROTOCOL_VERSION || reply.protocol_compatible === false;
+      // Reload a freshly repaired copy once before asking for manual setup. A
+      // repeated incompatible hash (or an old host) needs explicit intervention.
+      const canRepair = changed && !(extensionUpdate.reloadedHashes || []).includes(hash);
+      if (incompatible && !canRepair) return showSetupNotice("扩展与本机 openmd 协议不兼容。");
+      if (!incompatible) await chrome.storage.local.set({ extensionSetupNotice: null });
+      await chrome.storage.local.set({ extensionUpdate: {
+        ...extensionUpdate, currentHash: extensionUpdate.currentHash || hash,
+        pendingHash: changed ? hash : extensionUpdate.pendingHash,
+      } });
+      await reloadExtensionWhenIdle();
+    });
+  })().catch((error) => fail("扩展更新检查失败", `${String(error?.message || error)} ${SETUP_HINT}`))
+    .finally(() => { updateChecking = null; });
   return updateChecking;
 }
 
@@ -100,7 +124,7 @@ async function applyClickMode() {
 async function seedSettings() {
   const current = await getSettings();
   if (current.locations.length) return;
-  const ping = await native({ type: "ping" });
+  const ping = await native({ type: "ping", protocol_version: PROTOCOL_VERSION });
   if (!ping.ok || !ping.save_to) return;
   const id = crypto.randomUUID();
   await chrome.storage.local.set({ settings: { locations: [{ id, name: "默认", path: ping.save_to }], defaultId: id, clickMode: "auto" } });

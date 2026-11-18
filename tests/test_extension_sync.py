@@ -1,6 +1,7 @@
 """Runtime extension updates use synthetic bundles and isolated data only."""
 import shutil
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -86,3 +87,43 @@ def test_stable_setup_uses_same_runtime_sync(bundle):
     assert browser_setup.stable_extension_dir() == target
     assert extension_content_hash(source) == extension_content_hash(target)
     assert browser_host.handle({"type": "ping"})["extension_updated"] is False
+
+
+@pytest.mark.parametrize("version,compatible", [(1, True), (99, False), (True, False)])
+def test_protocol_negotiation_still_repairs_copy(bundle, version, compatible):
+    reply = browser_host.handle({"type": "ping", "protocol_version": version})
+    assert reply["protocol_version"] == 1
+    assert reply["protocol_compatible"] is compatible
+    assert reply["extension_updated"] is True
+    if not compatible:
+        assert reply["error_code"] == "extension_protocol_mismatch"
+        assert "openmd browser-setup" in reply["error"]
+
+
+def test_simultaneous_pings_publish_once(bundle):
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        replies = list(pool.map(lambda _: browser_host.handle({"type": "ping"}), range(4)))
+    assert all(reply["ok"] for reply in replies)
+    assert sum(reply["extension_updated"] for reply in replies) == 1
+    assert len({reply["extension_hash"] for reply in replies}) == 1
+
+
+def test_interrupted_directory_swap_is_recovered(bundle):
+    _, target = bundle
+    previous = target.parent / ".extension-previous"
+    previous.mkdir(parents=True)
+    (previous / "background.js").write_text("old worker", encoding="utf-8")
+    reply = browser_host.handle({"type": "ping"})
+    assert reply["ok"] and reply["extension_updated"]
+    assert (target / "background.js").read_text(encoding="utf-8") == "new worker"
+    assert not previous.exists()
+    assert not list(target.parent.glob(".extension-stage-*"))
+
+
+def test_read_only_diagnostics_can_share_file_identities(bundle):
+    import hashlib
+    from openmd.browser_extension_sync import extension_file_hashes
+    source, _ = bundle
+    assert extension_file_hashes(source) == {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in source.iterdir()
+    }

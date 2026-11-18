@@ -22,15 +22,15 @@ def _is_link(path: Path) -> bool:
     return stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400)
 
 
-def extension_content_hash(directory: Path) -> str:
-    """SHA256 of sorted POSIX names, NUL, file SHA256, newline; no Python cache.
+def extension_file_hashes(directory: Path) -> dict[str, str]:
+    """Per-file SHA256 identities, shared with read-only extension diagnostics.
 
     Missing or unreadable trees raise OSError, so callers cannot mistake a failed
     check for an up-to-date installation. Reusable by read-only diagnostics.
     """
     if _is_link(directory) or not directory.is_dir():
         raise OSError("extension_directory_must_be_a_real_directory")
-    digest = hashlib.sha256()
+    files = {}
     for path in sorted(directory.rglob("*"), key=lambda p: p.relative_to(directory).as_posix()):
         relative = path.relative_to(directory)
         if "__pycache__" in relative.parts or path.suffix in {".py", ".pyc"}:
@@ -38,8 +38,15 @@ def extension_content_hash(directory: Path) -> str:
         if _is_link(path):
             raise OSError("extension_tree_must_not_contain_links")
         if path.is_file():
-            content = hashlib.sha256(path.read_bytes()).hexdigest()
-            digest.update(f"{relative.as_posix()}\0{content}\n".encode("utf-8"))
+            files[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return files
+
+
+def extension_content_hash(directory: Path) -> str:
+    """SHA256 of sorted POSIX names, NUL, file SHA256, newline; no Python cache."""
+    digest = hashlib.sha256()
+    for name, content in extension_file_hashes(directory).items():
+        digest.update(f"{name}\0{content}\n".encode("utf-8"))
     return digest.hexdigest()
 
 

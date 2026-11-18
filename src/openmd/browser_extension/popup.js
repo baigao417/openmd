@@ -37,7 +37,7 @@ async function init() {
     button.disabled = !tabs.length;
     button.onclick = async () => {
       document.querySelectorAll(".location").forEach((b) => { b.disabled = true; });
-      const reply = await chrome.runtime.sendMessage({ cmd: "save", items: tabs.map((t) => ({ url: t.url, title: t.title })), locationId: loc.id });
+      const reply = await chrome.runtime.sendMessage({ cmd: "save", items: tabs.map((t) => ({ url: t.url, title: t.title, tabId: t.id })), locationId: loc.id });
       if (reply?.ok) {
         message(reply.count > 1 ? `正在把 ${reply.count} 个页面依次保存到「${loc.name}」` : `正在保存到「${loc.name}」`, true);
         setTimeout(() => window.close(), 900);

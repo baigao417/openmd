@@ -202,18 +202,11 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
 
     registry = create_default_registry()
     if getattr(args, "as_snapshot", False):
-        from openmd.core.models import ContentItem
+        from openmd.backends.loaded_chat import snapshot_item
 
         snapshot_path = Path(input_url).expanduser().resolve()
         original_url = str(getattr(args, "snapshot_url", None) or "https://snapshot.invalid/local")
-        item = ContentItem(
-            platform="page_snapshot",
-            input_type="single",
-            url=original_url,
-            title=None,
-            source_type="article",
-            raw_meta={"snapshot_path": str(snapshot_path), "captured_from": "browser_snapshot", "coverage": "visible_only"},
-        )
+        item = snapshot_item(snapshot_path, original_url)
         adapter = None
         selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)
         items = [item]
@@ -285,7 +278,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         item_selector = getattr(registry, "select_backend_for_item", None)
         item_selection = (
             item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
-            if item_selector is not None
+            if item_selector is not None and not getattr(args, "as_snapshot", False)
             else selection
         )
         result = extract_with_login(executor, item, item_selection.chain, args)

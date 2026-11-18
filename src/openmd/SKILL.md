@@ -38,6 +38,36 @@ A zero process exit does not by itself prove that the body is valid. Check `stat
 | `douyin_media_asr_not_enabled` | Install/configure the local `[asr]` path if transcription is wanted; metadata or detail identity alone is not a transcript. |
 | `xiaohongshu_request_blocked` | Report the site block. Do not bypass site security controls. |
 
+## Agent 自带浏览器时
+
+For AI conversations, first open the authorized conversation with the agent's
+browser controller and wait for its message history to load and generation to
+finish. Read that tab's current URL and `document.documentElement.outerHTML`,
+and save the HTML to a private UTF-8 local file. Do not read cookies, storage,
+credentials, or unrelated tabs. Pass the current URL even after a redirect so
+login pages can return `login_required`.
+
+```bash
+openmd go <page.html> --as-snapshot --url <current-conversation-url> -o <private-output-directory> --json
+```
+
+This existing snapshot entry uses the same conversation parser and receipt
+fields as the extension's current-page capture. It does not open the URL again.
+ChatGPT, Grok, DeepSeek, Doubao, Gemini, Qwen and Yuanbao have site parsers;
+Claude is not implemented. The output includes role-ordered turns, original
+code and tables. Coverage is limited to the loaded DOM branch. Compare the
+receipt's `completeness`; `unknown` does not prove the whole chat was loaded.
+An active stop-generation control yields `partial` / `ai_chat_not_stable`.
+
+For “latest N turns”, the agent controls scrolling/loading and repeats capture
+until its authorized range is present, then selects N ordered turns downstream.
+Openmd does not scroll, send a prompt, or load more history from this entry.
+Repeated capture uses the same source identity as URL detail: reuse the output
+directory to obtain `unchanged` or `conflict_kept_user_edit`. Keep private HTML
+and Markdown out of prompts, logs and reports. Never use a real conversation
+body as an example or fixture. The background URL detail route remains an
+experimental fallback.
+
 ## Managed OpenCLI
 
 `openmd opencli list` and `openmd opencli <site> <command> [args]` use Openmd's pinned, managed OpenCLI and preserve its stdout, stderr, and exit status for read-only commands. Built-in read-only commands such as `doctor`, `list`, `status`, `daemon status`, and supported `--help` are allowed. Writes, unknown commands, and unknown-site help fail closed unless the caller explicitly supplies `--allow-write`.

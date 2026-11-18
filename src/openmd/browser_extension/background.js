@@ -20,6 +20,12 @@ function native(message) {
 }
 
 const isWeb = (url) => /^https?:\/\//.test(url || "");
+// Keep host coverage aligned with backends/loaded_chat.py; parsing lives there.
+const AI_CHAT_HOSTS = ["chatgpt.com", "chat.openai.com", "grok.com", "chat.deepseek.com", "doubao.com", "www.doubao.com", "gemini.google.com", "www.qianwen.com", "qianwen.com", "qianwen.aliyun.com", "tongyi.aliyun.com", "yuanbao.tencent.com"];
+const isLoadedAiChat = (url) => {
+  try { const parsed = new URL(url); return isWeb(url) && AI_CHAT_HOSTS.includes(parsed.hostname); }
+  catch { return false; }
+};
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
@@ -151,6 +157,36 @@ async function track(jobs, batch, location) {
 
 // ---------------------------------------------------------------- saving
 
+async function saveTabs(tabs, locationId) {
+  const web = tabs.filter((tab) => isWeb(tab.url));
+  if (!web.length) return fail("没法保存", "只能保存普通网页（http / https）。");
+  // Flush ordinary URLs in their existing batch. AI pages require the actual
+  // tab handle; never reopen them through saveMany's URL queue.
+  let pending = [];
+  let total = 0;
+  let location;
+  const flush = async () => {
+    if (!pending.length) return { ok: true };
+    const result = await saveMany(pending, locationId);
+    pending = [];
+    if (result?.ok) { total += result.count; location = result.location; }
+    return result;
+  };
+  for (const tab of web) {
+    if (!isLoadedAiChat(tab.url)) { pending.push(tab); continue; }
+    const previous = await flush();
+    if (!previous?.ok) return previous;
+    const tabId = tab.id ?? tab.tabId;
+    if (!Number.isInteger(tabId)) return fail("读不到当前对话", "请返回原对话标签页再保存。");
+    const result = await saveSnapshot(tabId, locationId);
+    if (!result?.ok) return result;
+    total += result.count;
+    location = result.location;
+  }
+  const last = await flush();
+  return last?.ok ? { ok: true, count: total, location } : last;
+}
+
 // video: "note" (just mention the video), "text" (+ local transcript), "file" (+ the video file).
 async function saveMany(items, locationId, video) {
   const web = items.filter((item) => isWeb(item.url));
@@ -174,11 +210,23 @@ async function saveMany(items, locationId, video) {
 async function captureSnapshot(tabId) {
   const [{ result } = {}] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: () => ({
-      html: document.documentElement?.outerHTML || "",
-      url: location.href,
-      title: document.title || location.href,
-    }),
+    args: [AI_CHAT_HOSTS],
+    func: (aiHosts) => {
+      let html = document.documentElement?.outerHTML || "";
+      if (aiHosts.includes(location.hostname) && document.documentElement) {
+        const clone = document.documentElement.cloneNode(true);
+        const originals = document.documentElement.querySelectorAll("*");
+        const copies = clone.querySelectorAll("*");
+        originals.forEach((node, index) => {
+          const style = getComputedStyle(node);
+          if (style.display === "none" || style.visibility === "hidden") copies[index].setAttribute("data-openmd-hidden", "true");
+        });
+        // Retain rendered messages, not hydration payloads or composer values.
+        clone.querySelectorAll("script, style, noscript, input, textarea").forEach((node) => node.remove());
+        html = clone.outerHTML;
+      }
+      return { html, url: location.href, title: document.title || location.href };
+    },
   });
   return result;
 }
@@ -276,7 +324,7 @@ async function poll() {
 
 chrome.action.onClicked.addListener(async (tab) => {
   const tabs = await highlightedTabs(tab);
-  saveMany(tabs.map((t) => ({ url: t.url, title: t.title })));
+  return saveTabs(tabs);
 });
 
 chrome.runtime.onInstalled.addListener(async () => {
@@ -296,7 +344,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "save-link" && info.linkUrl) return saveMany([{ url: info.linkUrl, title: info.linkUrl }]);
-  if (info.menuItemId === "save-page" && tab?.url) return saveMany([{ url: tab.url, title: tab.title }]);
+  if (info.menuItemId === "save-page" && tab?.url) return saveTabs([tab]);
   if (info.menuItemId === "save-video-text" || info.menuItemId === "save-video-file") {
     const url = info.linkUrl || info.pageUrl || tab?.url;
     const video = info.menuItemId === "save-video-file" ? "file" : "text";
@@ -318,7 +366,7 @@ chrome.storage.onChanged.addListener((changes) => {
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  if (msg?.cmd === "save") { saveMany(msg.items, msg.locationId).then(reply); return true; }
+  if (msg?.cmd === "save") { saveTabs(msg.items, msg.locationId).then(reply); return true; }
   if (msg?.cmd === "snapshot") { chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => saveSnapshot(tab?.id, msg.locationId)).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
   return false;

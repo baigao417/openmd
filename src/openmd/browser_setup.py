@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from openmd.browser_host import HOST_NAME
+from openmd.browser_extension_sync import sync_extension
 from openmd.core.preferences import data_directory
 from openmd.runtime.interpreters import run_interruptibly
 
@@ -88,7 +89,7 @@ def stable_extension_dir(root: Path | None = None) -> Path:
     not. The manifest key keeps the extension ID identical.
     """
     target = (root or data_directory() / "browser") / "extension"
-    shutil.copytree(EXTENSION_DIR, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.py", "*.pyc"))
+    sync_extension(EXTENSION_DIR, target)
     return target
 
 

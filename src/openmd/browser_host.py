@@ -553,7 +553,17 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
     kind = message.get("type")
     try:
         if kind == "ping":
-            return {"ok": True, "version": 1, "save_to": str(default_save_directory())}
+            from openmd.browser_setup import EXTENSION_DIR
+            from openmd.browser_extension_sync import sync_extension
+
+            try:
+                updated, content_hash = sync_extension(EXTENSION_DIR, data_directory() / "browser" / "extension")
+            except OSError as exc:
+                return {"ok": False, "error_code": "extension_sync_failed",
+                        "error": "扩展副本同步失败：" + sanitize_error_summary(exc)
+                        + "。请运行 openmd browser-setup 后重新加载扩展。"}
+            return {"ok": True, "version": 1, "save_to": str(default_save_directory()),
+                    "extension_updated": updated, "extension_hash": content_hash}
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
         if kind == "save_snapshot":

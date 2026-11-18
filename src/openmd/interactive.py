@@ -377,8 +377,17 @@ def cmd_go(args: argparse.Namespace) -> int:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
         from openmd.importers.chatgpt import cmd_import, is_chatgpt_export
+        from openmd.importers.claude import cmd_import as import_claude, is_claude_export
 
-        if getattr(args, "chatgpt_export", False) or is_chatgpt_export(url):
+        if getattr(args, "chatgpt_export", False) and getattr(args, "claude_export", False):
+            raise ValueError("official_export_format_flags_conflict")
+        if getattr(args, "claude_export", False):
+            return import_claude(args, url, tty=tty)
+        if getattr(args, "chatgpt_export", False):
+            return cmd_import(args, url, tty=tty)
+        if is_claude_export(url):
+            return import_claude(args, url, tty=tty)
+        if is_chatgpt_export(url):
             return cmd_import(args, url, tty=tty)
         if getattr(args, "as_snapshot", False):
             source_url = str(getattr(args, "snapshot_url", "") or "").strip()

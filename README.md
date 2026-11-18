@@ -102,7 +102,7 @@ Openmd is not a knowledge base or a RAG retrieval system. It focuses on the foun
 | | Audio/video without subtitles, local media | Needs extras | Needs the `[asr]` extra, FFmpeg and a local speech model |
 | **Local documents and images** | PDF, DOCX, PPTX, XLSX, images | Needs extras | Needs the `[document]` extra; complex layouts and scans may go through an extra OCR route |
 | **Workplace docs** | Feishu / Lark documents | Partial | Needs `lark-cli` installed and logged in on your machine, plus `--enable-network-backends` to allow network reads |
-| **AI chat** | Grok, DeepSeek, ChatGPT | Experimental | Real sessions still need stability or login verification; no private conversation text is written to reports |
+| **AI chat** | Grok, DeepSeek, ChatGPT; ChatGPT / Claude official export ZIP or JSON | Experimental / offline import | Live routes still need stability or login verification; official exports import locally, without a browser; no private conversation text is written to reports |
 | **Chat history** | QQ group export files (JSON / HTML / TXT) | Paused | Export parsing exists but is not yet offered as a stable feature; Openmd never reads or decrypts chat databases |
 | **Experimental** | Douyin, Xiaohongshu | Experimental | Needs the browser extension and login; these sites often block automated reads, so stability and full coverage are not promised |
 
@@ -200,7 +200,7 @@ More: [tool integration](https://github.com/baigao417/openmd/blob/main/docs/tool
 
 **Everything to Markdown** is a long-term vision. These directions are being explored and are not delivered yet:
 
-- **Web AI chat export** is currently experimental: archive long conversations only after the route has passed real login, stability and completeness checks.
+- **Web AI chat export** is currently experimental: archive long conversations only after the route has passed real login, stability and completeness checks. ChatGPT / Claude official exports can be imported offline with `openmd go export.zip -o archive --chatgpt-export` / `--claude-export` (JSON is also accepted; formats are auto-detected). Use `--claude-title`, `--claude-since`, `--claude-until` to filter Claude exports; non-text blocks and attachments become counted placeholders. Repeated imports preserve user edits.
 - **E-books and more text formats**: EPUB, RTF, MOBI, AZW3 and others.
 - **Broader document parsing**: better extraction from documents with complex layouts.
 

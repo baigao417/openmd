@@ -37,10 +37,11 @@ def source_id_for(item) -> str:
     from .secrets import sanitize_url
 
     identifier = str(item.id).strip() if item.id else hashlib.sha256(sanitize_url(item.url).encode("utf-8")).hexdigest()
-    if item.platform == "ai_chat" and item.raw_meta.get("chat_site") == "chatgpt":
+    if item.platform == "ai_chat" and item.raw_meta.get("chat_site") in {"chatgpt", "claude"}:
         from openmd.backends.ai_chat import conversation_id_for_url
 
-        return "chatgpt:" + (conversation_id_for_url("chatgpt", item.url) or identifier)
+        site = item.raw_meta["chat_site"]
+        return site + ":" + (conversation_id_for_url(site, item.url) or identifier)
     return f"{item.platform}:{identifier}"
 
 

@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 
 from .native_common import html_markdown
 
-FORMATS = {'html'}
+FORMATS = {'html', 'htm'}
 
 
 def parse(d):
@@ -25,4 +25,3 @@ def parse_html(d):
 
 
 parse_htm = parse_html
-

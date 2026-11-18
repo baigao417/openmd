@@ -37,3 +37,18 @@ def parse(d):
     return globals()['parse_' + suffix](d)
 
 FORMATS.add('tsv')
+
+
+def fenced(text, language=''):
+    import re
+    fence = '`' * max(3, max((len(m.group())+1 for m in re.finditer(r'`+', text)), default=3))
+    return fence + language + '\n' + text + '\n' + fence
+
+
+def parse_json(d):
+    text = d.path.read_text(encoding='utf-8-sig')
+    value = json.loads(text)
+    # Preserve exact source lexemes (large integers, number exponents, key order).
+    d.add(fenced(text, 'json'))
+
+FORMATS.add('json')

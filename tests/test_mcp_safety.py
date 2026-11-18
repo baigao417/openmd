@@ -87,7 +87,9 @@ def test_execute_cannot_remember_preferences(tmp_path, monkeypatch):
     source = tmp_path / "sample.txt"
     source.write_text("Original synthetic words", encoding="utf-8")
     queued = mcp_jobs.save(str(source), str(tmp_path / "out"))
-    monkeypatch.setattr("openmd.runtime.managed_tools.activate", lambda: None)
+    def activation_forbidden():
+        raise AssertionError("local saves must not change managed browser tools")
+    monkeypatch.setattr("openmd.runtime.managed_tools.activate", activation_forbidden)
     monkeypatch.setattr("openmd.runtime.services.finish_openmd_bridge", lambda: None)
     import openmd.interactive as interactive
     seen = []

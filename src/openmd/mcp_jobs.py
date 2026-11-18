@@ -206,7 +206,8 @@ def main() -> int:
 
             status = host.read_status(sys.argv[2])
             try:
-                activate()
+                if status["permissions"].get("browser") is True:
+                    activate()
                 return cmd_go(arguments(status))
             finally:
                 finish_openmd_bridge()

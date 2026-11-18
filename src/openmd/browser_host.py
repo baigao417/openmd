@@ -350,7 +350,7 @@ def _child_env() -> dict[str, str]:
 def _run_openmd(command: list[str], job_dir: Path, status: dict[str, Any]) -> subprocess.CompletedProcess:
     # This runner is outside the per-job owner. A daemon started by the child
     # controller would inherit that outer Job even if detached from its own Job.
-    if "--enable-browser-backends" in command and any(command[index:index + 2] == ["-m", "openmd"] for index in range(len(command) - 1)):
+    if (status.get("mcp") and status.get("permissions", {}).get("browser") is True) or ("--enable-browser-backends" in command and any(command[index:index + 2] == ["-m", "openmd"] for index in range(len(command) - 1))):
         ensure_opencli_daemon(["opencli", "browser-job-read"], env=_child_env(), cwd=str(job_dir))
     process = owned_popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                text=True, encoding="utf-8", errors="replace", cwd=str(job_dir), env=_child_env(), **process_options())

@@ -19,6 +19,7 @@ FRONTMATTER_FIELDS: tuple[str, ...] = (
     "url",
     "published",
     "platform",
+    "format",
     "completeness",
 )
 
@@ -158,6 +159,7 @@ def render_markdown_document(
         "status": result.status,
         "source_level": result.source_level,
         "backend": result.backend,
+        "format": document_source_format(item, result),
     }
     completeness = _completeness_frontmatter(result)
     if completeness is not None:
@@ -168,6 +170,18 @@ def render_markdown_document(
         content=result.text,
         source_notes=build_source_notes(result),
     )
+
+
+def document_source_format(item: ContentItem, result: TranscriptResult) -> str | None:
+    if item.platform != "pdf" or item.source_type != "document":
+        return None
+    from pathlib import Path
+    from urllib.parse import unquote, urlparse
+
+    raw = item.raw_meta.get("local_path") or unquote(urlparse(item.url).path)
+    suffix = Path(str(raw)).suffix.lstrip(".").lower()
+    value = suffix or str(result.metadata.get("source_format") or "").lower()
+    return value if re.fullmatch(r"[a-z0-9]{1,12}", value) else None
 
 
 def _source_footer(document: MarkdownDocument) -> str:
@@ -215,7 +229,8 @@ def render_document(document: MarkdownDocument, *, raw: bool = False) -> str:
             value = published_date(value or document.frontmatter.get("published_at"))
         if value is None or (isinstance(value, str) and not value.strip()):
             continue
-        lines.append(f"{field}: {_frontmatter_value(value)}")
+        rendered = str(value) if field == "format" and re.fullmatch(r"[a-z0-9]{1,12}", str(value)) else _frontmatter_value(value)
+        lines.append(f"{field}: {rendered}")
     content = document.content if raw or document.frontmatter.get("image_post_author_text") else format_transcript(
         document.content,
         source_type=document.frontmatter.get("source_type"),
@@ -231,4 +246,6 @@ def render_document(document: MarkdownDocument, *, raw: bool = False) -> str:
             content = rest.lstrip("\r\n") if separator else ""
     prefix = "\n".join([*lines, "---", "", heading, "", ""])
     # Do not rstrip raw content: trailing spaces/newlines can be meaningful.
-    return prefix + content + ("" if content.endswith("\n") else "\n") + "\n" + _source_footer(document) + "\n"
+    source_format = document.frontmatter.get("format")
+    source_section = f"\n## Source\n\n- Format: {source_format}\n" if source_format else ""
+    return prefix + content + ("" if content.endswith("\n") else "\n") + source_section + "\n" + _source_footer(document) + "\n"

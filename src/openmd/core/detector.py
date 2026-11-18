@@ -26,6 +26,12 @@ MEDIA_EXTENSIONS: tuple[str, ...] = (
 
 # Keep the legacy `pdf` platform identity for the approved PDF/Office lane.
 DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".docx", ".pptx", ".xlsx")
+LOCAL_DOCUMENT_EXTENSIONS: tuple[str, ...] = (
+    ".html", ".htm", ".epub", ".rtf", ".odt", ".odp", ".ods",
+    ".doc", ".xls", ".ppt", ".csv", ".tsv", ".json", ".xml", ".ipynb", ".msg",
+    ".mobi", ".azw3", ".fb2", ".zip",
+)
+DOCUMENT_EXTENSIONS += LOCAL_DOCUMENT_EXTENSIONS
 
 IMAGE_TEXT_EXTENSIONS: tuple[str, ...] = (
     ".png",
@@ -95,7 +101,9 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
         return "douyin"
 
     extension_path = _path_for_extension_check(value)
-    if extension_path.endswith(DOCUMENT_EXTENSIONS):
+    if extension_path.endswith(DOCUMENT_EXTENSIONS) and (
+        not extension_path.endswith(LOCAL_DOCUMENT_EXTENSIONS) or _local_path_for_detection(value) is not None
+    ):
         return "pdf"
     if extension_path.endswith(IMAGE_TEXT_EXTENSIONS):
         return "screenshot"
@@ -142,7 +150,7 @@ def _local_directory_platform(value: str) -> str | None:
             if not candidate.is_file():
                 continue
             suffix = candidate.suffix.lower()
-            seen_pdf = seen_pdf or suffix in DOCUMENT_EXTENSIONS
+            seen_pdf = seen_pdf or (suffix in DOCUMENT_EXTENSIONS and not _looks_like_qq_export_path(str(candidate)))
             seen_image = seen_image or suffix in IMAGE_TEXT_EXTENSIONS
             seen_media = seen_media or suffix in MEDIA_EXTENSIONS
             checked += 1

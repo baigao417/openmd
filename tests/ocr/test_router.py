@@ -264,7 +264,7 @@ class GPUAndRouteTests(unittest.TestCase):
 
         catalog = load_catalog()
         self.assertEqual(default_backend_chains(effective=False)["screenshot"], ("ocr.chain", "ocr.rapidocr", "ocr.tesseract"))
-        self.assertEqual(default_backend_chains(effective=False)["pdf"], ("pdf.markitdown", "pdf.textlayer", "ocr.chain"))
+        self.assertEqual(default_backend_chains(effective=False)["pdf"], ("pdf.markitdown", "pdf.textlayer", "ocr.chain", "document.engines"))
         for platform in ("screenshot", "pdf"):
             registry = create_runtime_backend_provider_registry(platform, BackendRuntimeOptions())
             for name in ("ocr.chain", "ocr.ovis3", "ocr.minicpm"):

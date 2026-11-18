@@ -341,7 +341,18 @@ class BackendExecutor:
         )
 
     def execute(self, request: BackendExtractRequest) -> TranscriptResult:
-        chain = request.backend_chain if request.allow_fallback else request.backend_chain[:1]
+        chain = request.backend_chain
+        # Keep the legacy identity while selecting only applicable providers.
+        if request.item.platform == "pdf" and "document.engines" in chain:
+            from openmd.adapters.local_audio.adapter import local_path_from_input
+            from openmd.core.detector import LOCAL_DOCUMENT_EXTENSIONS
+
+            source = request.item.raw_meta.get("local_path") or request.item.url
+            path = local_path_from_input(source)
+            if path is not None and path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS:
+                chain = tuple(backend for backend in chain if backend not in {"pdf.markitdown", "pdf.textlayer", "ocr.chain"})
+        if not request.allow_fallback:
+            chain = chain[:1]
         if not chain:
             return _failed_result(request.item, "not_selected", "backend_chain_empty")
 

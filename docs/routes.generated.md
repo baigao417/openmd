@@ -19,7 +19,7 @@ Generated from bundled cards and routes, version `2026-11-10.1`.
 | web_article | content | web_article.discourse → defuddle.web.content → web_article.trafilatura → opencli.web.read |
 | feishu | content | lark-cli.docs.fetch → lark-cli.drive.export-markdown → lark-cli.markdown.fetch → manual.markdown-export |
 | generic_media | transcript | asr.fallback |
-| pdf | content | pdf.markitdown → pdf.textlayer → ocr.chain |
+| pdf | content | pdf.markitdown → pdf.textlayer → ocr.chain → document.engines |
 | screenshot | content | ocr.chain → ocr.rapidocr → ocr.tesseract |
 
 Tools run only with the gates declared in their cards. Media steps require local ASR before producing text.

@@ -138,7 +138,8 @@
       "chain": [
         "pdf.markitdown",
         "pdf.textlayer",
-        "ocr.chain"
+        "ocr.chain",
+        "document.engines"
       ]
     },
     {

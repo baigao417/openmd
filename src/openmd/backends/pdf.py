@@ -110,6 +110,39 @@ class PDFTextLayerProvider:
         return extract_pdf(request.item, backend=self.name)
 
 
+class DocumentEngineProvider:
+    """Additional local formats, after the unchanged legacy PDF/OCR chain."""
+
+    name = "document.engines"
+
+    def descriptor(self):
+        return BackendDescriptor(name=self.name, layer="local", provider="openmd.documents",
+            description="Detected-only local document engines and bounded ZIP containers.",
+            capabilities=(BackendCapability(platforms=("pdf",), source_types=("document",),
+                input_types=("single", "batch", "collection", "generic"),
+                source_levels=("native_text", "partial_extraction"), requires_network=False),))
+
+    def health(self):
+        return BackendHealth(ok=True, warnings=("Per-format dependencies are checked at conversion.",))
+
+    def extract(self, request):
+        from openmd.adapters.local_audio.adapter import local_path_from_input
+        from openmd.engines.base import failure
+        from openmd.engines.registry import convert_document
+        from openmd.engines.sniff import LEGACY_FORMATS
+        from pathlib import Path
+
+        source = request.item.raw_meta.get("local_path") or request.item.url
+        path = local_path_from_input(source)
+        if path is None:
+            return failure(self.name, Path("document"), "document_local_file_required")
+        if path.suffix.lower().lstrip(".") in LEGACY_FORMATS:
+            # This is an additional-format provider, not a second PDF/OCR pass.
+            # An unavailable fallback preserves the previous source verdict.
+            return failure(self.name, path, "backend_not_implemented", "Legacy PDF/Office uses the preceding providers.")
+        return convert_document(path)
+
+
 def register_backend_providers(
     registry: BackendProviderRegistry,
     options: BackendRuntimeOptions,
@@ -120,3 +153,4 @@ def register_backend_providers(
     from openmd.backends.ocr import register_ocr_providers
 
     register_ocr_providers(registry, options)
+    registry.register("document.engines", DocumentEngineProvider())

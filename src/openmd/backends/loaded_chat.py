@@ -35,7 +35,7 @@ HOSTS = {
     "gemini.google.com": "gemini", "www.qianwen.com": "qwen", "qianwen.com": "qwen",
     "qianwen.aliyun.com": "qwen", "tongyi.aliyun.com": "qwen", "yuanbao.tencent.com": "yuanbao",
 }
-CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-testid="user-message"]'
+CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-testid="user-message"], [data-conversation-role="user"]'
 EMBEDDED_IMAGE_LIMIT = 8 * 1024  # UTF-8 bytes of the inline URI, before decoding.
 # Exact structural signals only. Site-specific variants require live acceptance;
 # prose such as "Thought for ..." is never enough to discard answer text.
@@ -45,7 +45,7 @@ THINKING_SELECTORS = {
     "gemini": 'model-thoughts, .thoughts-container, .thoughts-content',
     "doubao": '[data-testid="thinking_content"], [data-testid="think_content"]',
     "qwen": '[data-chat-thinking-wrap], .qwen-thinking',
-    "yuanbao": '.hyc-component-reasoner, .hyc-content-think, .agent-chat__thinking',
+    "yuanbao": '.hyc-component-reasoner, .hyc-content-think, .agent-chat__thinking, .hyc-component-deepsearch-cot__think',
 }
 COMMON_THINKING_SELECTOR = '.thinking-container, [data-message-type="reasoning"], [data-testid="reasoning"], [data-testid="thinking"]'
 
@@ -280,18 +280,21 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     if not turns:
         return TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code="ai_chat_empty", error_summary="当前页没有可读取的对话轮次；请先打开并加载会话。")
     generating = _generating(soup)
+    user_unavailable = site == "chatgpt" and user_count == 0 and not any(turn.role == "user" for turn in turns) and any(turn.role == "assistant" for turn in turns)
     title = soup.title.get_text(strip=True) if soup.title else None
     return TranscriptResult(
         text="\n\n".join(turn.text for turn in turns) + "\n", blocks=turns,
-        status="partial" if generating else "verified", source_level="browser_rendered", backend=backend,
+        status="partial" if generating or user_unavailable else "verified", source_level="browser_rendered", backend=backend,
         title=conversation_title(site, item.title or title, turns, session_title=_session_title(soup, item.url)),
-        error_code="ai_chat_not_stable" if generating else None,
-        error_summary="当前页仍在生成，请等待完成后重新读取。" if generating else None,
+        error_code="ai_chat_not_stable" if generating else ("ai_chat_user_turn_unavailable" if user_unavailable else None),
+        error_summary="当前页仍在生成，请等待完成后重新读取。" if generating else ("当前 ChatGPT 页面未发现可读取的用户轮，无法确认问答完整性。" if user_unavailable else None),
         metadata={"chat_site": site, "captured_from": "browser_snapshot", "coverage": "visible_branch",
                   "turn_count": len(turns), "independent_turn_count": independent_count, "independent_user_turn_count": user_count, "generating": generating,
+                  "conversation_user_evidence_unavailable": user_unavailable,
                   "selector_source": f"OpenCLI 2.0.3 clis/{site}/detail.js",
                   "assistant_turn_count": sum(turn.role == "assistant" for turn in turns), **stats},
         source_notes=["读取当前已加载页面；仅覆盖 DOM 中已加载的分支，未验证未加载的历史消息。",
+                      *(["当前 ChatGPT 页面只发现助手轮，未发现可读取的用户轮；无法确认问答完整性。"] if user_unavailable else []),
                       *([f"公式可能失真：{stats['math_fallback_count']} 处未找到 TeX annotation，保留 MathML 或可见文本。"] if stats["math_fallback_count"] else []),
                       *([f"已省略内嵌图片：{stats['embedded_image_omitted_count']} 张；保留替代文本和图注。"] if stats["embedded_image_omitted_count"] else []),
                       *([f"已删除内嵌小图标：{stats['embedded_icon_removed_count']} 个。"] if stats["embedded_icon_removed_count"] else []),

@@ -62,10 +62,33 @@ openmd batch links.txt --out ~/notes     # 一行一个链接，批量处理
 | 小宇宙播客逐字稿 | ✓ | —（第一次使用时自动准备约 20MB 的读取组件） |
 | 公众号文章、X 帖子、B 站字幕 | ✓ | Openmd 浏览器插件；B 站 AI 字幕还需要你已登录账号 |
 | 没有字幕的视频和播客 | | `pip install "openmd-cli[asr]"` 加本机语音模型（[说明](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)） |
-| PDF、Word、PPT、Excel、图片 | | `pip install "openmd-cli[document]"` |
+| 本地文档 | | `pip install "openmd-cli[document]"`；格式矩阵见下表 |
+| 图片 / 扫描件 | | `pip install "openmd-cli[ocr]"` 或配置已有本机 OCR |
 | 抖音、小红书 | 实验性 | 浏览器插件并已登录你自己账号 |
 
 运行 `openmd doctor` 可以看到你这台机器上哪些已经就绪。链接处理失败时，Openmd 会说明原因，并打印一行信息，直接贴进[问题反馈](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)就行。
+
+### 本地文档格式
+
+安装 `pip install "openmd-cli[document]"`。下表已用独立 wheel、空配置和不含
+Pandoc、LibreOffice、Calibre 的 PATH 验证。范围为原生文字；样本通过不代表
+所有文件或视觉版式都已认证。
+
+| 格式 | 只装 `[document]` | 可选增强 / 限制 |
+|---|---|---|
+| 含原生文字的 PDF | 可用 | 扫描件另需本机 OCR；不认证表格几何结构 |
+| DOCX、PPTX、XLSX | 可用 | 保留原始嵌图；缺图片 OCR 或公式缓存时 partial；PPTX 包含备注、类别图表 |
+| XLS | 可用 | 保存的单元格计算值与工作表顺序；未认证二进制嵌图 |
+| HTML、HTM、EPUB、RTF、ODT、ODS、ODP、FB2 | 可用 | 本地文件，不执行脚本；Pandoc / LibreOffice 提供可选回退；图片缺口明确报告 |
+| CSV、TSV、JSON、XML、IPYNB、MSG | 可用 | 大表有截断 coverage；不执行 Notebook；MSG 附件标为缺口 |
+| DOC、PPT | partial 文字回退 | 安装 LibreOffice 使用首选转换；不认证 95% 召回、版式和旧 PPT 活跃幻灯片顺序 |
+| ZIP | 可用，逐条报告状态 | 音视频 / 图片另需 ASR / OCR；受容器资源上限约束 |
+| MOBI、AZW3 | 需安装 Calibre | 缺工具返回 `engine_unavailable`；拒收加密电子书，不解密 |
+
+图片 / 扫描件 OCR 单独安装 `pip install "openmd-cli[ocr]"`，或配置已有本机 OCR。
+Pandoc 可选：`pip install "openmd-cli[pandoc]"`。文档解析不下载模型，不启用云端
+图片描述或转录。`[document]` 不安装 MarkItDown、magika 或 ONNX Runtime；
+已安装的 MarkItDown 暂保留兼容回退。详见[格式链与限制](docs/subsystems/document-formats.generated.md)。
 
 ## 产物长什么样
 

@@ -24,12 +24,15 @@ class MarkItDownPDFParser(PDFParser):
     name = "pdf.markitdown"
 
     def is_available(self) -> bool:
-        return importlib.util.find_spec("markitdown") is not None
+        return importlib.util.find_spec("markitdown") is not None or importlib.util.find_spec("pdfminer") is not None
 
     def parse(self, source_ref: str, *, title: str) -> TranscriptResult:
         from openmd.engines.markitdown import MarkItDownEngine
 
         path = _local_existing_path(source_ref)
+        if path is not None and path.suffix.lower() == '.pdf' and importlib.util.find_spec('markitdown') is None:
+            from openmd.engines.native import NativeEngine
+            return NativeEngine('pdf').convert(path)
         if path is None or path.suffix.lower() not in {".pdf", ".docx", ".pptx", ".xlsx"}:
             return self._parse_legacy(source_ref, title=title)
         return MarkItDownEngine().convert(path, _legacy_parser=self, title=title)

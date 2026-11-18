@@ -72,7 +72,12 @@ class PDFParserProvider:
                 if any(not page["reliable"] for page in probes):
                     return document_failure(self.name, request.item.title or path.stem, "pdf_ocr_required", "One or more pages require OCR; continue to the page router.")
             except PDFDependencyMissing as exc:
-                return document_failure(self.name, request.item.title or path.stem, "pymupdf_missing", str(exc))
+                # Native pdfminer can run in [document] without the optional
+                # page/OCR dependencies. Existing OCR-capable installs keep
+                # their established probe and fallback order.
+                import importlib.util
+                if importlib.util.find_spec('pdfminer') is None:
+                    return document_failure(self.name, request.item.title or path.stem, "pymupdf_missing", str(exc))
             except (OSError, ValueError, RuntimeError):
                 return document_failure(self.name, request.item.title or path.stem, "pdf_probe_failed", "PyMuPDF could not inspect the local PDF.")
         adapter = PdfDocumentAdapter("pdf", request.primary_backend)
@@ -115,6 +120,9 @@ class DocumentEngineProvider:
 
     name = "document.engines"
 
+    def __init__(self, options=None):
+        self.options = options or BackendRuntimeOptions()
+
     def descriptor(self):
         return BackendDescriptor(name=self.name, layer="local", provider="openmd.documents",
             description="Detected-only local document engines and bounded ZIP containers.",
@@ -136,10 +144,14 @@ class DocumentEngineProvider:
         path = local_path_from_input(source)
         if path is None:
             return failure(self.name, Path("document"), "document_local_file_required")
-        if path.suffix.lower().lstrip(".") in LEGACY_FORMATS:
+        from openmd.engines.native import PROMOTED
+        if path.suffix.lower().lstrip(".") in LEGACY_FORMATS - PROMOTED:
             # This is an additional-format provider, not a second PDF/OCR pass.
             # An unavailable fallback preserves the previous source verdict.
             return failure(self.name, path, "backend_not_implemented", "Legacy PDF/Office uses the preceding providers.")
+        if self.options.enable_asr_backends and path.suffix.lower() in {'.docx', '.pptx', '.xlsx'}:
+            from openmd.engines.base import EngineLimits
+            return convert_document(path, EngineLimits(allow_ocr=True))
         return convert_document(path)
 
 
@@ -153,4 +165,4 @@ def register_backend_providers(
     from openmd.backends.ocr import register_ocr_providers
 
     register_ocr_providers(registry, options)
-    registry.register("document.engines", DocumentEngineProvider())
+    registry.register("document.engines", DocumentEngineProvider(options))

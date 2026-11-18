@@ -1,0 +1,97 @@
+"""Openmd-owned document glue. Optional parsers run in an owned local worker."""
+from __future__ import annotations
+
+import importlib.metadata
+import importlib.util
+from pathlib import Path
+
+from openmd.core.models import ExtractionComponent, TranscriptResult
+from .base import DocumentEngine, EngineError, EngineLimits, failure
+from .sniff import signature, validate_document
+
+
+DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx'), 'xlsx': ('openpyxl', 'openpyxl')}
+DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
+DEPENDENCIES['msg'] = ('olefile', 'olefile')
+DEPENDENCIES['doc'] = ('olefile', 'olefile')
+DEPENDENCIES['ppt'] = ('olefile', 'olefile')
+DEPENDENCIES['pdf'] = ('pdfminer', 'pdfminer.six')
+# Promotion is explicit and follows a saved per-format benchmark.
+ODF_FORMATS = {'odt'}
+FALLBACK_FORMATS = {'doc', 'ppt'}
+PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt', 'ods', 'odp', 'fb2', 'msg'}
+
+
+class NativeEngine(DocumentEngine):
+    def __init__(self, source_format: str):
+        self.format = source_format.lower().lstrip('.')
+        self.id = 'openmd.' + self.format
+
+    def can_handle(self, path: Path, sniff: bytes) -> bool:
+        return path.suffix.lower() == '.' + self.format and signature(path, sniff)
+
+    def available(self):
+        dependency = DEPENDENCIES.get(self.format)
+        if dependency and importlib.util.find_spec(dependency[0]) is None:
+            return {'ok': False, 'reason': 'python -m pip install "openmd-cli[document]" (missing ' + dependency[1] + ')', 'version': None}
+        version = None
+        if dependency:
+            try:
+                version = importlib.metadata.version(dependency[1])
+            except importlib.metadata.PackageNotFoundError:
+                pass
+        return {'ok': True, 'reason': 'Openmd local document parser; no downloads or cloud plugins.', 'version': version or 'builtin'}
+
+    def convert(self, path: Path, limits: EngineLimits | None = None) -> TranscriptResult:
+        limits = limits or EngineLimits()
+        try:
+            validate_document(path, limits)
+            with path.open('rb') as stream:
+                sniff = stream.read(4096)
+            if not self.can_handle(path, sniff):
+                raise EngineError('document_format_unsupported')
+            available = self.available()
+            if not available['ok']:
+                return failure(self.id, path, 'engine_unavailable', available['reason'])
+            from .worker import convert_in_worker
+            value = convert_in_worker(path, limits, mode='native')
+            value['components'] = [ExtractionComponent(**c) for c in value.get('components', [])]
+            return TranscriptResult(**value)
+        except (EngineError, OSError, ValueError) as exc:
+            return failure(self.id, path, getattr(exc, 'code', 'document_extraction_failed'), exc)
+
+
+def convert_local(path: Path, limits: EngineLimits):
+    from .native_common import Document
+    from .native_office import parse_docx, parse_pptx, parse_xlsx, parse_xls
+    document = Document(path, limits)
+    if path.suffix.lower() == '.pdf':
+        from .native_pdf import parse
+        parse(document)
+        return document.result()
+    if path.suffix.lower() in {'.msg', '.doc', '.ppt'}:
+        from .native_ole import parse_msg, parse_doc, parse_ppt
+        {'.msg': parse_msg, '.doc': parse_doc, '.ppt': parse_ppt}[path.suffix.lower()](document)
+        return document.result()
+    if path.suffix.lower().lstrip('.') in ODF_FORMATS:
+        from .native_odf import parse
+        parse(document)
+        return document.result()
+    if path.suffix.lower() == '.rtf':
+        from .native_rtf import parse
+        parse(document)
+        return document.result()
+    from . import native_structured
+    if path.suffix.lower().lstrip('.') in native_structured.FORMATS:
+        native_structured.parse(document)
+        return document.result()
+    from . import native_text
+    if path.suffix.lower().lstrip('.') in native_text.FORMATS:
+        native_text.parse(document)
+        return document.result()
+    {'docx': parse_docx, 'pptx': parse_pptx, 'xlsx': parse_xlsx, 'xls': parse_xls}[path.suffix.lower().lstrip('.')](document)
+    return document.result()
+
+ODF_FORMATS.add('ods')
+
+ODF_FORMATS.add('odp')

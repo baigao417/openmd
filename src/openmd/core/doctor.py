@@ -81,6 +81,8 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
         "account_actions": "not_performed",
         "ready": manifest_valid,
     }
+    from openmd.engines.diagnostics import document_formats
+    diagnostics['document_formats'] = document_formats()
     if profile == "all":
         diagnostics.update(_media_diagnostics())
         diagnostics["openmd_on_path"] = shutil.which("openmd") is not None

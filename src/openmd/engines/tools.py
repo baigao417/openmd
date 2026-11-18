@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -56,6 +57,14 @@ def executable(tool: str) -> str | None:
         candidate = Path(os.getenv('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'Pandoc/pandoc.exe'
         if candidate.is_file():
             return str(candidate)
+    if tool == 'pandoc':
+        # pypandoc-binary bundles a local executable. Never call its download API.
+        import importlib.util
+        spec = importlib.util.find_spec('pypandoc')
+        if spec and spec.origin:
+            candidate = Path(spec.origin).parent / 'files' / ('pandoc.exe' if os.name == 'nt' else 'pandoc')
+            if candidate.is_file():
+                return str(candidate)
     return None
 
 
@@ -167,8 +176,8 @@ class SofficeEngine(ExecutableEngine):
                 output = root / (path.stem + '.' + target)
                 if not output.is_file():
                     raise EngineError('document_conversion_failed', 'LibreOffice produced no converted document.')
-                from .markitdown import MarkItDownEngine
-                result = MarkItDownEngine().convert(output, limits)
+                from .registry import convert_document
+                result = convert_document(output, limits)
             return replace(result, backend=self.id, title=path.stem,
                 metadata={**result.metadata, 'source_format': path.suffix[1:].lower(), 'conversion_target': target})
         except (EngineError, OSError, UnicodeError) as exc:
@@ -191,12 +200,16 @@ class CalibreEngine(ExecutableEngine):
                 return failure(self.id, path, 'engine_unavailable', self.install_hint)
             with owned_temporary_directory(prefix='openmd-calibre-') as owned_root:
                 root = Path(owned_root)
-                output = root / 'converted.epub'
+                output = root / (path.stem + '.epub')
                 run_command([command, str(path.resolve()), str(output)], root, limits)
                 if not output.is_file():
                     raise EngineError('document_conversion_failed')
                 from .registry import convert_document
                 result = convert_document(output, limits)
+                # Older intermediates can contribute a filename-only heading.
+                # Remove that wrapper without changing source chapter order.
+                text = re.sub(r'\A\s*(?:#{1,6}\s+converted\s*\n|converted\s*\n[=-]+\s*\n)\s*', '', result.text, count=1, flags=re.I)
+                result = replace(result, text=text)
             return replace(result, backend=self.id, title=path.stem,
                 metadata={**result.metadata, 'source_format': path.suffix[1:].lower(), 'converted_by': self.id})
         except (EngineError, OSError, UnicodeError) as exc:

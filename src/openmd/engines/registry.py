@@ -14,6 +14,14 @@ from .tools import CalibreEngine, DefuddleEngine, PandocEngine, SofficeEngine
 def engine_chain(source_format: str):
     from .archive import ZipEngine
     suffix = source_format.lower().lstrip('.')
+    from .native import NativeEngine, PROMOTED
+    if suffix in PROMOTED:
+        fallback = [SofficeEngine()] if suffix in {'doc', 'ppt', 'xls', 'odt', 'odp', 'ods'} else []
+        if suffix in {'epub', 'rtf', 'odt'}:
+            fallback = [PandocEngine(), *fallback]
+        elif suffix in {'html', 'htm'}:
+            fallback = [DefuddleEngine(), *fallback]
+        return [NativeEngine(suffix), *fallback, MarkItDownEngine()]
     if suffix in {'html', 'htm'}:
         return [DefuddleEngine(), MarkItDownEngine()]
     if suffix == 'epub':
@@ -21,11 +29,14 @@ def engine_chain(source_format: str):
     if suffix in {'rtf', 'odt', 'odp', 'ods'}:
         return [PandocEngine(), SofficeEngine()]
     if suffix in {'doc', 'xls', 'ppt'}:
-        return [SofficeEngine()]
+        from .native import FALLBACK_FORMATS
+        return [SofficeEngine(), *([NativeEngine(suffix)] if suffix in FALLBACK_FORMATS else [])]
     if suffix in {'mobi', 'azw3', 'fb2'}:
         return [CalibreEngine()]
     if suffix == 'zip':
         return [ZipEngine()]
+    if suffix == 'pdf':
+        return [MarkItDownEngine(), NativeEngine('pdf')]
     if suffix in {'pdf', 'docx', 'pptx', 'xlsx', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'msg'}:
         return [MarkItDownEngine()]
     return []

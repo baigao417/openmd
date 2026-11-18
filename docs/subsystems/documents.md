@@ -17,27 +17,32 @@ python -m openmd.routing.generate
 python -m openmd.engines.formats
 ```
 
-旧 `pdf.markitdown`、`pdf.textlayer`、`ocr.chain` 顺序保留；附加格式由追加的
-`document.engines` provider 处理。PDF/DOCX/PPTX/XLSX 的既有正文和 OCR 恢复语义保留。
+PDF 的 `pdf.markitdown`、`pdf.textlayer`、`ocr.chain` 顺序保留；缺少 MarkItDown 时
+兼容入口使用 pdfminer.six 读取原生文字。DOCX/PPTX/XLSX 及新增格式进入
+`document.engines`，使用 Openmd 自有胶水。底层分别使用 mammoth、python-pptx、
+openpyxl、xlrd、olefile；其余文本/ODF/电子书读取器由 Openmd 实现。
 remote HTML/JSON URL 继续走网站路线，QQ 导出识别优先。
 
 执行器会在尝试 provider 之前按本地文档后缀过滤链：新增格式只进入
 `document.engines`，不生成旧 PDF/Office/OCR 的失败噪音；禁用 fallback 时同样
-先过滤再选首项。PDF/DOCX/PPTX/XLSX 保留原来的引擎顺序。
-DOC/XLS/PPT/ODP/ODS 的 plan 检查 LibreOffice，MOBI/AZW3/FB2 检查 Calibre；
+先过滤再选首项。PDF 保留原来的引擎顺序。
+plan 按格式检查实际引擎链，DOC/PPT 优先 LibreOffice，缺失时自写回退始终标记
+partial（不认证 95% 召回与版式）。XLS/ODF/FB2 可直接解析；MOBI/AZW3 检查 Calibre；
 缺少时 `execution_ready=false`，`blocked_reason=engine_unavailable:<engine>`，
 并给出 `next_action`。该检查不读取输入正文，不执行转换。
 文档产物的 front matter 与 Source 小节均显示原始 `format`；车道 ID 和路径仍为 `pdf`。
 
 ## 可选工具
 
-- MarkItDown：安装 `openmd-cli[document]`；只允许文档后缀，显式禁用插件。
+- MarkItDown：已安装时保留基线回退，只允许文档后缀，显式禁用插件；`[document]`
+  使用自有引擎，不再依赖 MarkItDown、magika 或 onnxruntime。
   CSV/TSV 默认最多 10000 个数据行；`coverage` 保存总行数、包含行数、截断原因。
   JSON/XML 保留源文本，Notebook 只读取内容，不执行单元格。
 - Defuddle：复用工具卡的 `tools.defuddle.root/node`。仅调用库解析本地 HTML；
   删除脚本和活动资源节点，禁用 fetch/http/https，不启动浏览器或加载页面资源。
 - Pandoc：PATH、`OPENMD_PANDOC` 或 `tools.pandoc.executable`；Windows 额外探测当前
-  用户的 LocalAppData/Pandoc。使用 sandbox，无过滤器与 Lua；输出采用
+  用户的 LocalAppData/Pandoc；`pip install "openmd-cli[pandoc]"` 可安装本地二进制。
+  使用 sandbox，无过滤器与 Lua；输出采用
   `gfm-raw_html`，清除 HTML 包装并移除与文件名重复的起始书名标题。
 - LibreOffice：沿用 `soffice` / `OPENMD_SOFFICE` 和 PATH。每次使用独立 profile，
   禁用宏与外部更新；Writer 转 DOCX，Calc 转 XLSX，Impress 转 PPTX。
@@ -50,6 +55,12 @@ DOC/XLS/PPT/ODP/ODS 的 plan 检查 LibreOffice，MOBI/AZW3/FB2 检查 Calibre�
 
 上述工具都不会自动安装。新文档解析子进程使用已有 owned-process 合同，Windows
 不显示控制台，超时或中断会终止本次创建的进程树。错误不回显工具原始 stderr。
+
+DOCX/PPTX/XLSX 的原始嵌图以 data URI 保留字节和哈希。只有已允许本机转录时
+才调用本机 OCR；不可用时逐图片标记缺口。PPTX 保留备注、类别图表与表格；
+XLSX 按工作表顺序显示保存的计算值并注明含公式，缺少公式缓存时 partial。
+单页、工作表、幻灯片失败保留其他可读部分。`openmd doctor` 按格式列出当前可用、
+缺少的引擎和对应安装命令；只检测依赖，不打开用户文档、不执行转换。
 
 ## ZIP
 

@@ -14,7 +14,7 @@ def render_formats() -> str:
     for item in declarations()['document_formats']:
         lines.append('| ' + '、'.join(item['extensions']) + ' | ' + ' → '.join(item['engines']) + ' | ' + labels[item['availability']] + ' | ' + item['scope'] + ' |')
     lines += ['', 'ZIP 是 Openmd 容器，不是 MarkItDown ZipConverter。ZIP 中媒体默认逐条返回 `asr_required`，图片返回 `ocr_required`；不会隐式上传或加载模型。', '',
-        '附加引擎位于旧 PDF/Office/OCR provider 后；已有 PDF、DOCX、PPTX、XLSX 的正文和优先级保持原合同。', '']
+        '可用档表示安装 `[document]` 后可运行本地原生文本解析；图片 OCR 另需 `[ocr]` 或本机 OCR 配置。DOC/PPT 自写回退为实验档。PDF 保留既有 page/OCR 顺序，DOCX/PPTX/XLSX 使用自有引擎。', '']
     return '\n'.join(lines)
 
 

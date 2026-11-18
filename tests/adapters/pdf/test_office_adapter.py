@@ -32,7 +32,8 @@ def test_office_routes_to_existing_local_document_backend(tmp_path, suffix):
         with patch.object(Path, "open", guard_input_open):
             plan = build_plan(value, available_gates={"local_compute"})
         assert plan.execution_ready
-        assert plan.runtime_provider == "pdf.markitdown"
+        from openmd.engines.native import PROMOTED
+        assert plan.runtime_provider == ("document.engines" if suffix.lower().lstrip('.') in PROMOTED else "pdf.markitdown")
 
 
 def test_document_folder_includes_office_files_but_not_extension_named_directory(tmp_path):
@@ -53,6 +54,7 @@ def test_remote_office_is_rejected_before_parser_import(suffix):
 
 
 def test_legacy_doc_is_not_advertised_as_executable(tmp_path, monkeypatch):
+    monkeypatch.setattr('openmd.engines.native.NativeEngine.available', lambda self: {'ok':False,'reason':'test missing native','version':None})
     monkeypatch.setattr("openmd.engines.tools.SofficeEngine.available", lambda self: {"ok": False, "reason": "missing", "version": None})
     path = tmp_path / "source.doc"
     path.write_bytes(b"fixture")

@@ -260,7 +260,8 @@ def build_plan(
     runtime_provider = record.runtime_provider
     if local_path is not None and source_id == "pdf_office":
         from openmd.core.detector import LOCAL_DOCUMENT_EXTENSIONS
-        if local_path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS:
+        from openmd.engines.native import PROMOTED
+        if local_path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS or local_path.suffix.lower().lstrip('.') in PROMOTED:
             from openmd.routing.loader import load_catalog
             runtime_provider = "document.engines"
             required = list(load_catalog().capabilities[runtime_provider].get("gates", []))
@@ -325,6 +326,9 @@ def build_plan(
     if local_path is not None and source_id == "pdf_office":
         suffix = local_path.suffix.lower().lstrip(".")
         required_engine = "soffice" if suffix in {"doc", "xls", "ppt", "odp", "ods"} else "calibre" if suffix in {"mobi", "azw3", "fb2"} else None
+        from openmd.engines.native import NativeEngine, PROMOTED, FALLBACK_FORMATS
+        if required_engine and suffix in PROMOTED | FALLBACK_FORMATS and NativeEngine(suffix).available()['ok']:
+            required_engine = None
         if required_engine:
             from openmd.engines.tools import CalibreEngine, SofficeEngine
             engine = SofficeEngine() if required_engine == "soffice" else CalibreEngine()

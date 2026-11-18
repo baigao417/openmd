@@ -51,8 +51,9 @@ def test_format_has_explainable_engine_chain(suffix):
 def test_unavailable_ebook_has_install_hint_and_trace(tmp_path, monkeypatch):
     from openmd.engines.registry import convert_document
     from openmd.engines.tools import CalibreEngine
-    path = tmp_path / 'book.fb2'
-    path.write_text('<FictionBook><body><section><p>Chapter text</p></section></body></FictionBook>')
+    from test_signatures import SAMPLES
+    path = tmp_path / 'book.mobi'
+    path.write_bytes(SAMPLES['mobi'])
     monkeypatch.setattr(CalibreEngine, 'available', lambda self: {'ok': False, 'reason': 'Install Calibre (ebook-convert).', 'version': None})
     result = convert_document(path)
     assert result.error_code == 'engine_unavailable'
@@ -106,12 +107,15 @@ def test_registry_fallback_records_unavailable_predecessor(tmp_path, monkeypatch
     from openmd.core.models import TranscriptResult
     path = tmp_path / 'article.html'
     path.write_text('<html><body><article><h1>Source title</h1><p>Source body.</p></article></body></html>')
+    from openmd.engines.native import NativeEngine
+    monkeypatch.setattr(NativeEngine, 'available', lambda self: {'ok': False, 'reason': 'test missing native parser', 'version': None})
     monkeypatch.setattr(DefuddleEngine, 'available', lambda self: {'ok': False, 'reason': 'not installed', 'version': None})
     monkeypatch.setattr(MarkItDownEngine, 'available', lambda self: {'ok': True, 'reason': 'installed', 'version': '1'})
     monkeypatch.setattr(MarkItDownEngine, 'convert', lambda *a: TranscriptResult(text='# Source title\n\nSource body.', status='verified', source_level='native_text', backend='pdf.markitdown'))
     result = convert_document(path)
     assert result.metadata['selected_engine'] == 'markitdown'
-    assert [entry['outcome'] for entry in result.metadata['engine_attempts']] == ['unavailable', 'selected']
+    assert [(entry['engine'], entry['outcome']) for entry in result.metadata['engine_attempts']] == [
+        ('openmd.html', 'unavailable'), ('defuddle', 'unavailable'), ('markitdown', 'selected')]
 
 
 def _zip(path, members, compression=0):

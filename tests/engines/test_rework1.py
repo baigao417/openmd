@@ -42,6 +42,7 @@ def test_plan_checks_external_document_dependency_without_reading_source(tmp_pat
     source = tmp_path / ("source." + suffix)
     source.write_bytes(b"fixture")
     kind = "SofficeEngine" if engine == "soffice" else "CalibreEngine"
+    monkeypatch.setattr('openmd.engines.native.NativeEngine.available', lambda self: {'ok': False, 'reason': 'test missing native', 'version': None})
     monkeypatch.setattr("openmd.engines.tools." + kind + ".available", lambda self: {"ok": available, "reason": "test", "version": "test"})
     original_open = Path.open
     def guard(path, *args, **kwargs):

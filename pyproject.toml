@@ -35,10 +35,11 @@ Changelog = "https://github.com/baigao417/openmd/commits/main"
 [project.optional-dependencies]
 asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7", "psutil>=5.9"]
 web = []  # kept for compatibility; trafilatura is now a core dependency
+pandoc = ["pypandoc-binary>=1.14,<2"]  # optional local structure enhancement
 pdf = ["markitdown[pdf]>=0.1.6"]
 ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
 ocr-router = ["Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]
-document = ["markitdown[pdf,docx,pptx,xlsx,outlook]>=0.1.6", "rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+document = ["mammoth>=1.8,<2", "python-pptx>=1.0,<2", "openpyxl>=3.1,<4", "xlrd>=2,<3", "olefile>=0.47,<1", "pdfminer.six>=20231228"]
 # Contributors: pip install -e ".[dev]" then python -m pytest
 dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also need ffmpeg on PATH
 

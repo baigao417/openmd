@@ -366,4 +366,5 @@ def passthrough(args: list[str]) -> int:
         from .ai_chat_loading import detail_loading_environment
 
         env = detail_loading_environment(args[0], args[1])
-    return run_interruptibly(managed_command(args), env=command_environment(env), stdin=subprocess.DEVNULL).returncode
+    environment = command_environment() if env is None else command_environment(env)
+    return run_interruptibly(managed_command(args), env=environment, stdin=subprocess.DEVNULL).returncode

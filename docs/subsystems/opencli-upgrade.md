@@ -54,7 +54,8 @@ python scripts/opencli_canary.py <exact-candidate-version> --probe-config <priva
 2. 核对候选包身份，执行全部命令契约。
 3. 在内存中重放全部补丁/ABI/overlay 校验。版本不适用或任一匹配失败，停止候选真实 probe。
 4. 复用已经运行的 pinned daemon 和已经准备好的 OpenCLI 配置，只读跑 baseline/candidate
-   两次 `openmd probe`。各自临时 location config 选择相应 host；进程内 resolver 让插件引用候选包。
+   两次 `openmd probe`。临时 location config 保留现有读取工具位置、browser 策略和有效 overlay，
+   选择相应 OpenCLI host；进程内 resolver 让插件引用候选包。
    canary 模式禁止重指共享 Node host、准备/安装插件或创建用户配置目录。
 5. 对比 configured platforms、状态、真实分支、来源、字数、条数和结构化错误。
    结果不全、基线失败、候选失败、分支变化或计数回退均阻止直接升级。

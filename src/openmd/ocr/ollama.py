@@ -95,6 +95,34 @@ def unload_model(config: dict, name: str) -> None:
         time.sleep(0.1)
 
 
+def _large_portrait(image, model: str, config: dict) -> bool:
+    cap = config.get("large_portrait_max_pixels")
+    return bool(cap is not None
+                and model.removesuffix(":latest") == config["ovis_model"].removesuffix(":latest")
+                and image.height > image.width and image.width * image.height > cap)
+
+
+def prepare_image(image, *, model: str, config: dict):
+    """Keep Ovis large portrait text legible while preserving ordinary crops.
+
+    This is a source geometry policy, not a newspaper or language classifier.
+    A blanket higher cap can regress ordinary mathematical pages. Only portrait
+    sources larger than the optional cap use it; MiniCPM crops keep their cap.
+    Explicit larger base caps and legacy configuration dictionaries are retained.
+    """
+    from PIL import Image
+
+    max_pixels = config["max_pixels"]
+    portrait_cap = config.get("large_portrait_max_pixels", max_pixels)
+    if _large_portrait(image, model, config):
+        max_pixels = max(max_pixels, portrait_cap)
+    prepared = image.copy()
+    if prepared.width * prepared.height > max_pixels:
+        factor = math.sqrt(max_pixels / (prepared.width * prepared.height))
+        prepared = prepared.resize((max(1, int(prepared.width * factor)), max(1, int(prepared.height * factor))), Image.Resampling.LANCZOS)
+    return prepared
+
+
 def stream_recognize(image, *, model: str, prompt: str, config: dict, deadline: float) -> dict:
     """Read the stream on a disposable I/O thread; poll on the main thread.
 
@@ -102,13 +130,8 @@ def stream_recognize(image, *, model: str, prompt: str, config: dict, deadline: 
     avoids Windows blocking socket reads masking Ctrl+C for a whole page budget.
     """
     config = {**config, "ollama_url": validate_ollama_url(config["ollama_url"])}
-    from PIL import Image
-
-    budget = estimate_expected_chars(image, config)
-    prepared = image.copy()
-    if prepared.width * prepared.height > config["max_pixels"]:
-        factor = math.sqrt(config["max_pixels"] / (prepared.width * prepared.height))
-        prepared = prepared.resize((max(1, int(prepared.width * factor)), max(1, int(prepared.height * factor))), Image.Resampling.LANCZOS)
+    budget = estimate_expected_chars(image, config, columns=_large_portrait(image, model, config))
+    prepared = prepare_image(image, model=model, config=config)
     buffer = io.BytesIO()
     prepared.save(buffer, format="PNG")
     payload = {"model": model, "messages": [{"role": "user", "content": prompt, "images": [base64.b64encode(buffer.getvalue()).decode("ascii")]}], "stream": True, "keep_alive": "10m", "think": False, "options": {"temperature": 0, "top_p": 0.001, "top_k": 1, "repeat_penalty": 1, "num_ctx": config["num_ctx"], "num_predict": config["num_predict"]}}

@@ -10,6 +10,7 @@
   "page_seconds": 600.0,
   "gpu_lock_seconds": 600.0,
   "max_pixels": 1003520,
+  "large_portrait_max_pixels": 4014080,
   "tile_height": 1440,
   "tile_aspect_ratio": 2.0,
   "tile_overlap": 0.18,

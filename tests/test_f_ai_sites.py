@@ -52,6 +52,7 @@ def test_empty_placeholder_is_not_a_conversation():
     ([{"Login":"No (guest mode)","Status":"Connected"}],False),
     ([{"Login":"Yes","Status":"Connected"}],True),
     ([{"Login":"No","Status":"Page not ready"}],None),
+    ([{"Login":"Yes","Status":"Page not ready"}],None),
 ])
 def test_structured_status_distinguishes_login_from_page_not_ready(rows,expected):
     from openmd.backends.ai_chat import login_status_from_output

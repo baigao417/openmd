@@ -195,7 +195,7 @@ def login_status_from_output(payload: Any) -> bool | None:
             if not isinstance(row, dict):
                 continue
             login, state = str(row.get("Login") or "").lower(), str(row.get("Status") or "").lower()
-            if login == "yes":
+            if login == "yes" and state != "page not ready":
                 return True
             if state == "login required" or (login.startswith("no") and state == "connected"):
                 return False

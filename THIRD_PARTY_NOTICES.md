@@ -43,6 +43,10 @@ The original legacy Word text reader follows Microsoft's public MS-DOC
 FibBase, FibRgLw97, FibRgFcLcb97, Clx, PlcPcd and Pcd structures
 (learn.microsoft.com/openspecs/office_file_formats/ms-doc/).
 It extracts text and basic table delimiters; it does not certify full layout.
+The original legacy PowerPoint reader follows public MS-PPT RecordHeader,
+TextCharsAtom and TextBytesAtom structures
+(learn.microsoft.com/openspecs/office_file_formats/ms-ppt/). Active-slide
+persistence, drawing geometry and layout are not certified; results are partial.
 
 | Component | License | How it arrives |
 |---|---|---|

@@ -140,3 +140,55 @@ def parse_doc(d):
             d.meta['text_recall_certified_95'] = False
             d.meta['next_action'] = '安装 LibreOffice 可获得完整转换'
             d.gaps.append('安装 LibreOffice 可获得完整转换')
+
+
+def parse_ppt(d):
+    """MS-PPT RecordHeader, TextCharsAtom and TextBytesAtom text reader.
+
+    Binary persistence records can retain old slides and master content; this
+    bounded reader cannot certify active-slide order and always reports partial.
+    """
+    import struct
+    import olefile
+    with olefile.OleFileIO(d.path) as ole:
+        entries = ole.listdir()
+        if any(any('encrypt' in s.lower() for s in p) for p in entries):
+            raise EngineError('document_encrypted')
+        if ole.exists('Current User'):
+            current = stream(ole, 'Current User', d.limits)
+            if len(current) >= 16 and struct.unpack_from('<I', current, 12)[0] == 0xf3d1c4df:
+                raise EngineError('document_encrypted')
+        data = stream(ole, 'PowerPoint Document', d.limits)
+        d.meta['parts_order'] = []
+        seen = set()
+
+        def records(begin, end, depth=0, owner='document'):
+            if depth > 64:
+                raise EngineError('document_invalid_content')
+            cursor = begin
+            while cursor + 8 <= end:
+                d.limits.remaining()
+                options, kind, length = struct.unpack_from('<HHI', data, cursor)
+                content, stop = cursor+8, cursor+8+length
+                if options == 0 and kind == 0 and length == 0:
+                    break
+                if stop > end:
+                    raise EngineError('document_invalid_content')
+                if kind in {1006, 1008}:
+                    label = ('Slide ' if kind == 1006 else 'Notes ') + str(len(d.meta['parts_order'])+1)
+                    d.meta['parts_order'].append(label)
+                    records(content, stop, depth+1, label)
+                elif options & 15 == 15:
+                    records(content, stop, depth+1, owner)
+                elif kind in {4000, 4008}:
+                    value = data[content:stop].decode('utf-16le' if kind == 4000 else 'cp1252').strip('\x00\r\n ')
+                    if value and value not in seen:
+                        seen.add(value)
+                        d.add(value.replace('\r', '\n'))
+                cursor = stop
+        records(0, len(data))
+        if d.parts:
+            d.gap('legacy_ppt_order_layout_unverified')
+            d.meta['text_recall_certified_95'] = False
+            d.meta['next_action'] = '安装 LibreOffice 可获得完整转换'
+            d.gaps.append('安装 LibreOffice 可获得完整转换')

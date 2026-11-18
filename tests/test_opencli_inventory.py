@@ -90,3 +90,20 @@ def test_inventory_is_in_declaration_drift_check():
     root = Path(__file__).resolve().parents[1]
     paths = {p.relative_to(root).as_posix() for p in projections(root)}
     assert {'docs/opencli-inventory.generated.md', 'docs/opencli-inventory.generated.json'} <= paths
+
+
+def test_browser_namespace_does_not_accept_a_nested_command_as_root(tmp_path):
+    from openmd.runtime.opencli_inventory import check_contracts
+    target = tmp_path / 'dist/src/commands/browser.js'
+    target.parent.mkdir(parents=True)
+    target.write_text("""
+const browser = program.command('browser').option('--session <name>');
+browserTab.command('open').argument('<url>').action(() => {});
+""", encoding='utf-8')
+    data = {'commands': [{'site': 'browser', 'command': 'open', 'args': ['--session'], 'columns': [], 'positionals': 1}]}
+    assert check_contracts(data, package_root=tmp_path) == ['browser/open:command_missing']
+
+
+def test_inventory_includes_conditionally_injected_runtime_flags():
+    from openmd.runtime.opencli_inventory import inventory
+    assert {'--site-session', '--keep-tab'} <= set(inventory()['browser_runtime_args'])

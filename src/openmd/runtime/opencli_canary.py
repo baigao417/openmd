@@ -33,16 +33,20 @@ def install_candidate(version: str, staging: Path, *, timeout: int = 300) -> Pat
     npm = managed_tools._npm_cli(node) if node else None
     if not node or not npm:
         raise ValueError('npm_runtime_missing')
+    for name in ('user.npmrc', 'global.npmrc'):
+        (staging / name).write_text('', encoding='utf-8')
     command = [str(node / ('node.exe' if os.name == 'nt' else 'node')), str(npm),
                'install', '--prefix', str(staging), '--cache', str(staging / 'npm-cache'),
+               '--userconfig', str(staging / 'user.npmrc'), '--globalconfig', str(staging / 'global.npmrc'),
                f'{managed_tools.OPENCLI_PACKAGE}@{version}', '--ignore-scripts', '--no-audit',
                '--no-fund', '--save-exact', '--loglevel=error']
     if registry := os.environ.get('OPENMD_NPM_REGISTRY'):
         command += ['--registry', registry]
-    env = {**os.environ, 'NODE_OPTIONS': '--max-old-space-size=1536',
+    env = {**{k: v for k, v in os.environ.items() if not k.upper().startswith(('NPM_CONFIG_', 'NPM_TOKEN', 'NODE_AUTH_TOKEN'))},
+           'NODE_OPTIONS': '--max-old-space-size=1536',
            'PATH': str(node) + os.pathsep + os.environ.get('PATH', '')}
     result = run_interruptibly(command, capture_output=True, text=True, encoding='utf-8', errors='replace',
-                               env=env, timeout=timeout, check=False)
+                               env=env, cwd=staging, timeout=timeout, check=False)
     if result.returncode:
         raise ValueError(f'npm_install_failed:exit_{result.returncode}')  # no registry/session diagnostics
     package = staging / 'node_modules/@jackwener/opencli'
@@ -175,9 +179,10 @@ def _write_report(out: Path, report: dict) -> None:
     lines = [f"# OpenCLI {report['candidate_version']} canary", '', f"Status: **{report['status']}**. Direct upgrade: **{str(report['direct_upgrade']).lower()}**.",
              '', 'This command reports only; the installed pin, user configuration and shared Node host are preserved.', '',
              f"- Baseline pin: {report['baseline_version']}",
-             f"- Command contracts: {report.get('contracts', {}).get('ok', False)}",
-             f"- Patch replay: {report.get('patches', {}).get('ok', False)} ({report.get('patches', {}).get('total', 0)} records)",
-             f"- Live comparison: {report.get('comparison', {}).get('ok', False)}",
+             f"- Step: {report.get('step', 'finished')}",
+             f"- Command contracts: {report.get('contracts', {}).get('ok', 'not_run')}",
+             f"- Patch replay: {report.get('patches', {}).get('ok', 'not_run')} ({report.get('patches', {}).get('total', 0)} records)",
+             f"- Live comparison: {report.get('comparison', {}).get('ok', 'not_run')}",
              f"- Related metadata changes: {len(report.get('related_changes', []))}", '', '## Findings', '']
     lines.extend('- ' + item for item in report.get('blockers', []))
     lines.extend('- ' + item for item in report.get('contracts', {}).get('failures', []))
@@ -199,19 +204,27 @@ def run_canary(version: str, *, out: Path, probe_config: Path | None = None, tim
     out.mkdir(parents=True, exist_ok=True)
     report = {'schema': 'openmd.opencli-canary/v1', 'started_at': datetime.now(timezone.utc).isoformat(),
               'baseline_version': managed_tools.OPENCLI_VERSION, 'candidate_version': version,
-              'status': 'BLOCKED', 'direct_upgrade': False, 'blockers': [], 'pin_changed': False,
+              'status': 'RUNNING', 'direct_upgrade': False, 'blockers': [], 'pin_changed': False,
               'private_content_policy': 'metadata and numeric counters only'}
     try:
         with tempfile.TemporaryDirectory(prefix='openmd-canary-', dir=out) as directory:
             staging = Path(directory)
+            report['step'] = 'install'
+            _write_report(out, report)
             package = install_candidate(version, staging, timeout=install_timeout)
+            report['step'] = 'contracts'
+            _write_report(out, report)
             failures = check_contracts(package_root=package)
             report['contracts'] = {'ok': not failures, 'failures': failures}
+            report['step'] = 'patches'
+            _write_report(out, report)
             report['patches'] = check_package_patches(package)
             report['related_changes'] = related_changes(package, managed_tools.managed_package_root())
             if failures or not report['patches']['ok']:
                 report['blockers'].append('candidate_static_contract_or_patch_mismatch; live probe was not started')
             else:
+                report['step'] = 'live-probe'
+                _write_report(out, report)
                 baseline, candidate = run_probe_pair(package, staging, config=probe_config, out=out, timeout=timeout)
                 report.update(baseline_probe=baseline, candidate_probe=candidate, comparison=compare_probes(baseline, candidate))
                 report['direct_upgrade'] = report['comparison']['ok']
@@ -222,6 +235,8 @@ def run_canary(version: str, *, out: Path, probe_config: Path | None = None, tim
         # Exception text is used only for this module's own fixed structured codes.
         code = str(exc) if isinstance(exc, ValueError) and re.fullmatch(r'[A-Za-z0-9_:;-]+', str(exc)) else type(exc).__name__
         report['blockers'].append(code)
+    report['status'] = 'PASS' if report['direct_upgrade'] else 'BLOCKED'
+    report['step'] = 'finished'
     report['finished_at'] = datetime.now(timezone.utc).isoformat()
     _write_report(out, report)
     return report

@@ -35,6 +35,9 @@ Only required column names are pinned; raw Markdown/file consumers need no table
 | youtube | playlist | --limit -f | 1 | title, url | upstream |
 | youtube | transcript | --mode -f | 1 | — | upstream |
 
+Browser metadata conditionally injects runtime arguments: `--keep-tab` `--site-session`.
+Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands do not receive these flags.
+
 ## Source references
 
 - `bilibili/subtitle`: `src/openmd/backends/bilibili.py:401`

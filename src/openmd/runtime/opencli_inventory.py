@@ -218,7 +218,13 @@ def inventory(root: Path = ROOT) -> dict:
             row = records[key]
             row.update(kind='owned', definition=path.relative_to(root).as_posix(), columns=definition['columns'])
             row['declared_args'] = definition['args']
-    return {'schema': 'openmd.opencli-inventory/v1', 'commands': [records[k] for k in sorted(records)]}
+    managed_source = ast.parse((root / 'src/openmd/runtime/managed_tools.py').read_text(encoding='utf-8'))
+    managed_command = next(n for n in managed_source.body if isinstance(n, ast.FunctionDef) and n.name == 'managed_command')
+    injected = sorted({n.value for n in ast.walk(managed_command) if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                       and re.fullmatch(r'--[\w-]+', n.value)})
+    return {'schema': 'openmd.opencli-inventory/v1', 'browser_runtime_args': injected,
+            'browser_runtime_source': 'src/openmd/runtime/managed_tools.py:managed_command',
+            'commands': [records[k] for k in sorted(records)]}
 
 
 def _commander_options(source: str) -> set[str]:
@@ -239,6 +245,7 @@ def check_contracts(data: dict | None = None, *, package_root: Path | None = Non
         path = package_root / relative
         if path.is_file():
             global_options |= _commander_options(path.read_text(encoding='utf-8'))
+    failures.extend(f'runtime:arg_missing:{arg}' for arg in data.get('browser_runtime_args', []) if arg not in global_options)
     for row in data['commands']:
         label = row['site'] + '/' + row['command']
         if row['site'] == 'browser':
@@ -248,13 +255,14 @@ def check_contracts(data: dict | None = None, *, package_root: Path | None = Non
                 continue
             source = path.read_text(encoding='utf-8')
             # browser is a built-in Commander namespace, not an adapter cli().
-            matches = list(re.finditer(r"\.command\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
-            sections = [source[m.start():matches[i + 1].start() if i + 1 < len(matches) else len(source)]
+            matches = list(re.finditer(r"\bbrowser\.command\(\s*['\"]([^'\"]+)['\"]\s*\)", source))
+            sections = [source[m.start():matches[i + 1].start() if i + 1 < len(matches) else len(source)].split('.action(', 1)[0]
                         for i, m in enumerate(matches) if m.group(1).split()[0] == row['command']]
             if not sections:
                 failures.append(f'{label}:command_missing')
                 continue
-            namespace = next(source[m.start():matches[i + 1].start()] for i, m in enumerate(matches[:-1]) if m.group(1) == 'browser')
+            namespace_match = re.search(r"program\.command\(\s*['\"]browser['\"]\s*\)[\s\S]*?;", source)
+            namespace = namespace_match.group() if namespace_match else ''
             allowed = global_options | _commander_options(namespace) | _commander_options('\n'.join(sections))
             positional = len(re.findall(r'\.argument\(', '\n'.join(sections)))
             columns = []
@@ -286,7 +294,8 @@ def projections(root: Path, *, source_root: Path = ROOT) -> dict[Path, str]:
              '| Site | Command | Arguments (including optional branches) | Positionals | Required columns | Owner |', '|---|---|---|---|---|---|']
     for row in data['commands']:
         lines.append(f"| {row['site']} | {row['command']} | {' '.join(row['args']) or '—'} | {row['positionals']} | {', '.join(row['columns']) or '—'} | {row['kind']} |")
-    lines += ['', '## Source references', '']
+    lines += ['', 'Browser metadata conditionally injects runtime arguments: ' + ' '.join(f'`{a}`' for a in data['browser_runtime_args']) + '.',
+              'Source: `' + data['browser_runtime_source'] + '`; API-only commands do not receive these flags.', '', '## Source references', '']
     for row in data['commands']:
         lines.append(f"- `{row['site']}/{row['command']}`: " + ', '.join(f'`{s}`' for s in row['sources']))
     return {root / 'docs/opencli-inventory.generated.md': '\n'.join(lines) + '\n',

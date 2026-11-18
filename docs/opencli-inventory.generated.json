@@ -1,5 +1,10 @@
 {
   "schema": "openmd.opencli-inventory/v1",
+  "browser_runtime_args": [
+    "--keep-tab",
+    "--site-session"
+  ],
+  "browser_runtime_source": "src/openmd/runtime/managed_tools.py:managed_command",
   "commands": [
     {
       "site": "bilibili",

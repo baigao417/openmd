@@ -1,7 +1,6 @@
 """Read-only native-host checks; never repair registration or extension files."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -42,10 +41,9 @@ def registered_manifests() -> dict[str, Path | None]:
 def _extension_hashes(root: Path) -> dict[str, str]:
     if not (root / "manifest.json").is_file():
         raise FileNotFoundError("extension_manifest_missing")
-    return {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in root.rglob("*") if path.is_file()
-            and "__pycache__" not in path.relative_to(root).parts
-            and path.suffix not in {".py", ".pyc"}}
+    # One identity rule for diagnostics and runtime sync (browser_extension_sync).
+    from openmd.browser_extension_sync import extension_file_hashes
+    return extension_file_hashes(root)
 
 
 def _host_diagnostics(manifest_path: Path | None) -> dict:

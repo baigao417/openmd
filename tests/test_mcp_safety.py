@@ -152,3 +152,17 @@ def test_explicit_content_redacts_credentials_without_logging_body(tmp_path):
     assert reply["content_redacted"]
     assert "Synthetic text" in reply["content"]
     assert "SYNTHETIC_SECRET" not in reply["content"]
+
+
+def test_redaction_cannot_expand_content_past_its_limit(tmp_path, monkeypatch):
+    queued = mcp_jobs.save("https://example.org", str(tmp_path))
+    artifact = tmp_path / "note.md"
+    artifact.write_text("token:x\n" * 4, encoding="utf-8")
+    with mcp_jobs.queue():
+        stored = host.read_status(queued["id"])
+        stored.update(state="done", saved_to=str(artifact))
+        host._write_status(host.jobs_root() / queued["id"], stored)
+    monkeypatch.setattr(mcp_jobs, "MAX_CONTENT_CHARS", 32)
+    reply = mcp_jobs.job(queued["id"], include_content=True)
+    assert len(reply["content"]) <= 32
+    assert reply["content_redacted"] and reply["content_truncated"]

@@ -189,7 +189,7 @@ def job(job_id: str, *, include_content: bool = False) -> dict:
             redacted = bounded
             for pattern in SENSITIVE_TEXT_PATTERNS:
                 redacted = pattern.sub("[redacted]", redacted)
-            result.update(content=redacted, content_truncated=len(content) > MAX_CONTENT_CHARS,
+            result.update(content=redacted[:MAX_CONTENT_CHARS], content_truncated=max(len(content), len(redacted)) > MAX_CONTENT_CHARS,
                           content_redacted=redacted != bounded)
     return result
 

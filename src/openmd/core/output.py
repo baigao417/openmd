@@ -67,6 +67,8 @@ def write_item_result(
             content,
             append=bool(result.metadata.get("sync_append")),
             cursor=result.metadata.get("cursor"),
+            aliases=(source_id_for(item),),
+            no_delta=bool(result.metadata.get("sync_no_delta")),
         )
         if sync_receipt is not None:
             sync_receipt["operation"] = synced.operation

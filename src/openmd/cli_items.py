@@ -103,12 +103,14 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
+        from .core.sync_manifest import prepare_sync_item
+        item = prepare_sync_item(item, args.out)
         result = extract_with_login(executor, item, selection.chain, args)
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
         output: OutputWriteResult | None = None
-        if result.has_usable_text:
+        if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
                 output = _write_extraction_output(item, result, args, execution_fingerprint=fingerprint)
             except PackageValidationError as exc:
@@ -270,12 +272,14 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
+        from .core.sync_manifest import prepare_sync_item
+        item = prepare_sync_item(item, args.out)
         result = extract_with_login(executor, item, selection.chain, args)
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
         output: OutputWriteResult | None = None
-        if result.has_usable_text:
+        if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
                 output = _write_extraction_output(item, result, args, execution_fingerprint=fingerprint)
             except PackageValidationError as exc:

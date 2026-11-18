@@ -365,6 +365,26 @@ def cmd_go(args: argparse.Namespace) -> int:
             if failure:
                 print(failure, file=sys.stderr)
                 return 1
+        # Incremental export needs the persistent output manifest before extraction.
+        from openmd.adapters.registry import create_default_registry
+
+        adapter = None if getattr(args, "as_snapshot", False) else create_default_registry().adapter_for(url)
+        if getattr(adapter, "sync_cursor_enabled", False):
+            destination = args.save_to or args.out
+            if destination is None and tty:
+                destination = _prompt(args, "同步保存目录：")
+            if not destination:
+                raise ValueError("sync_output_directory_required")
+            run_args = argparse.Namespace(**vars(args))
+            run_args.out = str(Path(destination).expanduser().resolve())
+            run_args.url = url
+            if error := _start_compact_receipt(run_args, "go"):
+                raise ValueError(error)
+            try:
+                return _emit_result(run_args, _process_input(url, run_args, command="go"))
+            finally:
+                if lock := getattr(run_args, "_compact_output_lock", None):
+                    lock.release()
         workspace = _StagingWorkspace()
         with workspace as temporary:
             stage = Path(temporary)

@@ -18,14 +18,16 @@
         "bilibili-harvest.core",
         "yt-dlp.bilibili",
         "asr.fallback"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "bilibili",
       "capability": "media",
       "chain": [
         "yutto.bilibili.media-asr"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "youtube",
@@ -35,7 +37,8 @@
         "youtube-transcript-api",
         "yt-dlp.youtube",
         "asr.fallback"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "weixin",
@@ -45,49 +48,56 @@
         "defuddle.web.content",
         "weixin.article.local",
         "opencli.web.read"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "qq_group",
       "capability": "content",
       "chain": [
         "qq_group.export"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "xiaoyuzhou",
       "capability": "transcript",
       "chain": [
         "opencli.xiaoyuzhou.transcript"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "xiaoyuzhou",
       "capability": "media",
       "chain": [
         "xyz-dl.xiaoyuzhou.media-asr"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "douyin",
       "capability": "content",
       "chain": [
         "douyin.transcript"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "tiktok",
       "capability": "content",
       "chain": [
         "opencli.tiktok.user"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "xiaohongshu",
       "capability": "content",
       "chain": [
         "xiaohongshu.composite"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "xiaoe",
@@ -95,7 +105,8 @@
       "chain": [
         "opencli.xiaoe.transcript",
         "opencli.xiaoe.content"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "x",
@@ -103,7 +114,8 @@
       "chain": [
         "x-tweet-fetcher.x.content",
         "opencli.twitter.thread"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "web_article",
@@ -113,7 +125,8 @@
         "defuddle.web.content",
         "web_article.trafilatura",
         "opencli.web.read"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "feishu",
@@ -123,14 +136,16 @@
         "lark-cli.drive.export-markdown",
         "lark-cli.markdown.fetch",
         "manual.markdown-export"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "generic_media",
       "capability": "transcript",
       "chain": [
         "asr.fallback"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "pdf",
@@ -140,7 +155,8 @@
         "pdf.textlayer",
         "ocr.chain",
         "document.engines"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "screenshot",
@@ -149,14 +165,16 @@
         "ocr.chain",
         "ocr.rapidocr",
         "ocr.tesseract"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "page_snapshot",
       "capability": "content",
       "chain": [
         "page_snapshot.defuddle"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "ai_chat",
@@ -170,7 +188,8 @@
         "opencli.qwen.detail",
         "opencli.yuanbao.detail",
         "opencli.grok.detail"
-      ]
+      ],
+      "last_verified": null
     }
   ],
   "capabilities": [

@@ -34,6 +34,7 @@ copied. These optional libraries are installed by pip and retain their licenses:
 | Library | License | Purpose |
 |---|---|---|
 | mammoth (mike.zwobble.org/projects/mammoth/) | BSD-2-Clause | DOCX semantic HTML |
+| python-pptx (github.com/scanny/python-pptx) | MIT | PPTX slides, charts, notes |
 
 | Component | License | How it arrives |
 |---|---|---|

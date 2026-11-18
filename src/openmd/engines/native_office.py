@@ -33,3 +33,44 @@ def parse_docx(d):
         if any(m.type == 'warning' for m in value.messages):
             d.gap('docx_parser_warning')
         embedded_images(d, z)
+
+
+def parse_pptx(d):
+    from pptx import Presentation
+    presentation = Presentation(d.path)
+    d.meta.update(parts_order=[], notes=0)
+
+    def shapes(items):
+        for shape in items:
+            if shape.has_text_frame:
+                d.add(shape.text_frame.text)
+            if shape.has_table:
+                d.table([[c.text for c in r.cells] for r in shape.table.rows])
+            if shape.has_chart:
+                chart = shape.chart
+                if chart.has_title:
+                    d.add(chart.chart_title.text_frame.text)
+                for plot in chart.plots:
+                    series = list(plot.series)
+                    categories = [c.label for c in plot.categories]
+                    values = [list(s.values) for s in series]
+                    d.table([['Category', *[s.name for s in series]], *[[label, *[v[i] if i < len(v) else '' for v in values]] for i, label in enumerate(categories)]])
+            if hasattr(shape, 'shapes'):
+                shapes(shape.shapes)
+
+    for index, slide in enumerate(presentation.slides, 1):
+        label = f'Slide {index}'
+        d.meta['parts_order'].append(label)
+        start = len(d.parts)
+        d.section(label, lambda slide=slide: shapes(slide.shapes))
+        if slide.has_notes_slide:
+            def notes(slide=slide):
+                frame = slide.notes_slide.notes_text_frame
+                if frame is not None and frame.text.strip():
+                    d.add('### Speaker notes\n\n' + frame.text)
+                    d.meta['notes'] += 1
+            d.section(label + ':notes', notes)
+        if len(d.parts) > start:
+            d.parts.insert(start, '## ' + label)
+    with ZipFile(d.path) as z:
+        embedded_images(d, z)

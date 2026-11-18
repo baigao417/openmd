@@ -11,9 +11,9 @@ from .base import DocumentEngine, EngineError, EngineLimits, failure
 from .sniff import signature, validate_document
 
 
-DEPENDENCIES = {'docx': ('mammoth', 'mammoth')}
+DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx')}
 # Promotion is explicit and follows a saved per-format benchmark.
-PROMOTED = {'docx'}
+PROMOTED = {'docx', 'pptx'}
 
 
 class NativeEngine(DocumentEngine):
@@ -57,7 +57,7 @@ class NativeEngine(DocumentEngine):
 
 def convert_local(path: Path, limits: EngineLimits):
     from .native_common import Document
-    from .native_office import parse_docx
+    from .native_office import parse_docx, parse_pptx
     document = Document(path, limits)
-    {'docx': parse_docx}[path.suffix.lower().lstrip('.')](document)
+    {'docx': parse_docx, 'pptx': parse_pptx}[path.suffix.lower().lstrip('.')](document)
     return document.result()

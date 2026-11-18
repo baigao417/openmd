@@ -14,7 +14,8 @@ from .sniff import signature, validate_document
 DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx'), 'xlsx': ('openpyxl', 'openpyxl')}
 DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
 # Promotion is explicit and follows a saved per-format benchmark.
-PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf'}
+ODF_FORMATS = {'odt'}
+PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt'}
 
 
 class NativeEngine(DocumentEngine):
@@ -60,6 +61,10 @@ def convert_local(path: Path, limits: EngineLimits):
     from .native_common import Document
     from .native_office import parse_docx, parse_pptx, parse_xlsx, parse_xls
     document = Document(path, limits)
+    if path.suffix.lower().lstrip('.') in ODF_FORMATS:
+        from .native_odf import parse
+        parse(document)
+        return document.result()
     if path.suffix.lower() == '.rtf':
         from .native_rtf import parse
         parse(document)

@@ -2,12 +2,23 @@
 
 ## [Unreleased]
 ### 新增 / Added
+- 新增日文、韩文 README，并同步四语安装、能力和限制说明。 / Add Japanese and Korean READMEs with the same installation, capability, and limitation guidance as the existing guides.
+- 随包提供 `openmd/SKILL.md`，说明非交互调用、JSON 回执字段、常见错误的下一步与隐私边界。 / Ship `openmd/SKILL.md` with non-interactive invocation, JSON receipt fields, common error next actions, and privacy boundaries.
+- 本地文档支持 24 种格式；`[document]` 使用自有胶水层连接成熟解析库，不再依赖 MarkItDown，安装体积约减少 65%。检测到 LibreOffice 或 Calibre 时才启用第二层转换。 / Support 24 local document formats; `[document]` now uses Openmd glue with mature parsers instead of MarkItDown, reducing install size by about 65%. LibreOffice or Calibre is used as a second layer only when detected.
+- 保存当前页、登录提醒以及对话、字幕和表格结构块可用；未登录时给出登录链接和下一步。 / Save the current page, show login reminders, and preserve conversation, transcript, and table blocks; unauthenticated routes provide a login link and next action.
+- Grok、DeepSeek、ChatGPT 对话导出进入实验状态。 / Grok, DeepSeek, and ChatGPT conversation export is available as an experimental feature.
 - 本地 ASR 模型准备命令 `openmd asr prepare-models`：流式生成并逐张量校验独立小分片副本，保留原模型；Qwen3 优先加载有效副本，并记录加载来源。 / Stream and verify separate small-shard local models, preserve originals, and prefer verified prepared copies with origin receipts.
 - Qwen3 与自动语言探测在可用物理内存低于预计峰值时明确拒绝加载；可配置余量仅产生内存偏紧警告并记入回执，自动路由不在拒绝后加载另一套本地模型。 / Qwen3 and automatic language detection refuse loading only below the estimated peak; configurable headroom produces advisory receipt warnings, with no local fallback after refusal.
 - 小鹅通长课程可通过本机配置明确授权听悟云转录，默认阈值 10 分钟；公开默认仍为本地 ASR，回执记录实测时长与选择理由。 / Explicit local opt-in for Tingwu cloud ASR on long Xiaoe lessons, with a configurable ten-minute threshold and selection receipts; public defaults remain local.
 ### 优化 / Improved
+- 独立的完整度核对和同步清单保护原地更新、未变化、用户编辑冲突和缺失恢复：`created` / `unchanged` / `conflict_kept_user_edit` / `restored_missing`。 / Independent completeness checks and the sync manifest protect created, unchanged, user-edit conflicts, and missing-file recovery states.
+- 浏览器读取默认在现有窗口的不激活后台标签中进行，任务标签默认静音并在完成后关闭；只使用托管 OpenCLI，`openmd opencli` 默认只读透传。 / Browser reads default to inactive background tabs in an existing window, owned tabs start muted and close after completion; managed OpenCLI is used, and `openmd opencli` is read-only by default.
+- 回执统一暴露 `status`、`source_level`、`completeness`、`sync`、`login`、`next_action`、`error_code`，便于 Agent 判断是否可用。 / Receipts expose `status`, `source_level`, `completeness`, `sync`, `login`, `next_action`, and `error_code` so agents can judge usability.
 - 托管 OpenCLI 安装根目录可通过本机 `tools.opencli.root` 配置，便于将工具放到独立运行时磁盘，默认路径保持兼容；测试默认隔离本机配置、用户目录和运行时，避免改动开发者工具与模型。 / Configure the managed OpenCLI root independently of preferences and browser sessions; tests isolate machine configuration, home and runtime paths to protect developer tools and models.
 - 有界预取有限 HLS 的 MPEG-TS 分片，保留加密与顺序语义；签名地址和内容密钥不落盘，复杂播放列表继续使用原 FFmpeg 传输。 / Bounded prefetch of finite MPEG-TS HLS preserves encryption and ordering, keeps signed locators and content keys off disk, and retains FFmpeg transport for complex playlists.
+### 修复 / Fixed
+- 未登录页面和登录墙会被拒收，并返回 `login_required`、登录链接和下一步，不再把登录页保存成正文。 / Reject unauthenticated pages and login walls with `login_required`, a login link, and a next action instead of saving the login page as content.
+- 修复托管 OpenCLI 路径隔离、浏览器标签生命周期及部分平台错误映射，使失败原因更明确。 / Fix managed OpenCLI path isolation, browser-tab lifecycle, and selected platform error mappings so failures are clearer.
 
 ## [0.1.1]
 ### 新增 / Added

@@ -25,3 +25,68 @@ def parse_html(d):
 
 
 parse_htm = parse_html
+
+
+def member(base, href):
+    import posixpath
+    from urllib.parse import unquote, urlsplit
+    from .base import EngineError
+    parsed = urlsplit(href)
+    if parsed.scheme or parsed.netloc:
+        raise EngineError('document_external_resource_blocked')
+    target = posixpath.normpath(posixpath.join(posixpath.dirname(base), unquote(parsed.path)))
+    if target.startswith(('../', '/')) or '\\' in target:
+        raise EngineError('document_invalid_container')
+    return target
+
+
+def parse_epub(d):
+    from zipfile import ZipFile
+    from .native_common import xml, name, attr
+    with ZipFile(d.path) as z:
+        container = xml(z.read('META-INF/container.xml'))
+        package = next(attr(n, 'full-path') for n in container.iter() if name(n) == 'rootfile')
+        package = member('', package)
+        root = xml(z.read(package))
+        book_metadata = {name(n): ''.join(n.itertext()) for section in root if name(section) == 'metadata' for n in section if ''.join(n.itertext()).strip()}
+        d.meta['ebook_metadata'] = book_metadata
+        manifest = {attr(n, 'id'): n for n in root.iter() if name(n) == 'item'}
+        cover_ids = {attr(n, 'content') for n in root.iter() if name(n) == 'meta' and attr(n, 'name') == 'cover'}
+        cover_paths = {member(package, attr(n, 'href')) for n in root.iter() if name(n) == 'reference' and attr(n, 'type') == 'cover'}
+        d.meta['parts_order'] = []
+        for ref in (n for n in root.iter() if name(n) == 'itemref'):
+            identifier = attr(ref, 'idref')
+            item = manifest.get(identifier)
+            if item is None:
+                d.gap('epub_missing_spine_item', identifier)
+                continue
+            path = member(package, attr(item, 'href'))
+            if 'nav' in attr(item, 'properties').split() or path in cover_paths or identifier in cover_ids:
+                continue
+
+            def include(path=path):
+                soup = BeautifulSoup(z.read(path), 'html.parser')
+                for node in soup.find_all(['nav', 'script', 'style']):
+                    node.decompose()
+                body = soup.body or soup
+                clone = BeautifulSoup(str(body), 'html.parser')
+                for n in clone.find_all(['a', 'h1', 'h2', 'h3', 'img']):
+                    n.decompose()
+                # Generated link-only TOCs have no prose after links/headings.
+                if not clone.get_text(strip=True) and body.find('a'):
+                    return
+                value = html_markdown(d, str(body))
+                if value.strip():
+                    d.add(value)
+                    d.meta['parts_order'].append(path)
+            d.section(path, include)
+        for key in ('language', 'date', 'identifier'):
+            if book_metadata.get(key):
+                d.add('**' + key.title() + ':** ' + book_metadata[key])
+        for identifier, item in manifest.items():
+            if attr(item, 'media-type').startswith('image/') and identifier not in cover_ids and 'cover-image' not in attr(item, 'properties').split():
+                path = member(package, attr(item, 'href'))
+                d.section(path, lambda path=path, item=item: d.image(z.read(path), path, attr(item, 'media-type')))
+
+
+FORMATS.add('epub')

@@ -17,6 +17,10 @@ def engine_chain(source_format: str):
     from .native import NativeEngine, PROMOTED
     if suffix in PROMOTED:
         fallback = [SofficeEngine()] if suffix in {'doc', 'ppt', 'xls', 'odt', 'odp', 'ods'} else []
+        if suffix in {'epub', 'rtf', 'odt'}:
+            fallback = [PandocEngine(), *fallback]
+        elif suffix in {'html', 'htm'}:
+            fallback = [DefuddleEngine(), *fallback]
         return [NativeEngine(suffix), *fallback, MarkItDownEngine()]
     if suffix in {'html', 'htm'}:
         return [DefuddleEngine(), MarkItDownEngine()]

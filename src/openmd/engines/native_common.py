@@ -38,7 +38,7 @@ def html_markdown(d, text):
     soup = BeautifulSoup(text, 'html.parser')
     replacements = {}
     for index, table in enumerate(list(soup.find_all('table'))):
-        rows = [[c.get_text(' ', strip=True) for c in r.find_all(['td', 'th'], recursive=False)] for r in table.find_all('tr')]
+        rows = [[html_to_markdown(''.join(str(n) for n in c.contents)) for c in r.find_all(['td', 'th'], recursive=False)] for r in table.find_all('tr')]
         start = len(d.parts)
         d.table(rows)
         markdown = '\n\n'.join(d.parts[start:])

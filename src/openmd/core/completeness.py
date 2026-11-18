@@ -214,6 +214,8 @@ def conversation_turn_check(item: ContentItem, result: TranscriptResult, signals
     actual_users = sum(1 for block in result.blocks if (block.get("role") if isinstance(block, dict) else getattr(block, "role", None)) == "user")
     if type(expected_users) is int and actual_users < expected_users:
         return Check("conversation_turns", "downgrade", "conversation_user_turns_missing", {"exported_user_turns": actual_users, "expected_user_turns": expected_users})
+    if result.metadata.get("conversation_user_evidence_unavailable") is True:
+        return Check("conversation_turns", reason="conversation_user_evidence_unavailable")
     expected = signals.get("conversation_turn_count")
     actual = sum(1 for block in result.blocks if (getattr(block, "type", None) or (block.get("type") if isinstance(block, dict) else None)) == "turn")
     if type(expected) is not int or expected < 0 or not result.blocks:

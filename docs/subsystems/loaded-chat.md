@@ -24,6 +24,11 @@ OpenCLI **2.0.3** package. `clis/<site>/detail.js` delegates to these helpers:
 ChatGPT also recognizes standalone `data-author` and user-message bubbles.
 A separate user-container sweep is compared with parsed user turns; a missing
 user turn downgrades the result even if the general turn selector misses it.
+The print-role heading (`data-conversation-role="user"`) also supplies independent
+evidence. If a ChatGPT snapshot contains only assistant turns and no user signal,
+the parser keeps the available answer as `partial`, reports
+`ai_chat_user_turn_unavailable`, and leaves completeness `unknown`. It cannot
+reconstruct a question absent from the captured DOM.
 
 The common Python parser preserves DOM order and repeated identical turns;
 overlapping containers are removed by node identity. Code whitespace and
@@ -65,13 +70,19 @@ omission; reloading the updated extension requires joint acceptance.
 
 Exact DOM signals are defined in `THINKING_SELECTORS` and
 `COMMON_THINKING_SELECTOR`. DeepSeek's `.ds-markdown--think` is based on the
-managed helper's explicit separation. ChatGPT, Gemini, Doubao, Qwen and Yuanbao
+managed helper's explicit separation. ChatGPT, Gemini, Doubao and Qwen
 variants have synthetic regression coverage and await authorized live DOM
 acceptance. Gemini custom turn elements also retain thinking siblings outside
 `.model-response-text`. Unknown structures and prose are preserved unchanged;
 the parser never guesses a boundary from words such as “Thought for”.
 The experimental detail path honors separately supplied thinking fields; when
 its upstream has flattened them into `Text`, that text is preserved with a note.
+
+Yuanbao's deep-search layout nests intermediate Markdown inside
+`.hyc-component-deepsearch-cot__think`, before the final Markdown sibling.
+Remove or separate that outer thinking region before selecting the final
+answer. Authorized read-only acceptance on 2026-11-19 verified omission counts,
+the explicit inclusion option, and preservation of the final answer.
 
 ## Output quality
 
@@ -84,6 +95,12 @@ removed; other small images and external image links retain existing behavior.
 
 Both routes share title cleanup: remove a recognized site suffix; for generic
 site titles use the current DOM/session title, then the first user message's
-first 30 characters. The existing sync manifest continues to retain filenames.
+first 30 characters. When the generated filename changes, sync atomically
+renames an unedited canonical file and updates its manifest path. The receipt's
+`sync.renamed_from` is the previous path relative to the save directory. An
+occupied name receives the usual numeric suffix; repeated saves reuse it.
+User edits retain the original canonical path and conflict protection. A missing
+canonical file is restored at its recorded path. Content operation values keep
+their existing meaning; a rename can accompany `unchanged` content.
 `TurnBlock` and legacy block projections normalize the four standard roles to
 `user`, `assistant`, `system`, `tool`; unknown speaker identities are preserved.

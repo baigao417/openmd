@@ -80,6 +80,9 @@ def write_item_result(
         )
         if sync_receipt is not None:
             sync_receipt["operation"] = synced.operation
+            sync_receipt.pop("renamed_from", None)
+            if synced.renamed_from is not None:
+                sync_receipt["renamed_from"] = synced.renamed_from
         return synced.path
     output_path.write_text(content, encoding="utf-8", newline="\n")
     return output_path

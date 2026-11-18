@@ -286,3 +286,38 @@ def test_quality_notes_are_in_final_markdown_source_section(tmp_path):
     assert '已省略内嵌图片：1 张' in notes
     assert '公式可能失真：1 处' in notes
     assert 'Synthetic reasoning.' not in saved
+
+
+@pytest.mark.parametrize('include', [False, True])
+def test_yuanbao_live_deepsearch_shape_keeps_final_answer_and_counts_thinking(include):
+    html = (FIXTURES / 'yuanbao-deepsearch.html').read_text(encoding='utf-8')
+    result = extract(html, 'yuanbao', include_thinking=include)
+    assert [turn.role for turn in result.blocks] == ['user', 'assistant']
+    answer = result.blocks[1].text
+    assert 'Synthetic final answer.' in answer and 'Synthetic final list.' in answer
+    if include:
+        assert answer.index('#### 思考过程') < answer.index('Synthetic reasoning one.') < answer.index('Synthetic reasoning two.') < answer.index('#### 最终回答') < answer.index('Synthetic final answer.')
+        assert result.metadata['thinking_included_count'] == 1
+    else:
+        assert 'Synthetic reasoning' not in answer and 'Synthetic thinking header.' not in answer
+        assert result.metadata['thinking_omitted_count'] == 1
+        assert any('已省略思考过程：1 段' in note for note in result.source_notes)
+
+
+def test_chatgpt_live_assistant_only_dom_cannot_certify_question_answer_coverage():
+    # Exact semantic structure from the authorized page; every word is synthetic.
+    html = '<main><div data-turn-key="synthetic"><div data-content-search-turn-key="synthetic"><div data-chatgpt-search-unit-key="synthetic:assistant"><h4 class="sr-only" data-conversation-role="assistant">Assistant</h4><div data-response-body><div data-markdown-text-style="assistant-message"><div data-markdown-copy="contents"><p>Synthetic answer.</p></div></div></div></div></div></div></main>'
+    result = extract(html)
+    assert [turn.role for turn in result.blocks] == ['assistant']
+    assert result.status == 'partial'
+    assert result.error_code == 'ai_chat_user_turn_unavailable'
+    assert result.metadata['completeness']['status'] == 'unknown'
+    assert any('未发现可读取的用户轮' in note for note in result.source_notes)
+
+
+def test_chatgpt_print_role_heading_supplies_independent_missing_user_evidence():
+    html = '<div><h4 class="sr-only" data-conversation-role="user">You</h4><p>Synthetic unrecognized user bubble.</p></div><div data-chatgpt-search-unit-key="synthetic:assistant">Synthetic answer.</div>'
+    result = extract(html)
+    assert result.metadata['independent_user_turn_count'] == 1
+    assert result.status == 'partial'
+    assert result.metadata['completeness']['status'] == 'downgrade'

@@ -224,6 +224,9 @@ def _save(stage: Path, destination: Path, *, title: str, package: bool = False, 
                                                  content_identity=entry.get("content_identity"))
         if sync_receipt is not None:
             sync_receipt["operation"] = synced.operation
+            sync_receipt.pop("renamed_from", None)
+            if synced.renamed_from is not None:
+                sync_receipt["renamed_from"] = synced.renamed_from
         return synced.path
     for attempt in range(100):
         target = destination / f"{base}{'-' + uuid4().hex[:6] if attempt else ''}.md"

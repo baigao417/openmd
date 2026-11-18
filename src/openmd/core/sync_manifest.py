@@ -114,6 +114,7 @@ def _file_lock(path: Path, timeout: float = 30):
 class SyncWriteResult:
     path: Path
     operation: str
+    renamed_from: str | None = None
 
 
 class SyncManifest:
@@ -148,10 +149,11 @@ class SyncManifest:
             os.replace(self.path, backup)
             return {"schema": SCHEMA, "entries": {}}
 
-    def _free_target(self, target: Path, content: bytes | None = None) -> Path:
+    def _free_target(self, target: Path, content: bytes | None = None, *, current: Path | None = None,
+                     reserved: set[Path] | None = None) -> Path:
         candidate = target
         counter = 2
-        while candidate.exists():
+        while candidate != current and (candidate.exists() or candidate in (reserved or set())):
             if content is not None and candidate.is_file() and candidate.read_bytes() == content:
                 return candidate
             candidate = target.with_name(f"{target.stem}-{counter}{target.suffix}")
@@ -174,16 +176,20 @@ class SyncManifest:
         with _file_lock(self.path.with_suffix(".lock")):
             data = self._load()
             entry = data["entries"].get(source_id)
-            target = self._target(entry["path"]) if entry else self._free_target(proposed)
+            reserved = {self._target(other["path"]) for key, other in data["entries"].items() if key != source_id}
+            target = self._target(entry["path"]) if entry else self._free_target(proposed, reserved=reserved)
+            previous = target.read_bytes() if entry and target.is_file() else None
             if no_delta:
                 if not entry or not target.is_file():
                     raise ValueError("sync_no_delta_without_artifact")
-                return SyncWriteResult(target, "unchanged")
+                if proposed == target or _sha(previous) != entry["content_sha256"]:
+                    return SyncWriteResult(target, "unchanged")
+                encoded, digest = previous, entry["content_sha256"]
             operation = "created"
             if entry:
                 if not target.exists():
                     operation = "restored_missing"
-                elif not target.is_file() or _sha(target.read_bytes()) != entry["content_sha256"]:
+                elif previous is None or _sha(previous) != entry["content_sha256"]:
                     if append and target.is_file():
                         encoded = _append_markdown(target.read_text(encoding="utf-8"), content).encode("utf-8")
                     update = self._free_target(target.with_name(f"{target.stem}.openmd-update.md"), encoded)
@@ -192,7 +198,7 @@ class SyncManifest:
                     # Retain the canonical path and last canonical hash: future
                     # runs must continue to protect the user's edited original.
                     return SyncWriteResult(update, "conflict_kept_user_edit")
-                elif append:
+                elif append and not no_delta:
                     content = _append_markdown(target.read_text(encoding="utf-8"), content)
                     encoded = content.encode("utf-8")
                     digest = _sha(encoded)
@@ -202,17 +208,36 @@ class SyncManifest:
                     digest = entry["content_sha256"]
                 else:
                     operation = "updated"
-            if operation != "unchanged":
-                _atomic_write(target, encoded)
-            data["entries"][source_id] = {
+            old_target = target
+            renamed_from = None
+            if entry and previous is not None and _sha(previous) == entry["content_sha256"] and proposed != target:
+                target = self._free_target(proposed, current=target, reserved=reserved)
+                if target != old_target:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    os.replace(old_target, target)
+                    renamed_from = old_target.relative_to(self.root).as_posix()
+            data["entries"][source_id] = ({**entry, "path": target.relative_to(self.root).as_posix()} if no_delta else {
                 "source_id": source_id, "path": target.relative_to(self.root).as_posix(),
                 "content_sha256": digest, "cursor": cursor,
                 "aliases": sorted(set((entry or {}).get("aliases", [])) | set(aliases)),
                 "last_synced": datetime.now(timezone.utc).isoformat(), "schema": SCHEMA,
                 **({"content_identity": content_identity} if content_identity is not None else {}),
-            }
-            _atomic_write(self.path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-            return SyncWriteResult(target, operation)
+            })
+            try:
+                if operation != "unchanged":
+                    _atomic_write(target, encoded)
+                _atomic_write(self.path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            except OSError:
+                if renamed_from is not None:
+                    # A failed content/manifest commit must leave the previous
+                    # canonical bytes and path retryable under the old entry.
+                    if target.read_bytes() == previous:
+                        os.replace(target, old_target)
+                    else:
+                        _atomic_write(old_target, previous)
+                        target.unlink()
+                raise
+            return SyncWriteResult(target, operation, renamed_from)
 
 
 def _append_markdown(existing: str, incoming: str) -> str:

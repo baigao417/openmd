@@ -333,7 +333,8 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         status=last_result.status if last_result is not None else ("verified" if ok else "failed"),
         source_level=last_result.source_level if last_result is not None else None,
         completeness=(last_result.metadata.get("completeness") or {}) if last_result is not None else {},
-        sync={"operation": last_output.package_operation} if last_output and last_output.package_operation else {},
+        sync={"operation": last_output.package_operation,
+              **({"renamed_from": last_output.renamed_from} if last_output.renamed_from is not None else {})} if last_output and last_output.package_operation else {},
         message="completed" if ok else "completed with failures",
     )
 
@@ -433,7 +434,8 @@ def _write_extraction_output(
         raw=getattr(args, "raw", False),
         sync_receipt=sync_receipt,
     )
-    return OutputWriteResult(path=path, package_operation=sync_receipt.get("operation"))
+    return OutputWriteResult(path=path, package_operation=sync_receipt.get("operation"),
+                             renamed_from=sync_receipt.get("renamed_from"))
 
 
 def _build_package_validation_failure_entry(

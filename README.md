@@ -62,10 +62,36 @@ Each link becomes `Title.md` in the folder you choose. Run logs go to `~/.openmd
 | Xiaoyuzhou podcast transcripts | ✓ | — (a ~20 MB reader component is set up automatically on first use) |
 | WeChat articles, X posts, Bilibili subtitles | ✓ | The Openmd browser extension; Bilibili AI subtitles also need you to be logged in |
 | Videos and podcasts without subtitles | | `pip install "openmd-cli[asr]"` and a local speech model ([guide](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)) |
-| PDF, Word, PowerPoint, Excel, images | | `pip install "openmd-cli[document]"` |
+| Local documents | | `pip install "openmd-cli[document]"`; format matrix below |
+| Images / scanned pages | | `pip install "openmd-cli[ocr]"` or an existing local OCR engine |
 | Douyin, Xiaohongshu | experimental | Browser extension and login; these sites often block automated reads |
 
 Run `openmd doctor` to see what is ready on your machine. If a link fails, Openmd prints the reason and one line to paste into a [bug report](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml).
+
+### Local document formats
+
+Install `pip install "openmd-cli[document]"`. The following matrix was checked
+with an installed wheel, an empty config and a PATH without Pandoc, LibreOffice
+or Calibre. It describes native text; a successful sample does not certify every
+file or its visual layout.
+
+| Formats | With `[document]` alone | Optional enhancement / limitation |
+|---|---|---|
+| PDF with native text | Available | Scans need local OCR; table geometry is not certified |
+| DOCX, PPTX, XLSX | Available | Original embedded images retained; missing image OCR or formula caches produce partial results; PPTX includes notes and category charts |
+| XLS | Available | Saved cell values and worksheet order; binary embedded images are not certified |
+| HTML, HTM, EPUB, RTF, ODT, ODS, ODP, FB2 | Available | Local files; scripts do not run; Pandoc / LibreOffice can provide fallback conversion; image gaps are reported |
+| CSV, TSV, JSON, XML, IPYNB, MSG | Available | Large tables carry truncation coverage; notebooks are never executed; MSG attachments are reported as gaps |
+| DOC, PPT | Partial text fallback | Install LibreOffice for the preferred conversion; 95% recall, layout and active binary PPT slide order are not certified |
+| ZIP | Available, with per-entry status | Mixed-media entries require ASR/OCR separately; archive resource limits apply |
+| MOBI, AZW3 | Requires Calibre | Missing tool returns `engine_unavailable`; encrypted books are rejected without decryption |
+
+Image / scanned-page OCR is separate: `pip install "openmd-cli[ocr]"` or configure
+an existing local OCR engine. Pandoc is optional: `pip install "openmd-cli[pandoc]"`.
+Document parsing never downloads models or enables cloud descriptions/transcription.
+The document extra does not install MarkItDown, magika or ONNX Runtime; an already
+installed MarkItDown remains a compatibility fallback. See
+[format chains and limits](docs/subsystems/document-formats.generated.md).
 
 ## What the output looks like
 

@@ -55,7 +55,9 @@ persistence, drawing geometry and layout are not certified; results are partial.
 | Node.js via `nodejs-wheel-binaries` | MIT | `pip` dependency |
 | trafilatura | Apache-2.0 | `pip` dependency |
 | youtube-transcript-api, beautifulsoup4, markdownify | MIT | `pip` dependencies |
-| faster-whisper, MarkItDown, RapidOCR, Pillow, PyMuPDF … | see each project | optional extras (`openmd-cli[asr]`, `openmd-cli[document]` …) |
+| faster-whisper, RapidOCR, Pillow, PyMuPDF … | see each project | optional ASR/OCR extras or parser dependencies |
+| MarkItDown | MIT | optional `[pdf]` compatibility fallback; excluded from `[document]` |
+| pypandoc-binary / Pandoc | see wrapper and bundled executable licenses | optional `[pandoc]` structure fallback; no bundled copy in this repository |
 
 FFmpeg, yt-dlp and other command-line tools are used only if you install them; their own licenses
 apply.

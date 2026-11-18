@@ -42,6 +42,7 @@ class EngineLimits:
     max_table_rows: int = 10000
     deadline: float | None = None
     archive_depth: int = 0
+    allow_ocr: bool = False
     budget: ArchiveBudget = field(default_factory=ArchiveBudget, compare=False)
 
     def remaining(self) -> float:

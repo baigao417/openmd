@@ -32,7 +32,8 @@ def test_office_routes_to_existing_local_document_backend(tmp_path, suffix):
         with patch.object(Path, "open", guard_input_open):
             plan = build_plan(value, available_gates={"local_compute"})
         assert plan.execution_ready
-        assert plan.runtime_provider == "pdf.markitdown"
+        from openmd.engines.native import PROMOTED
+        assert plan.runtime_provider == ("document.engines" if suffix.lower().lstrip('.') in PROMOTED else "pdf.markitdown")
 
 
 def test_document_folder_includes_office_files_but_not_extension_named_directory(tmp_path):

@@ -349,7 +349,8 @@ class BackendExecutor:
 
             source = request.item.raw_meta.get("local_path") or request.item.url
             path = local_path_from_input(source)
-            if path is not None and path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS:
+            from openmd.engines.native import PROMOTED
+            if path is not None and (path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS or path.suffix.lower().lstrip('.') in PROMOTED):
                 chain = tuple(backend for backend in chain if backend not in {"pdf.markitdown", "pdf.textlayer", "ocr.chain"})
         if not request.allow_fallback:
             chain = chain[:1]

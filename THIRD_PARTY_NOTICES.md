@@ -26,6 +26,15 @@ compatibility identifier, not a claim that the upstream pipeline is integrated.
 
 ## Installed at runtime (not redistributed here)
 
+### Document parsing libraries
+
+Openmd's document glue is original code; no MarkItDown or anydoc source is
+copied. These optional libraries are installed by pip and retain their licenses:
+
+| Library | License | Purpose |
+|---|---|---|
+| mammoth (mike.zwobble.org/projects/mammoth/) | BSD-2-Clause | DOCX semantic HTML |
+
 | Component | License | How it arrives |
 |---|---|---|
 | opencli (`@jackwener/opencli` 2.0.3) | Apache-2.0 | Downloaded from npm on first need into `~/.openmd/tools/opencli` |

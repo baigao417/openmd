@@ -260,7 +260,8 @@ def build_plan(
     runtime_provider = record.runtime_provider
     if local_path is not None and source_id == "pdf_office":
         from openmd.core.detector import LOCAL_DOCUMENT_EXTENSIONS
-        if local_path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS:
+        from openmd.engines.native import PROMOTED
+        if local_path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS or local_path.suffix.lower().lstrip('.') in PROMOTED:
             from openmd.routing.loader import load_catalog
             runtime_provider = "document.engines"
             required = list(load_catalog().capabilities[runtime_provider].get("gates", []))

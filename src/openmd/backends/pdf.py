@@ -136,7 +136,8 @@ class DocumentEngineProvider:
         path = local_path_from_input(source)
         if path is None:
             return failure(self.name, Path("document"), "document_local_file_required")
-        if path.suffix.lower().lstrip(".") in LEGACY_FORMATS:
+        from openmd.engines.native import PROMOTED
+        if path.suffix.lower().lstrip(".") in LEGACY_FORMATS - PROMOTED:
             # This is an additional-format provider, not a second PDF/OCR pass.
             # An unavailable fallback preserves the previous source verdict.
             return failure(self.name, path, "backend_not_implemented", "Legacy PDF/Office uses the preceding providers.")

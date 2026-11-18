@@ -54,6 +54,9 @@ def main():
             from openmd.adapters.qq_group.adapter import QQGroupAdapter
             adapter = QQGroupAdapter()
             result = asdict(adapter.extract_text(adapter.resolve_items(str(path))[0]))
+        elif value['mode'] == 'native':
+            from .native import convert_local
+            result = asdict(convert_local(path, limits))
         elif value['mode'] == 'markitdown_text':
             from .markitdown import convert_text_local
             result = {'text': convert_text_local(path)}

@@ -14,6 +14,9 @@ from .tools import CalibreEngine, DefuddleEngine, PandocEngine, SofficeEngine
 def engine_chain(source_format: str):
     from .archive import ZipEngine
     suffix = source_format.lower().lstrip('.')
+    from .native import NativeEngine, PROMOTED
+    if suffix in PROMOTED:
+        return [NativeEngine(suffix), MarkItDownEngine()]
     if suffix in {'html', 'htm'}:
         return [DefuddleEngine(), MarkItDownEngine()]
     if suffix == 'epub':

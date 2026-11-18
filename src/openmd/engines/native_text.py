@@ -61,3 +61,35 @@ def parse_xml(d):
     d.add(fenced(data.decode('utf-8-sig'), 'xml'))
 
 FORMATS.add('xml')
+
+
+def parse_ipynb(d):
+    import base64
+    notebook = json.loads(d.path.read_text(encoding='utf-8-sig'))
+    d.meta['parts_order'] = []
+    language = notebook.get('metadata', {}).get('language_info', {}).get('name', '')
+    def text(value):
+        if isinstance(value, list) and all(isinstance(s, str) for s in value):
+            return ''.join(value)
+        if isinstance(value, str):
+            return value
+        raise ValueError('invalid_notebook_text')
+    for index, cell in enumerate(notebook['cells'], 1):
+        label = 'Cell ' + str(index)
+        d.meta['parts_order'].append(label)
+        def include(cell=cell):
+            source = text(cell.get('source', ''))
+            kind = cell.get('cell_type')
+            d.add(fenced(source, language) if kind == 'code' else source)
+            for output in cell.get('outputs', []):
+                if 'text' in output:
+                    d.add(fenced(text(output['text'])))
+                data = output.get('data', {})
+                if 'text/plain' in data:
+                    d.add(fenced(text(data['text/plain'])))
+                for mime in ('image/png', 'image/jpeg'):
+                    if mime in data:
+                        d.image(base64.b64decode(text(data[mime]), validate=True), label + ':output', mime)
+        d.section(label, include)
+
+FORMATS.add('ipynb')

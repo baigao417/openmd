@@ -74,3 +74,45 @@ def parse_pptx(d):
             d.parts.insert(start, '## ' + label)
     with ZipFile(d.path) as z:
         embedded_images(d, z)
+
+
+def parse_xlsx(d):
+    from openpyxl import load_workbook
+    values = load_workbook(d.path, read_only=True, data_only=True, keep_links=False)
+    formulas = load_workbook(d.path, read_only=True, data_only=False, keep_links=False)
+    d.meta.update(parts_order=values.sheetnames, formula_count=0)
+    try:
+        for sheet in values:
+            def include(sheet=sheet):
+                rows = []
+                formula_count = missing = 0
+                for index, (cells, expressions) in enumerate(zip(sheet.iter_rows(), formulas[sheet.title].iter_rows())):
+                    d.limits.remaining()
+                    if index > d.limits.max_table_rows:
+                        d.gap('table_row_limit', sheet.title + ':rows')
+                        break
+                    row = []
+                    for c, f in zip(cells, expressions):
+                        value = c.value
+                        if f.data_type == 'f':
+                            formula_count += 1
+                            if value is None:
+                                missing += 1
+                                value = '[Formula cached value unavailable]'
+                        row.append(value)
+                    rows.append(row)
+                if not any(any(v is not None for v in row) for row in rows):
+                    return
+                d.add('## ' + sheet.title)
+                d.table(rows)
+                if formula_count:
+                    d.add('含公式（显示文件中已保存的计算值；不执行公式）。')
+                    d.meta['formula_count'] += formula_count
+                if missing:
+                    d.gap('formula_cache_missing', sheet.title + ':formulas')
+            d.section(sheet.title, include)
+    finally:
+        values.close()
+        formulas.close()
+    with ZipFile(d.path) as z:
+        embedded_images(d, z)

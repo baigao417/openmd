@@ -21,7 +21,8 @@ const event = name => ({addListener: fn => { callbacks[name] = fn; }});
 const store = {settings:{locations:[{id:'default',path:'synthetic',name:'Synthetic'}],defaultId:'default'}};
 let tabs = [];
 const chrome = {
-  runtime:{onInstalled:event('installed'),onMessage:event('message'),onStartup:event('startup')},
+  runtime:{onInstalled:event('installed'),onMessage:event('message'),onStartup:event('startup'),sendNativeMessage:(_host,_msg,cb)=>cb({ok:true})},
+  alarms:{create:()=>{},onAlarm:event('alarm')},
   notifications:{onButtonClicked:event('notification'),onClosed:event('closed')},
   contextMenus:{onClicked:event('context')},
   storage:{local:{get:async () => store,set:async () => {}},onChanged:event('storage')},

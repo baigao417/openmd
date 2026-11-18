@@ -19,6 +19,63 @@ function native(message) {
   });
 }
 
+// The update record survives MV3 worker suspension and runtime.reload(). Keep
+// every attempted content hash, so a broken/mismatched copy cannot reload-loop.
+const UPDATE_ALARM = "openmd-extension-update";
+let activeSaves = 0;
+let saveEpoch = 0;
+let updateChecking = null;
+let reloadChecking = false;
+
+async function saving(action) {
+  activeSaves += 1;
+  saveEpoch += 1;
+  try { return await action(); }
+  finally {
+    activeSaves -= 1;
+    await maybeReloadExtension();
+  }
+}
+
+async function maybeReloadExtension() {
+  if (reloadChecking) return;
+  reloadChecking = true;
+  const epoch = saveEpoch;
+  try {
+    const { extensionUpdate = {}, jobs = {} } = await chrome.storage.local.get(["extensionUpdate", "jobs"]);
+    const hash = extensionUpdate.pendingHash;
+    const reloaded = extensionUpdate.reloadedHashes || [];
+    if (!hash || reloaded.includes(hash) || activeSaves || Object.keys(jobs).length) return;
+    await chrome.storage.local.set({ extensionUpdate: {
+      ...extensionUpdate, currentHash: hash, pendingHash: null, reloadedHashes: [...reloaded, hash],
+    } });
+    // Saving may begin while storage.set yields. Give it priority and retain
+    // the pending update without consuming this hash's one reload attempt.
+    if (activeSaves || saveEpoch !== epoch) {
+      await chrome.storage.local.set({ extensionUpdate });
+      return;
+    }
+    chrome.runtime.reload();
+  } finally { reloadChecking = false; }
+}
+
+function checkExtensionUpdate() {
+  if (updateChecking) return updateChecking;
+  updateChecking = (async () => {
+    const reply = await native({ type: "ping" });
+    if (!reply.ok || !/^[a-f0-9]{64}$/.test(reply.extension_hash || "")) return;
+    const { extensionUpdate = {} } = await chrome.storage.local.get("extensionUpdate");
+    const hash = reply.extension_hash;
+    const changed = reply.extension_updated || (extensionUpdate.currentHash && extensionUpdate.currentHash !== hash);
+    await chrome.storage.local.set({ extensionUpdate: {
+      ...extensionUpdate, currentHash: extensionUpdate.currentHash || hash,
+      pendingHash: changed ? hash : extensionUpdate.pendingHash,
+    } });
+    await maybeReloadExtension();
+  })().finally(() => { updateChecking = null; });
+  return updateChecking;
+}
+
 const isWeb = (url) => /^https?:\/\//.test(url || "");
 // Keep host coverage aligned with backends/loaded_chat.py; parsing lives there.
 const AI_CHAT_HOSTS = ["chatgpt.com", "chat.openai.com", "grok.com", "chat.deepseek.com", "doubao.com", "www.doubao.com", "gemini.google.com", "www.qianwen.com", "qianwen.com", "qianwen.aliyun.com", "tongyi.aliyun.com", "yuanbao.tencent.com"];
@@ -100,7 +157,7 @@ async function notifyLogin(job, meta) {
   });
 }
 
-chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
+chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(async () => {
   const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
   const notice = loginNotices[id];
   if (!notice) return;
@@ -130,7 +187,7 @@ chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
     if (jobs.length) await track(jobs, crypto.randomUUID(), "原保存位置");
     if (Object.keys(pending).length) fail("部分任务没能重试", "请在扩展中检查任务状态。");
   }
-});
+}));
 
 chrome.notifications.onClosed.addListener(async (id, byUser) => {
   if (!byUser) return;
@@ -158,6 +215,10 @@ async function track(jobs, batch, location) {
 // ---------------------------------------------------------------- saving
 
 async function saveTabs(tabs, locationId) {
+  return saving(() => saveTabsImpl(tabs, locationId));
+}
+
+async function saveTabsImpl(tabs, locationId) {
   const web = tabs.filter((tab) => isWeb(tab.url));
   if (!web.length) return fail("没法保存", "只能保存普通网页（http / https）。");
   // Flush ordinary URLs in their existing batch. AI pages require the actual
@@ -189,6 +250,10 @@ async function saveTabs(tabs, locationId) {
 
 // video: "note" (just mention the video), "text" (+ local transcript), "file" (+ the video file).
 async function saveMany(items, locationId, video) {
+  return saving(() => saveManyImpl(items, locationId, video));
+}
+
+async function saveManyImpl(items, locationId, video) {
   const web = items.filter((item) => isWeb(item.url));
   if (!web.length) return fail("没法保存", "只能保存普通网页（http / https）。");
   const location = await locationFor(locationId);
@@ -232,6 +297,10 @@ async function captureSnapshot(tabId) {
 }
 
 async function saveSnapshot(tabId, locationId) {
+  return saving(() => saveSnapshotImpl(tabId, locationId));
+}
+
+async function saveSnapshotImpl(tabId, locationId) {
   const location = await locationFor(locationId);
   if (!location) {
     chrome.runtime.openOptionsPage();
@@ -312,20 +381,22 @@ async function poll() {
         }
         await chrome.storage.local.set(state);
         await showRunning(state.jobs);
+        if (!Object.keys(state.jobs).length) break;
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
   } finally {
     polling = false;
+    await maybeReloadExtension();
   }
 }
 
 // ---------------------------------------------------------------- entry points
 
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener((tab) => saving(async () => {
   const tabs = await highlightedTabs(tab);
   return saveTabs(tabs);
-});
+}));
 
 chrome.runtime.onInstalled.addListener(async () => {
   chrome.contextMenus.removeAll(() => {
@@ -342,7 +413,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   if (!(await getSettings()).locations.length) chrome.runtime.openOptionsPage();
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => saving(async () => {
   if (info.menuItemId === "save-link" && info.linkUrl) return saveMany([{ url: info.linkUrl, title: info.linkUrl }]);
   if (info.menuItemId === "save-page" && tab?.url) return saveTabs([tab]);
   if (info.menuItemId === "save-video-text" || info.menuItemId === "save-video-file") {
@@ -359,7 +430,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       return fail("读不到这个页面的选中内容", String(err?.message || err));
     }
   }
-});
+}));
 
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.settings) applyClickMode();
@@ -367,11 +438,16 @@ chrome.storage.onChanged.addListener((changes) => {
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.cmd === "save") { saveTabs(msg.items, msg.locationId).then(reply); return true; }
-  if (msg?.cmd === "snapshot") { chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => saveSnapshot(tab?.id, msg.locationId)).then(reply); return true; }
+  if (msg?.cmd === "snapshot") { saving(async () => { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return saveSnapshot(tab?.id, msg.locationId); }).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
   return false;
 });
 
-chrome.runtime.onStartup.addListener(async () => { await applyClickMode(); poll(); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === UPDATE_ALARM) return checkExtensionUpdate();
+});
+chrome.runtime.onStartup.addListener(async () => { await applyClickMode(); poll(); await checkExtensionUpdate(); });
+chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 30 });
 applyClickMode();
 poll();
+checkExtensionUpdate();

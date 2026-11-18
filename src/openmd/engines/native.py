@@ -14,7 +14,7 @@ from .sniff import signature, validate_document
 DEPENDENCIES = {'docx': ('mammoth', 'mammoth'), 'pptx': ('pptx', 'python-pptx'), 'xlsx': ('openpyxl', 'openpyxl')}
 DEPENDENCIES['xls'] = ('xlrd', 'xlrd')
 # Promotion is explicit and follows a saved per-format benchmark.
-PROMOTED = {'docx', 'pptx', 'xlsx', 'xls'}
+PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv'}
 
 
 class NativeEngine(DocumentEngine):
@@ -60,5 +60,9 @@ def convert_local(path: Path, limits: EngineLimits):
     from .native_common import Document
     from .native_office import parse_docx, parse_pptx, parse_xlsx, parse_xls
     document = Document(path, limits)
+    from . import native_text
+    if path.suffix.lower().lstrip('.') in native_text.FORMATS:
+        native_text.parse(document)
+        return document.result()
     {'docx': parse_docx, 'pptx': parse_pptx, 'xlsx': parse_xlsx, 'xls': parse_xls}[path.suffix.lower().lstrip('.')](document)
     return document.result()

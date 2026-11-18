@@ -57,6 +57,8 @@ def validate_document(path: Path, limits: EngineLimits) -> bytes:
     with path.open('rb') as stream:
         sniff = stream.read(4096)
     suffix = path.suffix.lower().lstrip('.')
+    if sniff.lstrip().startswith(b'-----BEGIN PGP MESSAGE-----'):
+        raise EngineError('document_encrypted', 'Encrypted document envelopes are not accepted.')
     if suffix in OFFICE_PARTS and sniff.startswith(OLE_MAGIC):
         raise EngineError('document_encrypted', 'Encrypted OOXML packages are not accepted.')
     if not signature(path, sniff):

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from importlib import metadata
 from importlib.resources import files
+import os
 from typing import Callable, Mapping
 
 
@@ -41,6 +42,15 @@ class PlatformPlugin:
 
 @lru_cache(maxsize=1)
 def load_plugins() -> tuple[PlatformPlugin, ...]:
+    """Discover installed plugins unless OPENMD_DISABLE_PLUGINS=1.
+
+    Core tests set this explicit switch before collection; subprocesses inherit
+    it. Plugin contract fixtures enable discovery with synthetic entry points.
+    Normal CLI runs keep installed-plugin discovery enabled by default.
+    Callers changing this switch in-process must clear this function's cache.
+    """
+    if os.environ.get("OPENMD_DISABLE_PLUGINS") == "1":
+        return ()
     plugins: list[PlatformPlugin] = []
     seen = set(BUILTIN_PLATFORM_IDS)
     names: set[str] = set()

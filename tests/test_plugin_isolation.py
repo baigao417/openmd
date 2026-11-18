@@ -47,3 +47,23 @@ def test_plugin_contract_still_detects_damage(openmd_plugin_entries):
                             cwd=suite, env=env, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "2 passed" in result.stdout
+
+
+def test_core_subprocess_inherits_external_plugin_isolation():
+    # A metadata monkeypatch in pytest cannot reach a fresh Python process.
+    # Reproduce a CLI-style child with a corrupt installed descriptor.
+    code = '''
+from importlib import metadata
+from types import SimpleNamespace
+def broken():
+    raise RuntimeError("synthetic_unfinished_plugin")
+metadata.entry_points = lambda **kwargs: [SimpleNamespace(name="broken", value="broken:plugin", load=broken)]
+from openmd.core.plugins import platform_ids
+from openmd.routing.loader import load_catalog
+assert platform_ids() == ()
+assert load_catalog().routes
+'''
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
+    result = subprocess.run([sys.executable, "-c", code], env=env,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr

@@ -96,6 +96,7 @@ Openmd is not a knowledge base or a RAG retrieval system. It focuses on the foun
 | :--- | :--- | :--- | :--- |
 | **Web and social** | Web articles | Ready | Works right after install |
 | | WeChat Official Account posts, X posts | Ready | Needs the Openmd browser extension and your existing access |
+| | Save current page, login reminders | Ready | Requires the Openmd browser extension |
 | **Audio, video and transcripts** | YouTube (with captions), Xiaoyuzhou | Ready | Xiaoyuzhou sets up a ~20 MB reader component on first use |
 | | Bilibili, Xiaoe-tech | Ready | Needs the browser extension; Bilibili AI subtitles also need you to be logged in |
 | | Audio/video without subtitles, local media | Needs extras | Needs the `[asr]` extra, FFmpeg and a local speech model |
@@ -107,7 +108,7 @@ Openmd is not a knowledge base or a RAG retrieval system. It focuses on the foun
 
 ### Local document formats
 
-The `[document]` extra is the baseline for local document parsing. This matrix comes from the bare-machine checks in the round 10 evidence; it describes native text and reports partial results honestly. Install `[ocr]` for images or scans and `[pandoc]` for an optional conversion fallback. See the [format chains and limits](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md).
+The `[document]` extra is the baseline for local document parsing. This matrix was measured on a clean install; it describes native text and reports partial results honestly. Install `[ocr]` for images or scans and `[pandoc]` for an optional conversion fallback. See the [format chains and limits](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md).
 
 | Formats | Status with `[document]` | Optional enhancement / limitation |
 |---|---|---|

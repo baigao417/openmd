@@ -96,6 +96,7 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 | :--- | :--- | :--- | :--- |
 | **웹과 커뮤니티** | 일반 웹 글 | 사용 가능 | 설치 후 바로 사용 |
 | | WeChat 공식 계정 글, X 게시물 | 사용 가능 | Openmd 브라우저 확장 프로그램과 이미 가진 접근 권한이 필요 |
+| | 현재 페이지 저장, 로그인 알림 | 사용 가능 | 브라우저 확장 프로그램 필요 |
 | **음성·영상과 전사본** | YouTube(자막 있음), 샤오위저우(Xiaoyuzhou) | 사용 가능 | 샤오위저우는 처음 사용할 때 약 20 MB의 읽기 구성 요소를 자동으로 준비합니다 |
 | | bilibili, 샤오어퉁(Xiaoe-tech) | 사용 가능 | 브라우저 확장 프로그램 필요. bilibili AI 자막은 로그인도 필요 |
 | | 자막 없는 음성·영상, 로컬 미디어 | 추가 의존성 필요 | `[asr]` 의존성, FFmpeg, 로컬 음성 모델 필요 |
@@ -107,7 +108,7 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 
 ### 로컬 문서 형식
 
-`[document]`는 로컬 문서 분석의 기본 의존성입니다. 다음 표는 10라운드 베어 머신 증거를 바탕으로 원시 텍스트 상태를 partial까지 포함해 보여 줍니다. 이미지와 스캔은 `[ocr]`, 선택적 변환 폴백은 `[pandoc]`를 설치하세요. 자세한 내용은[형식 체인과 제한](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md)을 참고하세요.
+`[document]`는 로컬 문서 분석의 기본 의존성입니다. 다음 표는 새로 설치한 환경에서 측정했으며 원시 텍스트 상태를 partial까지 포함해 보여 줍니다. 이미지와 스캔은 `[ocr]`, 선택적 변환 폴백은 `[pandoc]`를 설치하세요. 자세한 내용은 [형식 체인과 제한](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md)을 참고하세요.
 
 | 형식 | `[document]` 상태 | 선택 사항 / 제한 |
 |---|---|---|

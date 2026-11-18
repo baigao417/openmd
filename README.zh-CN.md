@@ -96,6 +96,7 @@ Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信�
 | :--- | :--- | :--- | :--- |
 | **网页与社区** | 普通网页文章 | 可用 | 安装即用 |
 | | 微信公众号文章、X 帖子 | 可用 | 需配合 Openmd 浏览器扩展及你已有的访问权限 |
+| | 保存当前页、登录提醒 | 可用 | 需浏览器扩展 |
 | **音视频与逐字稿** | YouTube（有字幕）、小宇宙 | 可用 | 小宇宙首次使用时会自动准备一个约 20 MB 的读取组件 |
 | | B 站、小鹅通 | 可用 | 需浏览器扩展；B 站 AI 字幕还需要登录 |
 | | 无字幕音视频、本地音视频 | 需扩展依赖 | 需 `[asr]` 依赖、FFmpeg 和本地语音模型 |
@@ -107,7 +108,7 @@ Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信�
 
 ### 本地文档格式
 
-`[document]` 是本地文档解析的基础依赖。下表来自第 10 轮裸机证据，描述原生文字，并如实标出 partial。图片或扫描件请安装 `[ocr]`；可选的转换回退请安装 `[pandoc]`。详见[格式链与限制](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md)。
+`[document]` 是本地文档解析的基础依赖。下表来自全新安装实测，描述原生文字，并如实标出 partial。图片或扫描件请安装 `[ocr]`；可选的转换回退请安装 `[pandoc]`。详见[格式链与限制](https://github.com/baigao417/openmd/blob/main/docs/subsystems/document-formats.generated.md)。
 
 | 格式 | 只装 `[document]` 的状态 | 可选增强 / 限制 |
 |---|---|---|

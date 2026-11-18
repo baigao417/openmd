@@ -52,7 +52,9 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
         (asr_ready, "无字幕视频 / 播客本机转录", 'pip install "openmd-cli[asr]"，再按 docs/tool-integration.md 准备模型'),
         (native_ready or bool(documents.get("ocr_dependency_available") or documents.get("markitdown_available")), "PDF、Office 原生文字", 'pip install "openmd-cli[document]"'),
         (bool(documents.get("ocr_dependency_available")), "图片 / 扫描件 OCR", 'pip install "openmd-cli[ocr]"；高级 OCR 见 docs/tool-integration.md'),
-        (_browser_registered(), "浏览器插件一键保存", "openmd browser-setup"),
+        ((bool(diagnostics['browser_host']['ready']) if diagnostics['browser_host']['supported'] else None)
+         if 'browser_host' in diagnostics else _browser_registered(), "浏览器插件一键保存",
+         (diagnostics.get('browser_host') or {}).get('next_action') or "openmd browser-setup"),
     ]
     for tool in ((diagnostics.get("tools") or {}).get("tools") or []):
         rows.append((bool(tool.get("resolved")), f"可选工具 {tool.get('tool')}", "见 docs/tool-integration.md"))

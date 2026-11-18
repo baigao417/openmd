@@ -13,7 +13,7 @@ from openmd.routing.loader import load_catalog
 
 
 @pytest.fixture
-def installed(monkeypatch, tmp_path):
+def installed(monkeypatch, tmp_path, openmd_plugin_entries):
     package = tmp_path / "sample_platform_resources"
     package.mkdir()
     (package / "__init__.py").write_text("", encoding="utf-8")
@@ -33,12 +33,11 @@ def installed(monkeypatch, tmp_path):
         collection_bindings=lambda: {"sample_feed": ("sample.content", ("browser",))},
         resource_package=package.name, card_resources=("card.json",),
     )
-    entries = []
+    entries = openmd_plugin_entries
 
     def entry(plugin=descriptor, name="sample"):
         return SimpleNamespace(name=name, value="sample_platform:plugin", load=lambda: plugin)
 
-    monkeypatch.setattr(plugins.metadata, "entry_points", lambda *, group: entries if group == "openmd.platforms" else [])
     plugins.load_plugins.cache_clear()
     load_catalog.cache_clear()
     yield SimpleNamespace(plugin=descriptor, entries=entries, entry=entry, package=package, routes=routes, cards=cards)

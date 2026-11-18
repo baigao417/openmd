@@ -89,7 +89,10 @@ def test_second(isolated_machine):
         "HOME", "USERPROFILE", "OPENMD_DATA_DIR", "OPENMD_RUNTIME_DIR",
         "OPENMD_PREPARED_MODEL_ROOT", "HF_HOME", "HF_HUB_CACHE",
         "MODELSCOPE_CACHE"), str(protected)),
-        "OPENMD_CONFIG": str(config), "OPENMD_AUTO_INSTALL_TOOLS": "1"}
+        "OPENMD_CONFIG": str(config), "OPENMD_AUTO_INSTALL_TOOLS": "1",
+        # The copied conftest belongs to this checkout, not an editable install
+        # that may point at a different branch.
+        "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
     result = subprocess.run([sys.executable, "-m", "pytest", "-q",
                              "-p", "no:cacheprovider", str(suite)],
                             cwd=suite, env=env, capture_output=True, text=True, timeout=60)

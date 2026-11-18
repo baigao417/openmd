@@ -361,6 +361,13 @@ def _attach_video(args: argparse.Namespace, url: str, markdown: Path) -> None:
 
 
 def cmd_go(args: argparse.Namespace) -> int:
+    """Save one input; only a human terminal save remembers its destination.
+
+    Both stdin and stdout must be TTYs, and neither --json (machine receipt)
+    nor --yes (unattended caller) may be set. A PTY attached to automation does
+    not make these explicit machine calls interactive. Batch has no preference
+    write; the extension keeps its human-selected destination in browser state.
+    """
     from openmd.cli import _emit_result, _process_input, _start_compact_receipt
     tty = is_interactive()
     if any(getattr(args, option, False) for option in ("all", "overwrite", "update", "new_version")) or args.package_root:
@@ -519,7 +526,7 @@ def cmd_go(args: argparse.Namespace) -> int:
                 except (OSError, ValueError) as exc:
                     workspace.keep = True
                     print(f"正文已保存；运行记录暂留：{stage}（{sanitize_error_summary(exc)}）", file=sys.stderr)
-                if tty:
+                if tty and not getattr(args, "json", False) and not getattr(args, "yes", False):
                     try:
                         save_preferences(last_save_directory=destination)
                     except OSError as exc:

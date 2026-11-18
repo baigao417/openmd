@@ -83,6 +83,8 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
     }
     from openmd.engines.diagnostics import document_formats
     diagnostics['document_formats'] = document_formats()
+    from openmd.browser_diagnostics import browser_host_diagnostics
+    diagnostics['browser_host'] = browser_host_diagnostics()
     from openmd.runtime.opencli_patches import patch_diagnostics
     diagnostics['opencli_patches'] = patch_diagnostics()
     from openmd.routing.loader import route_verification_status
@@ -117,4 +119,8 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
         diagnostics["ready"] = manifest_valid and bool(tool_report.get("ok", False))
     else:
         diagnostics.update({"session_owner": "browser_platform_or_sidecar", "private_session_probe": False})
+    host = diagnostics['browser_host']
+    if host['registered'] and not host['ready']:
+        diagnostics['ready'] = False
+        diagnostics['next_action'] = host['next_action']
     return diagnostics

@@ -9,6 +9,8 @@ def record(kind, payload=b'', container=False):
 
 @pytest.mark.parametrize('case', ['positive','broken','empty','encrypted','oversize'])
 def test_ppt_native(tmp_path, case):
+    if case == 'positive':
+        pytest.importorskip('olefile')
     path = tmp_path / 'source.ppt'
     body = record(4000, 'Original 中文'.encode('utf-16le')) + record(4008, b'Second original')
     streams = {'PowerPoint Document': record(1006, b'' if case=='empty' else body, True)}

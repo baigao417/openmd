@@ -38,6 +38,8 @@ def html_markdown(d, text):
     soup = BeautifulSoup(text, 'html.parser')
     replacements = {}
     for index, table in enumerate(list(soup.find_all('table'))):
+        if table.parent is None:
+            continue
         rows = [[html_to_markdown(''.join(str(n) for n in c.contents)) for c in r.find_all(['td', 'th'], recursive=False)] for r in table.find_all('tr')]
         start = len(d.parts)
         d.table(rows)
@@ -109,9 +111,9 @@ class Document:
         # output, with no temporary path or external image fetch after exit.
         self.add(f'![Embedded image {len(self.images)}](data:{mime};base64,' + base64.b64encode(data).decode('ascii') + ')')
         if self.limits.allow_ocr:
-            from PIL import Image
-            from openmd.ocr.pipeline import LocalOCRBackend
             try:
+                from PIL import Image
+                from openmd.ocr.pipeline import LocalOCRBackend
                 with Image.open(io.BytesIO(data)) as image:
                     value = LocalOCRBackend().recognize_image(image.convert('RGB'), title=label)
                 self.components.extend(value.normalized_components)

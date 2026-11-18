@@ -47,10 +47,10 @@ def test_soffice_positive_uses_private_profile_and_matching_ooxml(tmp_path, monk
         (directory / ('source.' + target)).write_bytes(b'OOXML test boundary')
         return ''
     monkeypatch.setattr('openmd.engines.tools.run_command', run)
-    def convert(self, output, limits):
+    def convert(output, limits):
         assert output.suffix == '.' + target and output.is_file()
         return success('pdf.markitdown', output, '# Original source\n\nSource body.')
-    monkeypatch.setattr(MarkItDownEngine, 'convert', convert)
+    monkeypatch.setattr('openmd.engines.registry.convert_document', convert)
     result = SofficeEngine().convert(path)
     assert result.status == 'verified'
     assert result.metadata['source_format'] == suffix

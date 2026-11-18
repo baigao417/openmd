@@ -1,7 +1,6 @@
 """Openmd-owned document glue. Optional parsers run in an owned local worker."""
 from __future__ import annotations
 
-from dataclasses import replace
 import importlib.metadata
 import importlib.util
 from pathlib import Path

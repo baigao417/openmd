@@ -24,6 +24,8 @@ def word_document(text, encrypted=False):
 
 @pytest.mark.parametrize('case', ['positive','broken','empty','encrypted','oversize'])
 def test_doc_native(tmp_path, case):
+    if case == 'positive':
+        pytest.importorskip('olefile')
     path = tmp_path / 'source.doc'
     data = word_document('' if case == 'empty' else 'Original 中文\rName\x07Value\x07\rApple\x077\x07', encrypted=case=='encrypted')
     path.write_bytes(b'bad' if case == 'broken' else data)
@@ -34,4 +36,3 @@ def test_doc_native(tmp_path, case):
         assert result.metadata['text_character_coverage'] == 1
     else:
         assert result.status == 'failed'
-

@@ -8,8 +8,9 @@ from openmd.cli import main
 def test_default_cli_reports_missing_optional_engine(tmp_path, monkeypatch, capsys):
     from openmd.engines.tools import CalibreEngine
     monkeypatch.setattr(CalibreEngine, 'available', lambda self: {'ok': False, 'reason': 'Install Calibre ebook-convert.', 'version': None})
-    source = tmp_path / 'book.fb2'
-    source.write_text('<FictionBook><body><section><p>Original source text.</p></section></body></FictionBook>')
+    from test_signatures import SAMPLES
+    source = tmp_path / 'book.mobi'
+    source.write_bytes(SAMPLES['mobi'])
     out = tmp_path / 'out'
     assert main(['ingest', str(source), '--out', str(out), '--package']) == 1
     payload = json.loads(capsys.readouterr().out)
@@ -53,4 +54,4 @@ def test_table_truncation_coverage_survives_runlog_writer(tmp_path, monkeypatch,
     assert coverage['fetched_count'] == 10000
     assert coverage['missing_count'] == 5
     assert coverage['complete'] is False
-    assert log['source_scope']['engine'] == 'markitdown'
+    assert log['source_scope']['engine'] == 'openmd_csv'

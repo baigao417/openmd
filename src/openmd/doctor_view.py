@@ -43,16 +43,29 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
     diagnostics = payload.get("profile_diagnostics") or {}
     asr_ready = bool((diagnostics.get("asr_runtime") or {}).get("probe", {}).get("ready"))
     documents = ((diagnostics.get("optional_profiles") or {}).get("documents") or {})
+    formats = diagnostics.get('document_formats') or {}
+    native_ready = any(formats.get(suffix, {}).get('available') for suffix in ('pdf', 'docx', 'pptx', 'xlsx'))
     rows: list[tuple[bool | None, str, str]] = [
         (_has("trafilatura") and _has("youtube_transcript_api"), "网页文章、YouTube 有字幕的视频", "pip install --upgrade openmd-cli"),
         _opencli_row(),
         (shutil.which("ffmpeg") is not None, "音视频处理（本机转录前置）", "winget install Gyan.FFmpeg"),
         (asr_ready, "无字幕视频 / 播客本机转录", 'pip install "openmd-cli[asr]"，再按 docs/tool-integration.md 准备模型'),
-        (bool(documents.get("ocr_dependency_available") or documents.get("markitdown_available")), "图片、PDF、Office 转文字", 'pip install "openmd-cli[document]"'),
+        (native_ready or bool(documents.get("ocr_dependency_available") or documents.get("markitdown_available")), "PDF、Office 原生文字", 'pip install "openmd-cli[document]"'),
+        (bool(documents.get("ocr_dependency_available")), "图片 / 扫描件 OCR", 'pip install "openmd-cli[ocr]"；高级 OCR 见 docs/tool-integration.md'),
         (_browser_registered(), "浏览器插件一键保存", "openmd browser-setup"),
     ]
     for tool in ((diagnostics.get("tools") or {}).get("tools") or []):
         rows.append((bool(tool.get("resolved")), f"可选工具 {tool.get('tool')}", "见 docs/tool-integration.md"))
+    for suffix, state in (diagnostics.get('document_formats') or {}).items():
+        available = [row['id'] for row in state['engines'] if row['available']]
+        missing = [row['id'] for row in state['engines'] if not row['available']]
+        label = suffix.upper() + '：' + (' → '.join(available) or '缺少本地引擎')
+        if missing:
+            label += '；未安装：' + '、'.join(missing)
+            label += '（' + '；'.join(dict.fromkeys(row['install_command'] for row in state['engines'] if not row['available'])) + '）'
+        if suffix in {'doc', 'ppt'}:
+            label += '；无 LibreOffice 时仅 partial 文字回退'
+        rows.append((state['available'], label, state['install_command'] + '；' + state['scope']))
     return rows
 
 

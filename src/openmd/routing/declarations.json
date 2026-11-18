@@ -1391,102 +1391,243 @@
   "document_formats": [
     {
       "extensions": [
-        "pdf",
-        "docx",
-        "pptx",
-        "xlsx"
+        "pdf"
       ],
       "engines": [
-        "markitdown"
+        "markitdown",
+        "openmd.pdf"
       ],
       "availability": "available",
-      "scope": "Native text; legacy PDF page/OCR route retained."
+      "scope": "Native PDF text via optional baseline then pdfminer; existing PDF/OCR provider order retained; scanned images require OCR."
     },
     {
       "extensions": [
-        "html",
-        "htm"
+        "docx"
       ],
       "engines": [
+        "openmd.docx",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Mammoth semantic text and GFM tables; original embedded images retained; missing OCR or parser warnings are partial."
+    },
+    {
+      "extensions": [
+        "pptx"
+      ],
+      "engines": [
+        "openmd.pptx",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Slide order, GFM tables, category charts and speaker notes; embedded images retained with optional local OCR."
+    },
+    {
+      "extensions": [
+        "xlsx"
+      ],
+      "engines": [
+        "openmd.xlsx",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Worksheet order and GFM tables; saved formula values without execution; missing caches or image OCR are partial."
+    },
+    {
+      "extensions": [
+        "xls"
+      ],
+      "engines": [
+        "openmd.xls",
+        "soffice",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "xlrd cached cell values and worksheet order; bounded GFM tables; LibreOffice enhancement optional."
+    },
+    {
+      "extensions": [
+        "html"
+      ],
+      "engines": [
+        "openmd.html",
         "defuddle",
         "markitdown"
       ],
-      "availability": "dependency_ready",
-      "scope": "Local HTML only; QQ exports retain priority; scripts never execute."
+      "availability": "available",
+      "scope": "Local HTML only; QQ exports retain priority; scripts/resources disabled."
+    },
+    {
+      "extensions": [
+        "htm"
+      ],
+      "engines": [
+        "openmd.htm",
+        "defuddle",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Local HTML only; QQ exports retain priority; scripts/resources disabled."
     },
     {
       "extensions": [
         "epub"
       ],
       "engines": [
+        "openmd.epub",
         "pandoc",
         "markitdown"
       ],
-      "availability": "dependency_ready",
-      "scope": "EPUB spine order; encrypted ebooks rejected."
+      "availability": "available",
+      "scope": "EPUB spine order; cover and link-only navigation omitted; encrypted ebooks rejected."
     },
     {
       "extensions": [
-        "rtf",
+        "rtf"
+      ],
+      "engines": [
+        "openmd.rtf",
+        "pandoc",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Local RTF text, Unicode and basic tables; embedded objects reported as gaps."
+    },
+    {
+      "extensions": [
         "odt"
       ],
       "engines": [
+        "openmd.odt",
         "pandoc",
-        "soffice"
+        "soffice",
+        "markitdown"
       ],
-      "availability": "dependency_ready",
-      "scope": "Pandoc first; LibreOffice fallback."
+      "availability": "available",
+      "scope": "ODF paragraphs, lists and tables; original image bytes retained; optional Pandoc/LibreOffice enhancement."
     },
     {
       "extensions": [
-        "odp",
         "ods"
       ],
       "engines": [
-        "pandoc",
-        "soffice"
-      ],
-      "availability": "dependency_ready",
-      "scope": "No Pandoc reader for ODP/ODS; use LibreOffice PPTX/XLSX conversion."
-    },
-    {
-      "extensions": [
-        "doc",
-        "xls",
-        "ppt"
-      ],
-      "engines": [
-        "soffice"
-      ],
-      "availability": "dependency_ready",
-      "scope": "Requires LibreOffice; Writer to DOCX, Calc to XLSX, Impress to PPTX."
-    },
-    {
-      "extensions": [
-        "csv",
-        "tsv",
-        "json",
-        "xml",
-        "ipynb",
-        "msg"
-      ],
-      "engines": [
+        "openmd.ods",
+        "soffice",
         "markitdown"
       ],
-      "availability": "dependency_ready",
-      "scope": "CSV/TSV row coverage; XML/JSON remain original text."
+      "availability": "available",
+      "scope": "ODF worksheets, repeated cells, saved formula values and GFM tables; image gaps reported."
     },
     {
       "extensions": [
-        "mobi",
-        "azw3",
+        "odp"
+      ],
+      "engines": [
+        "openmd.odp",
+        "soffice",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "ODF slide order, text, tables and notes; image gaps reported."
+    },
+    {
+      "extensions": [
         "fb2"
       ],
       "engines": [
-        "calibre"
+        "openmd.fb2",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "FictionBook body order and tables; metadata, covers and link-only contents omitted."
+    },
+    {
+      "extensions": [
+        "csv"
+      ],
+      "engines": [
+        "openmd.csv",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "UTF-8 CSV; bounded GFM tables with row coverage."
+    },
+    {
+      "extensions": [
+        "tsv"
+      ],
+      "engines": [
+        "openmd.tsv",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "UTF-8 TSV; bounded GFM tables with row coverage."
+    },
+    {
+      "extensions": [
+        "json"
+      ],
+      "engines": [
+        "openmd.json",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Validated JSON with exact source lexemes and key order preserved; no execution."
+    },
+    {
+      "extensions": [
+        "xml"
+      ],
+      "engines": [
+        "openmd.xml",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Validated UTF-8 XML source preserved; DTD/entities rejected."
+    },
+    {
+      "extensions": [
+        "ipynb"
+      ],
+      "engines": [
+        "openmd.ipynb",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Notebook cells and saved outputs in order; no execution; image OCR optional."
+    },
+    {
+      "extensions": [
+        "msg"
+      ],
+      "engines": [
+        "openmd.msg",
+        "markitdown"
+      ],
+      "availability": "available",
+      "scope": "Local MSG subject, sender, recipient and body; attachments reported as gaps; encrypted messages rejected."
+    },
+    {
+      "extensions": [
+        "doc"
+      ],
+      "engines": [
+        "soffice",
+        "openmd.doc"
       ],
       "availability": "experimental",
-      "scope": "Requires ebook-convert; DRM rejected; no decryption."
+      "scope": "LibreOffice preferred; native main-story text/basic tables fallback always partial; 95% recall not certified."
+    },
+    {
+      "extensions": [
+        "ppt"
+      ],
+      "engines": [
+        "soffice",
+        "openmd.ppt"
+      ],
+      "availability": "experimental",
+      "scope": "LibreOffice preferred; native record text fallback always partial; active slide order and 95% recall not certified."
     },
     {
       "extensions": [
@@ -1497,6 +1638,26 @@
       ],
       "availability": "available",
       "scope": "Depth 2; 500 MiB expanded; ratio 100; 1000 entries; 100 MiB/file; total timeout 120 s; media gated for Openmd ASR."
+    },
+    {
+      "extensions": [
+        "mobi"
+      ],
+      "engines": [
+        "calibre"
+      ],
+      "availability": "dependency_ready",
+      "scope": "Calibre required; DRM rejected; cover/link-only navigation and intermediate filename heading omitted."
+    },
+    {
+      "extensions": [
+        "azw3"
+      ],
+      "engines": [
+        "calibre"
+      ],
+      "availability": "dependency_ready",
+      "scope": "Calibre required; DRM rejected; cover/link-only navigation and intermediate filename heading omitted."
     }
   ]
 }

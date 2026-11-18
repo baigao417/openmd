@@ -5,6 +5,8 @@ from openmd.engines.base import EngineLimits
 
 @pytest.mark.parametrize('case', ['positive','broken','empty','encrypted','oversize'])
 def test_msg_native(tmp_path, case):
+    if case == 'positive':
+        pytest.importorskip('olefile')
     path = tmp_path / 'source.msg'
     streams = {'__substg1.0_0037001F': 'Original subject'.encode('utf-16le'), '__substg1.0_1000001F': 'Original 中文 body'.encode('utf-16le')}
     if case == 'empty':
@@ -18,4 +20,3 @@ def test_msg_native(tmp_path, case):
         assert 'Original 中文 body' in result.text and 'Original subject' in result.text
     else:
         assert result.status == 'failed'
-

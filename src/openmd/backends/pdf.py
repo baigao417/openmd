@@ -120,6 +120,9 @@ class DocumentEngineProvider:
 
     name = "document.engines"
 
+    def __init__(self, options=None):
+        self.options = options or BackendRuntimeOptions()
+
     def descriptor(self):
         return BackendDescriptor(name=self.name, layer="local", provider="openmd.documents",
             description="Detected-only local document engines and bounded ZIP containers.",
@@ -146,6 +149,9 @@ class DocumentEngineProvider:
             # This is an additional-format provider, not a second PDF/OCR pass.
             # An unavailable fallback preserves the previous source verdict.
             return failure(self.name, path, "backend_not_implemented", "Legacy PDF/Office uses the preceding providers.")
+        if self.options.enable_asr_backends and path.suffix.lower() in {'.docx', '.pptx', '.xlsx'}:
+            from openmd.engines.base import EngineLimits
+            return convert_document(path, EngineLimits(allow_ocr=True))
         return convert_document(path)
 
 
@@ -159,4 +165,4 @@ def register_backend_providers(
     from openmd.backends.ocr import register_ocr_providers
 
     register_ocr_providers(registry, options)
-    registry.register("document.engines", DocumentEngineProvider())
+    registry.register("document.engines", DocumentEngineProvider(options))

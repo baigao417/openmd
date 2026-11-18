@@ -57,6 +57,14 @@ def executable(tool: str) -> str | None:
         candidate = Path(os.getenv('LOCALAPPDATA', str(Path.home() / 'AppData/Local'))) / 'Pandoc/pandoc.exe'
         if candidate.is_file():
             return str(candidate)
+    if tool == 'pandoc':
+        # pypandoc-binary bundles a local executable. Never call its download API.
+        import importlib.util
+        spec = importlib.util.find_spec('pypandoc')
+        if spec and spec.origin:
+            candidate = Path(spec.origin).parent / 'files' / ('pandoc.exe' if os.name == 'nt' else 'pandoc')
+            if candidate.is_file():
+                return str(candidate)
     return None
 
 
@@ -168,8 +176,8 @@ class SofficeEngine(ExecutableEngine):
                 output = root / (path.stem + '.' + target)
                 if not output.is_file():
                     raise EngineError('document_conversion_failed', 'LibreOffice produced no converted document.')
-                from .markitdown import MarkItDownEngine
-                result = MarkItDownEngine().convert(output, limits)
+                from .registry import convert_document
+                result = convert_document(output, limits)
             return replace(result, backend=self.id, title=path.stem,
                 metadata={**result.metadata, 'source_format': path.suffix[1:].lower(), 'conversion_target': target})
         except (EngineError, OSError, UnicodeError) as exc:

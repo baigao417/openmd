@@ -54,6 +54,7 @@ def test_remote_office_is_rejected_before_parser_import(suffix):
 
 
 def test_legacy_doc_is_not_advertised_as_executable(tmp_path, monkeypatch):
+    monkeypatch.setattr('openmd.engines.native.NativeEngine.available', lambda self: {'ok':False,'reason':'test missing native','version':None})
     monkeypatch.setattr("openmd.engines.tools.SofficeEngine.available", lambda self: {"ok": False, "reason": "missing", "version": None})
     path = tmp_path / "source.doc"
     path.write_bytes(b"fixture")

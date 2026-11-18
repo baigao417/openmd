@@ -361,6 +361,10 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not url:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
+        from openmd.importers.chatgpt import cmd_import, is_chatgpt_export
+
+        if getattr(args, "chatgpt_export", False) or is_chatgpt_export(url):
+            return cmd_import(args, url, tty=tty)
         if getattr(args, "as_snapshot", False):
             source_url = str(getattr(args, "snapshot_url", "") or "").strip()
             if not re.match(r"^https?://[^\s]+$", source_url):

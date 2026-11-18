@@ -57,6 +57,10 @@ def build_parser() -> argparse.ArgumentParser:
     go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频时（目前 X）：note 只注明有视频（默认）；text 附上视频逐字稿；file 再保留视频文件")
     go.add_argument("--as-snapshot", action="store_true", help="把本地 HTML 当作浏览器当前页快照处理")
     go.add_argument("--url", dest="snapshot_url", help="快照对应的原始 http(s) URL")
+    go.add_argument("--chatgpt-export", action="store_true", help="导入本地 ChatGPT 官方 conversations.json 或 zip")
+    go.add_argument("--chatgpt-title", help="官方导入：标题关键词")
+    go.add_argument("--chatgpt-since", help="官方导入：创建时间下限（ISO 日期或 Unix 秒）")
+    go.add_argument("--chatgpt-until", help="官方导入：创建时间上限（含边界）")
     for action in go._actions:
         if action.dest == "raw":
             action.help = "保留原始逐行时间戳 / 表格，不合并段落"

@@ -56,23 +56,23 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `browser/close`: `src/openmd/backends/discourse.py:157`, `src/openmd/backends/douyin.py:525`
 - `browser/eval`: `src/openmd/backends/discourse.py:144`, `src/openmd/backends/douyin.py:514`
 - `browser/open`: `src/openmd/backends/discourse.py:116`, `src/openmd/backends/douyin.py:511`
-- `chatgpt/detail`: `src/openmd/backends/ai_chat.py:102`
-- `chatgpt/status`: `src/openmd/backends/ai_chat.py:242`
-- `deepseek/detail`: `src/openmd/backends/ai_chat.py:102`
-- `deepseek/status`: `src/openmd/backends/ai_chat.py:242`
-- `doubao/detail`: `src/openmd/backends/ai_chat.py:102`
-- `doubao/status`: `src/openmd/backends/ai_chat.py:242`
+- `chatgpt/detail`: `src/openmd/backends/ai_chat.py:103`
+- `chatgpt/status`: `src/openmd/backends/ai_chat.py:255`
+- `deepseek/detail`: `src/openmd/backends/ai_chat.py:103`
+- `deepseek/status`: `src/openmd/backends/ai_chat.py:255`
+- `doubao/detail`: `src/openmd/backends/ai_chat.py:103`
+- `doubao/status`: `src/openmd/backends/ai_chat.py:255`
 - `douyin/detail`: `src/openmd/backends/douyin_detail.py:86`
 - `douyin/user-videos`: `src/openmd/backends/douyin.py:273`
-- `gemini/detail`: `src/openmd/backends/ai_chat.py:102`
-- `gemini/status`: `src/openmd/backends/ai_chat.py:242`
-- `grok/detail`: `src/openmd/backends/ai_chat.py:102`
-- `grok/status`: `src/openmd/backends/ai_chat.py:242`
+- `gemini/detail`: `src/openmd/backends/ai_chat.py:103`
+- `gemini/status`: `src/openmd/backends/ai_chat.py:255`
+- `grok/detail`: `src/openmd/backends/ai_chat.py:103`
+- `grok/status`: `src/openmd/backends/ai_chat.py:255`
 - `openmd-douyin/creator-videos`: `src/openmd/backends/douyin.py:289`
 - `openmd-xiaohongshu/creator-notes`: `src/openmd/backends/xiaohongshu.py:124`
 - `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:96`
-- `qwen/detail`: `src/openmd/backends/ai_chat.py:102`
-- `qwen/status`: `src/openmd/backends/ai_chat.py:242`
+- `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
+- `qwen/status`: `src/openmd/backends/ai_chat.py:255`
 - `twitter/article`: `src/openmd/backends/x.py:116`
 - `twitter/thread`: `src/openmd/backends/x.py:88`
 - `twitter/tweets`: `src/openmd/backends/x.py:102`
@@ -89,5 +89,5 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `youtube/channel`: `src/openmd/backends/youtube_discovery.py:178`
 - `youtube/playlist`: `src/openmd/backends/youtube_discovery.py:286`
 - `youtube/transcript`: `src/openmd/backends/youtube.py:45`
-- `yuanbao/detail`: `src/openmd/backends/ai_chat.py:102`
-- `yuanbao/status`: `src/openmd/backends/ai_chat.py:242`
+- `yuanbao/detail`: `src/openmd/backends/ai_chat.py:103`
+- `yuanbao/status`: `src/openmd/backends/ai_chat.py:255`

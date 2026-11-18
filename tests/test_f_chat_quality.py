@@ -230,3 +230,59 @@ def test_legacy_dict_turns_render_standard_roles_consistently():
     from openmd.core.renderer import render_conversation_blocks
     text = render_conversation_blocks([{'type': 'turn', 'role': 'Assistant', 'text': 'Synthetic answer.'}], source_url=URLS['chatgpt'], platform='chatgpt', exported_at='synthetic')
     assert '### assistant\n' in text and '### Assistant' not in text
+
+
+def test_chatgpt_testid_user_container_is_exported_not_only_counted():
+    result = extract('<div data-testid="user-message">Synthetic question.</div><div data-message-author-role="assistant">Synthetic answer.</div>')
+    assert [turn.role for turn in result.blocks] == ['user', 'assistant']
+    assert result.status == 'verified'
+
+
+def test_chatgpt_article_with_only_user_bubble_attribute():
+    result = extract('<article data-testid="conversation-turn-1"><div data-user-message-bubble>Synthetic question.</div></article><article data-testid="conversation-turn-2"><div data-message-author-role="assistant">Synthetic answer.</div></article>')
+    assert [turn.role for turn in result.blocks] == ['user', 'assistant']
+    assert result.status == 'verified'
+
+
+def test_code_text_is_preserved_when_its_dom_contains_math_markup():
+    result = extract('<div data-message-author-role="assistant"><pre><code>literal <span class="katex"><math><annotation encoding="application/x-tex">x</annotation></math></span></code></pre></div>')
+    assert '```\nliteral x\n```' in result.text
+    assert 'OPENMDLOADEDLITERAL' not in result.text
+
+
+def test_generic_title_skips_inactive_sidebar_conversation_title():
+    html = answer_html('qwen', 'Synthetic answer.').replace('Synthetic conversation', '千问-阿里 AI 助手')
+    html = html.replace('<main>', '<aside><a href="/chat/other"><span class="conversation-title">Other chat</span></a><a aria-current="page" href="/chat/demo"><span class="conversation-title">Synthetic current title</span></a></aside><main>')
+    assert extract(html, 'qwen').title == 'Synthetic current title'
+
+
+def test_generic_title_accepts_spacing_around_site_tagline():
+    html = answer_html('qwen', 'Synthetic answer.').replace('Synthetic conversation', '千问 - 阿里 AI 助手')
+    assert extract(html, 'qwen').title == 'Synthetic question.'
+
+
+def test_gemini_thinking_sibling_stays_with_its_answer():
+    html = '<user-query><div class="query-text">Synthetic question.</div></user-query><model-response><model-thoughts>Synthetic reasoning.</model-thoughts><div class="model-response-text">Synthetic final answer.</div></model-response>'
+    result = extract(html, 'gemini', include_thinking=True)
+    assert [turn.role for turn in result.blocks] == ['user', 'assistant']
+    assert 'Synthetic reasoning.' in result.blocks[1].text
+    assert result.metadata['thinking_included_count'] == 1
+
+
+def test_thinking_option_is_visible_in_cli_help(capsys):
+    from openmd.cli import main
+    assert main(['go', '--help']) == 0
+    assert '--include-thinking' in capsys.readouterr().out
+
+
+def test_quality_notes_are_in_final_markdown_source_section(tmp_path):
+    from openmd.core.renderer import render_document, render_markdown_document
+    item = loaded_chat.snapshot_item(tmp_path / 'synthetic.html', URLS['chatgpt'])
+    html = '<div data-message-author-role="assistant"><div class="thinking-container">Synthetic reasoning.</div><p>Synthetic answer.</p><math><mi>x</mi></math><img alt="Synthetic plot" src="data:image/png;base64,' + 'A' * 9000 + '"></div>'
+    result = loaded_chat.extract_loaded_chat(html, item, backend='page_snapshot.defuddle')
+    saved = render_document(render_markdown_document(item, result))
+    notes = saved.split('来源说明：', 1)[1]
+    assert '已省略思考过程：1 段' in notes
+    assert '已省略内嵌图片：1 张' in notes
+    assert '公式可能失真：1 处' in notes
+    assert 'Synthetic reasoning.' not in saved

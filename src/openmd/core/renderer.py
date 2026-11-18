@@ -202,6 +202,7 @@ def render_markdown_document(
                 exported_at=captured_at or utc_now_iso(),
                 coverage=coverage_machine_value(result.metadata.get("coverage")),
                 title=str(title),
+                source_notes=[note for note in result.source_notes if note.startswith(("已省略思考过程：", "已保留思考过程：", "已省略内嵌图片：", "已删除内嵌小图标：", "公式可能失真："))],
             )
         else:
             content = result.text
@@ -233,6 +234,7 @@ def render_conversation_blocks(
     exported_at: str,
     coverage: str = "visible_branch",
     title: str = "对话",
+    source_notes: list[str] | None = None,
 ) -> str:
     """Render each conversation turn without merging or summarizing it."""
     lines: list[str] = []
@@ -267,6 +269,7 @@ def render_conversation_blocks(
         f"- 导出时刻：{exported_at}",
         f"- 范围：{coverage_label(coverage)}",
         f"- 轮次数：{turn_count}",
+        *[f"- {note}" for note in source_notes or []],
         "",
     ])
     return "\n".join(lines)

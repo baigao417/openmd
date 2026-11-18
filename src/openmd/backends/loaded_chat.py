@@ -21,7 +21,7 @@ from openmd.core.models import ContentItem, TranscriptResult, TurnBlock, normali
 
 
 SELECTORS = {
-    "chatgpt": '[data-message-author-role], [data-author], [data-user-message-bubble], article[data-testid*="conversation-turn"], [data-chatgpt-search-unit-key]',
+    "chatgpt": '[data-message-author-role], [data-author], [data-user-message-bubble], [data-testid="user-message"], article[data-testid*="conversation-turn"], [data-chatgpt-search-unit-key]',
     "grok": '[data-testid="user-message"], [data-testid="assistant-message"]',
     "deepseek": '.ds-message',
     "doubao": '[data-testid="message-list"] [data-testid="union_message"]',
@@ -89,11 +89,11 @@ def _outermost(nodes: list[Tag]) -> list[Tag]:
 
 def _role_content(site: str, node: Tag) -> tuple[str, Tag]:
     if site == "chatgpt":
-        author = node if node.has_attr("data-message-author-role") or node.has_attr("data-author") else node.select_one('[data-message-author-role], [data-author]')
+        author = node if node.has_attr("data-message-author-role") or node.has_attr("data-author") else node.select_one('[data-message-author-role], [data-author], [data-user-message-bubble]')
         role = str((author or node).get("data-message-author-role") or (author or node).get("data-author") or "")
         if not role:
             hints = " ".join(str(node.get(key) or "") for key in ("data-chatgpt-search-unit-key", "data-testid", "aria-label"))
-            role = "user" if node.has_attr("data-user-message-bubble") else ("assistant" if re.search("assistant|chatgpt", hints, re.I) else ("user" if re.search("user|you", hints, re.I) else "unknown"))
+            role = "user" if node.has_attr("data-user-message-bubble") or (author is not None and author.has_attr("data-user-message-bubble")) else ("assistant" if re.search("assistant|chatgpt", hints, re.I) else ("user" if re.search("user|you", hints, re.I) else "unknown"))
         content = node.select_one('[data-markdown-copy="contents"], [data-markdown-text-style="assistant-message"], [data-user-message-bubble] [data-search-result-target]')
         content = content if content is not None else node.select_one('.markdown')
         return role.lower(), content if content is not None else (author if author is not None else node)
@@ -143,7 +143,7 @@ def _markdown(node: Tag, stats: dict[str, int] | None = None) -> str:
     # Read semantic TeX before removing accessibility duplicates. Never flatten
     # fractions/superscripts through a generic HTML-to-text converter.
     for formula in _outermost(list(body.select('.katex-display, .katex, mjx-container, math'))):
-        if not _visible(formula):
+        if not _visible(formula) or formula.find_parent(["pre", "code"]) is not None:
             continue
         annotation = formula.select_one('annotation[encoding="application/x-tex"]')
         block = "katex-display" in formula.get("class", []) or formula.get("display") in {"block", "true"}
@@ -225,16 +225,24 @@ def _turn_markdown(site: str, node: Tag, role: str, stats: dict[str, int], *, in
 
 
 def _session_title(soup: BeautifulSoup, url: str) -> str | None:
+    target = urlsplit(url)
+
+    def matches_current_link(node: Tag) -> bool:
+        link = urlsplit(urljoin(url, str(node.get("href"))))
+        return (link.hostname, link.path.rstrip("/")) == (target.hostname, target.path.rstrip("/"))
+
     selectors = '[data-conversation-title], [data-testid="conversation-title"], [data-testid="chat-title"], .conversation-title, .chat-title, header h1, header h2, nav [aria-current="page"], aside [aria-current="page"], nav [aria-selected="true"], aside [aria-selected="true"]'
     for node in soup.select(selectors):
+        if node.find_parent(["nav", "aside"]) is not None:
+            chain = [node, *[parent for parent in node.parents if isinstance(parent, Tag)]]
+            if not any(parent.get("aria-current") == "page" or parent.get("aria-selected") == "true" or (parent.name == "a" and parent.has_attr("href") and matches_current_link(parent)) for parent in chain):
+                continue
         if _visible(node):
             title = str(node.get("data-conversation-title") or node.get_text(" ", strip=True))
             if title:
                 return title
-    target = urlsplit(url)
     for node in soup.select('nav a[href], aside a[href]'):
-        link = urlsplit(urljoin(url, str(node.get("href"))))
-        if _visible(node) and (link.hostname, link.path.rstrip("/")) == (target.hostname, target.path.rstrip("/")):
+        if _visible(node) and matches_current_link(node):
             title = node.get_text(" ", strip=True)
             if title:
                 return title

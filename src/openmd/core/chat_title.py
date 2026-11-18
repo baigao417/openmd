@@ -21,7 +21,7 @@ SITE_TITLES = {
 def clean_chat_title(site: str, title: str | None) -> str | None:
     value = re.sub(r"\s+", " ", title or "").strip()
     aliases = SITE_TITLES.get(site, (site,))
-    pattern = "(?:" + "|".join(re.escape(alias).replace(r"\ ", r"\s*") for alias in aliases) + ")"
+    pattern = "(?:" + "|".join(re.escape(alias).replace(r"\ ", r"\s*").replace(r"\-", r"\s*[-–—]\s*") for alias in aliases) + ")"
     if re.fullmatch(pattern, value, re.I):
         return None
     value = re.sub(r"\s*[-–—|·]\s*" + pattern + r"\s*$", "", value, flags=re.I).strip()

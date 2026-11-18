@@ -96,7 +96,7 @@ class OutputWriteResult:
 
 
 ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr")
-GO_DAILY_OPTIONS = {"help", "url", "save_to", "video", "raw", "json", "verbose"}
+GO_DAILY_OPTIONS = {"help", "url", "save_to", "video", "raw", "json", "verbose", "include_thinking"}
 
 
 def _runlog_path(args: argparse.Namespace) -> Path:

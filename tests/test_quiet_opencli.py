@@ -309,6 +309,7 @@ def test_xiaohongshu_assets_bypass_path_shim_before_string_quoting(monkeypatch):
     monkeypatch.setattr(xiaohongshu_providers, "run_interruptibly", runner)
     xiaohongshu_providers._run_asset_command(["opencli", "openmd-xiaohongshu", "note-assets", "fixture"], 5, None)
     assert runner.call_args.args[0][:2] == ["pinned-node", "main.js"]
+    assert runner.call_args.kwargs["env"]["OPENCLI_CONFIG_DIR"] == str(managed_tools.config_directory())
 
 
 def test_quiet_browser_and_adapter_surfaces_share_one_container(tmp_path):

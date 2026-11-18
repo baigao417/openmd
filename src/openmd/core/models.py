@@ -97,6 +97,12 @@ class ExtractionComponent:
     failure_class: FailureClass | None = None
 
 
+def normalize_turn_role(role: str) -> str:
+    """Normalize standard AI roles without guessing unknown speaker identities."""
+    normalized = role.strip().lower()
+    return normalized if normalized in {"user", "assistant", "system", "tool"} else role
+
+
 @dataclass(frozen=True)
 class TurnBlock:
     """One verbatim conversation turn."""
@@ -106,6 +112,9 @@ class TurnBlock:
     time: str | None = None
     message_id: str | None = None
     type: BlockType = "turn"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "role", normalize_turn_role(self.role))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -160,6 +169,8 @@ def block_as_dict(block: Any) -> dict[str, Any]:
     kind = value.get("type")
     if kind not in {"turn", "cue", "table"}:
         raise ValueError("unsupported_block_type")
+    if kind == "turn" and isinstance(value.get("role"), str):
+        value["role"] = normalize_turn_role(value["role"])
     return value
 
 

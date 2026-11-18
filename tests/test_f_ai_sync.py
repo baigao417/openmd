@@ -9,6 +9,7 @@ def test_conversation_sync_ignores_only_generated_export_clock(tmp_path):
     sync = {}
     first = write_item_result(item, result, tmp_path, captured_at="2026-11-18T01:00:00Z", sync_receipt=sync)
     original = first.read_bytes()
+    assert b"### user\n" in original and b"### User" not in original
     write_item_result(item, result, tmp_path, captured_at="2026-11-18T02:00:00Z", sync_receipt=sync)
     assert sync["operation"] == "unchanged"
     assert first.read_bytes() == original

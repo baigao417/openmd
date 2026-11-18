@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup, Tag
 from openmd.core.content_validation import html_to_markdown
 from openmd.core.chat_title import conversation_title
 from openmd.core.login import normalize_login_result
-from openmd.core.models import ContentItem, TranscriptResult, TurnBlock
+from openmd.core.models import ContentItem, TranscriptResult, TurnBlock, normalize_turn_role
 
 
 SELECTORS = {
@@ -262,6 +262,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     stats: dict[str, int] = {"math_fallback_count": 0, "embedded_image_omitted_count": 0, "embedded_icon_removed_count": 0, "thinking_omitted_count": 0, "thinking_included_count": 0}
     for node in roots:
         role, content = _role_content(site, node)
+        role = normalize_turn_role(role)
         if role not in {"user", "assistant", "system", "tool"}:
             continue
         text = _turn_markdown(site, node, role, stats, include_thinking=item.raw_meta.get("include_thinking") is True)

@@ -205,3 +205,28 @@ def test_detail_generic_title_uses_conversation_title_then_first_user():
     assert parse_ai_chat_output(payload, site='qwen', source_url=URLS['qwen'])[1]['title'] == 'Synthetic session title'
     del payload['conversation_title']
     assert parse_ai_chat_output(payload, site='qwen', source_url=URLS['qwen'])[1]['title'] == 'Synthetic question.'
+
+
+@pytest.mark.parametrize('role', ['User', 'Assistant', 'SYSTEM', ' Tool '])
+def test_turnblock_normalizes_standard_roles_at_construction(role):
+    from openmd.core.models import TurnBlock
+    block = TurnBlock(role, 'Synthetic text.')
+    assert block.role == role.strip().lower()
+    assert block.as_dict()['role'] == role.strip().lower()
+
+
+def test_detail_and_snapshot_render_identical_lowercase_role_headings():
+    from openmd.backends.ai_chat import parse_ai_chat_output
+    from openmd.core.renderer import render_conversation_blocks
+    payload = {'messages': [{'Role': 'User', 'Text': 'Synthetic question.'}, {'Role': 'Assistant', 'Text': 'Synthetic answer.'}]}
+    turns, _ = parse_ai_chat_output(payload, site='chatgpt', source_url=URLS['chatgpt'])
+    snapshot = extract('<div data-message-author-role="user">Synthetic question.</div><div data-message-author-role="assistant">Synthetic answer.</div>')
+    options = dict(source_url=URLS['chatgpt'], platform='chatgpt', exported_at='synthetic')
+    assert [turn.role for turn in turns] == ['user', 'assistant']
+    assert render_conversation_blocks(turns, **options) == render_conversation_blocks(snapshot.blocks, **options)
+
+
+def test_legacy_dict_turns_render_standard_roles_consistently():
+    from openmd.core.renderer import render_conversation_blocks
+    text = render_conversation_blocks([{'type': 'turn', 'role': 'Assistant', 'text': 'Synthetic answer.'}], source_url=URLS['chatgpt'], platform='chatgpt', exported_at='synthetic')
+    assert '### assistant\n' in text and '### Assistant' not in text

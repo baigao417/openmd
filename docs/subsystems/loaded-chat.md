@@ -21,6 +21,10 @@ OpenCLI **2.0.3** package. `clis/<site>/detail.js` delegates to these helpers:
 | Qwen | `utils.js`, `getMessageBubbles` | data-chat-question-wrap / data-chat-answers-wrap |
 | Yuanbao | `shared.js`, `getYuanbaoMessageBubbles` | human / ai list items, hyc-content body |
 
+ChatGPT also recognizes standalone `data-author` and user-message bubbles.
+A separate user-container sweep is compared with parsed user turns; a missing
+user turn downgrades the result even if the general turn selector misses it.
+
 The common Python parser preserves DOM order and repeated identical turns;
 overlapping containers are removed by node identity. Code whitespace and
 language are preserved with fenced literals; tables keep their original cell
@@ -68,3 +72,18 @@ acceptance. Gemini custom turn elements also retain thinking siblings outside
 the parser never guesses a boundary from words such as “Thought for”.
 The experimental detail path honors separately supplied thinking fields; when
 its upstream has flattened them into `Text`, that text is preserved with a note.
+
+## Output quality
+
+Math uses `annotation[encoding="application/x-tex"]` when present, with `$…$`
+inline and `$$…$$` in display blocks. Missing annotations keep MathML or visible
+text and add a formula-fidelity warning. Oversized data-URI images (over 8192
+UTF-8 bytes in the URI) become counted placeholders, retaining alt text and
+figure captions. Small images explicitly marked as icons or at most 32×32 are
+removed; other small images and external image links retain existing behavior.
+
+Both routes share title cleanup: remove a recognized site suffix; for generic
+site titles use the current DOM/session title, then the first user message's
+first 30 characters. The existing sync manifest continues to retain filenames.
+`TurnBlock` and legacy block projections normalize the four standard roles to
+`user`, `assistant`, `system`, `tool`; unknown speaker identities are preserved.

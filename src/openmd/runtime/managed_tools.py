@@ -361,4 +361,9 @@ def passthrough(args: list[str]) -> int:
     """Inherit stdout/stderr directly, retaining the original exit status."""
     from .opencli_adapters import prepare_bundled_plugins
     prepare_bundled_plugins()
-    return run_interruptibly(managed_command(args), env=command_environment(), stdin=subprocess.DEVNULL).returncode
+    env = None
+    if len(args) >= 2 and args[0] in {"chatgpt", "deepseek", "grok", "doubao", "gemini", "qwen", "yuanbao"} and args[1] in {"detail", "status", "history", "read"}:
+        from .ai_chat_loading import detail_loading_environment
+
+        env = detail_loading_environment(args[0], args[1])
+    return run_interruptibly(managed_command(args), env=command_environment(env), stdin=subprocess.DEVNULL).returncode

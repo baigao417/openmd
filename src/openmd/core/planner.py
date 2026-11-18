@@ -246,11 +246,11 @@ def build_plan(
 
     if source_id == "ai_chat":
         from openmd.core.detector import ai_chat_site
-        from openmd.backends.ai_chat import ai_chat_backend_for_site
+        from openmd.backends.ai_chat import ai_chat_backend_for_site, IMPLEMENTED_AI_CHAT_SITES, EXPERIMENTAL_AI_CHAT_SITES
 
         site = ai_chat_site(value)
         site_backend = ai_chat_backend_for_site(site or "")
-        if site_backend and site not in {"chatgpt", "deepseek", "grok"}:
+        if site_backend and site not in IMPLEMENTED_AI_CHAT_SITES:
             return PlanResult(
                 ok=True,
                 detected_source=source_id,
@@ -286,6 +286,8 @@ def build_plan(
     gates = available_gates or set()
     required = list(record.required_gates)
     runtime_provider = record.runtime_provider
+    if source_id == "ai_chat":
+        runtime_provider = site_backend or runtime_provider
     if local_path is not None and source_id == "pdf_office":
         from openmd.core.detector import LOCAL_DOCUMENT_EXTENSIONS
         from openmd.engines.native import PROMOTED
@@ -387,10 +389,10 @@ def build_plan(
         detected_source=source_id,
         input_kind=selected_kind,
         capability_tier=record.tier,
-        implementation_state=record.state,
+        implementation_state="experimental" if source_id == "ai_chat" and site in EXPERIMENTAL_AI_CHAT_SITES else record.state,
         source_exhausted_requested=request_all,
         source_exhausted_approved=request_all and selected_kind in record.source_exhausted_kinds,
-        planned_provider=record.planned_provider,
+        planned_provider=runtime_provider if source_id == "ai_chat" else record.planned_provider,
         runtime_provider=runtime_provider,
         binding_state=record.binding_state,
         execution_ready=execution_ready,

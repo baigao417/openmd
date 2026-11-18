@@ -127,7 +127,7 @@ def test_grok_runtime_uses_scoped_loading_patch(monkeypatch):
     assert "--import=data:" in seen[0][1]["env"]["NODE_OPTIONS"]
     assert "NODE_OPTIONS" not in os.environ or seen[0][1]["env"]["NODE_OPTIONS"] != os.environ["NODE_OPTIONS"]
     ai_chat._run_command(build_opencli_detail_args("chatgpt", "synthetic"), 180)
-    assert "env" not in seen[1][1]
+    assert "--import=data:" in seen[1][1]["env"]["NODE_OPTIONS"]
 
 
 @pytest.mark.parametrize("mode", ["hydrated", "never_hydrates", "source_drift"])

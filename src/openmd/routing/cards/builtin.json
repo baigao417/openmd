@@ -590,6 +590,21 @@
       "status_policy": "provider_defined"
     },
     {
+      "id": "document.engines",
+      "provider": "document.engines",
+      "sources": [
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
       "id": "page_snapshot.defuddle",
       "provider": "page_snapshot.defuddle",
       "sources": [

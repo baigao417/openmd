@@ -102,6 +102,11 @@ def load_local_config() -> dict[str, Any]:
         raise ValueError("local_config_model_roots_invalid")
     if "tools" in value and not isinstance(value["tools"], dict):
         raise ValueError("local_config_tools_invalid")
+    if "wx" in value.get("tools", {}):
+        setting = value["tools"]["wx"]
+        if (not isinstance(setting, dict) or set(setting) - {"root"}
+                or not isinstance(setting.get("root"), str) or not setting["root"].strip()):
+            raise ValueError("wx_location_invalid")
     if "opencli" in value.get("tools", {}):
         setting = value["tools"]["opencli"]
         if (not isinstance(setting, dict) or set(setting) - {"root", "config_dir"}

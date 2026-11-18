@@ -140,3 +140,25 @@ def test_pdf_frontmatter_downgrade_reports_output_pages(tmp_path):
     line = next(line for line in path.read_text(encoding='utf-8').splitlines() if line.startswith('completeness:'))
     assert 'partial' in line and '输出 1/3 页' in line
     assert '{' not in line and '\\"' not in line
+
+
+def test_conversation_stats_count_downgrades_short_export():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('wechat_chat', 'collection', 'wechat:fixture', source_type='conversation')
+    result = TranscriptResult(
+        text='body', status='verified', source_level='manual_export', backend='wx-cli.export',
+        metadata={'exported_count': 2, 'stats_count': 3, 'limit': 500},
+    )
+    checked = check_completeness(item, result)
+    assert checked.status == 'partial'
+    assert checked.metadata['completeness']['checks'][0]['reason'] == 'export_count_below_stats'
+
+
+def test_conversation_limit_hit_downgrades_verified_export():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('wechat_chat', 'collection', 'wechat:fixture', source_type='conversation')
+    result = TranscriptResult(
+        text='body', status='verified', source_level='manual_export', backend='wx-cli.export',
+        metadata={'exported_count': 3, 'stats_count': 3, 'limit': 3, 'limit_hit': True},
+    )
+    assert check_completeness(item, result).status == 'partial'

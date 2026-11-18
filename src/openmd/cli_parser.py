@@ -281,3 +281,8 @@ def _add_shared_options(
         action="store_true",
         help="opt in to browser-context backends such as OpenCLI for matching collection inputs",
     )
+    parser.add_argument(
+        "--enable-local-export",
+        action="store_true",
+        help="显式允许读取本机导出工具（例如 wx-cli）的高隐私本地数据",
+    )

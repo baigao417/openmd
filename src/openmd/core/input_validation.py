@@ -18,6 +18,8 @@ INPUT_HINT = "请粘贴 http(s) 链接或本地文件路径"
 def valid_daily_input(value: str) -> bool:
     try:
         parsed = urlparse(value)
+        if parsed.scheme == "wechat":
+            return bool(parsed.netloc or parsed.path.strip("/")) and not any(ch.isspace() for ch in value)
         if parsed.scheme in {"http", "https"}:
             return bool(parsed.hostname) and not any(ch.isspace() for ch in value)
         path = _local_path_for_detection(value)

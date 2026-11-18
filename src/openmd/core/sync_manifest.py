@@ -141,7 +141,7 @@ class SyncManifest:
             counter += 1
         return candidate
 
-    def write(self, source_id: str, relative_path: str, content: str, *, cursor=None) -> SyncWriteResult:
+    def write(self, source_id: str, relative_path: str, content: str, *, cursor=None, append: bool = False) -> SyncWriteResult:
         proposed = self._target(relative_path)
         encoded = content.encode("utf-8")
         digest = _sha(encoded)
@@ -160,6 +160,11 @@ class SyncManifest:
                     # Retain the canonical path and last canonical hash: future
                     # runs must continue to protect the user's edited original.
                     return SyncWriteResult(update, "conflict_kept_user_edit")
+                elif append:
+                    content = _append_markdown(target.read_text(encoding="utf-8"), content)
+                    encoded = content.encode("utf-8")
+                    digest = _sha(encoded)
+                    operation = "updated"
                 elif digest == entry["content_sha256"]:
                     operation = "unchanged"
                 else:
@@ -173,3 +178,23 @@ class SyncManifest:
             }
             _atomic_write(self.path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
             return SyncWriteResult(target, operation)
+
+
+def _append_markdown(existing: str, incoming: str) -> str:
+    """Append conversation body while keeping one front matter/source footer."""
+    if not existing.strip():
+        return incoming
+    old_source = existing.find("\n## Source\n")
+    new_source = incoming.find("\n## Source\n")
+    if old_source < 0 or new_source < 0:
+        return existing.rstrip() + "\n\n" + incoming.lstrip()
+    old_body = existing[:old_source]
+    new_body = incoming[:new_source]
+    # Drop the incoming document heading/front matter; retain only new turns.
+    heading = new_body.find("\n# ")
+    if heading >= 0:
+        new_body = new_body[heading:]
+    first_break = new_body.find("\n\n")
+    if first_break >= 0:
+        new_body = new_body[first_break + 2:]
+    return old_body.rstrip() + "\n\n" + new_body.strip() + incoming[new_source:]

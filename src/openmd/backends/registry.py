@@ -42,6 +42,7 @@ class BackendRuntimeOptions:
     enable_media_download_backends: bool = False
     enable_asr_backends: bool = False
     enable_cloud_backends: bool = False
+    enable_local_export_backends: bool = False
     keep_media_artifacts: bool = False
     media_artifact_dir: str | None = None
 

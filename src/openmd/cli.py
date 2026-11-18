@@ -193,6 +193,7 @@ def _backend_runtime_options(args: argparse.Namespace) -> BackendRuntimeOptions:
         enable_media_download_backends=getattr(args, "enable_media_download", False),
         enable_asr_backends=getattr(args, "enable_asr", False),
         enable_cloud_backends=getattr(args, "enable_cloud_backends", False),
+        enable_local_export_backends=getattr(args, "enable_local_export", False),
         keep_media_artifacts=keep_media_artifacts,
         media_artifact_dir=str(Path(args.out) / "raw-media") if keep_media_artifacts else None,
     )

@@ -136,12 +136,54 @@ def pdf_page_check(item: ContentItem, result: TranscriptResult, signals: Mapping
     return Check("pdf_pages", "ok")
 
 
+def conversation_count_check(item: ContentItem, result: TranscriptResult, signals: Mapping[str, Any]) -> Check:
+    """Compare an export count with an independent conversation statistic.
+
+    Providers may supply ``exported_count``, ``stats_count`` and ``limit_hit``
+    in result metadata. Unknown values stay unknown; a proven short export or
+    a hit limit only downgrades a previously verified result.
+    """
+    if item.source_type != "conversation":
+        return Check("conversation_count", reason="not_a_conversation")
+    exported = result.metadata.get("exported_count")
+    stats_count = result.metadata.get("stats_count")
+    limit = result.metadata.get("limit")
+    if result.metadata.get("limit_hit") is True:
+        return Check(
+            "conversation_count",
+            "downgrade",
+            "export_limit_reached",
+            {
+                "exported_count": exported,
+                "limit": limit,
+                "next_action": "increase export limit or narrow the time range",
+            },
+        )
+    if type(exported) is int and type(stats_count) is int:
+        if exported < stats_count:
+            return Check(
+                "conversation_count",
+                "downgrade",
+                "export_count_below_stats",
+                {"exported_count": exported, "stats_count": stats_count},
+            )
+        if exported == stats_count:
+            return Check("conversation_count", "ok")
+        return Check(
+            "conversation_count",
+            "downgrade",
+            "export_count_above_stats",
+            {"exported_count": exported, "stats_count": stats_count},
+        )
+    return Check("conversation_count", reason="export_or_stats_count_unavailable")
+
+
 def check_completeness(item: ContentItem, result: TranscriptResult, *, signals: Mapping[str, Any] | None = None,
                        checkers: tuple[Checker, ...] | None = None) -> TranscriptResult:
     """Attach bounded evidence and lower verified to partial when a gap is proven."""
     selected = checkers
     if selected is None:
-        selected = (pdf_page_check,) if item.platform == "pdf" else ((media_cue_check,) if item.source_type in {"audio", "video"} or result.source_level in {"asr", "media_asr", "native_caption", "auto_caption", "platform_transcript"} else ())
+        selected = (pdf_page_check,) if item.platform == "pdf" else ((conversation_count_check,) if item.source_type == "conversation" else ((media_cue_check,) if item.source_type in {"audio", "video"} or result.source_level in {"asr", "media_asr", "native_caption", "auto_caption", "platform_transcript"} else ()))
     if not selected:
         return result
     evidence = available_signals(item, result) if signals is None else signals

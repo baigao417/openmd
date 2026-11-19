@@ -50,6 +50,12 @@ THINKING_SELECTORS = {
     "yuanbao": '.hyc-component-reasoner, .hyc-content-think, .agent-chat__thinking, .hyc-component-deepsearch-cot__think',
 }
 COMMON_THINKING_SELECTOR = '.thinking-container, [data-message-type="reasoning"], [data-testid="reasoning"], [data-testid="thinking"]'
+DOUBAO_STATUS_SELECTOR = '[data-testid="message_status"], [data-testid="status_message"], [data-testid*="status"], [class*="status-message"], [class*="thinking-status"]'
+DOUBAO_STATUS_TEXT = re.compile(
+    r'^(?:这个问题我需要花点时间来处理|正在(?:思考|分析|搜索|整理|生成)|正在(?:进行)?(?:深度)?研究|'
+    r'(?:已开始|开始进行)(?:深度)?研究|深度研究(?:中|已开始)|请稍候)(?:[。.!！…]|，请稍候)?$',
+    re.I,
+)
 
 
 def loaded_chat_site(url: str) -> str | None:
@@ -258,6 +264,45 @@ def _turn_markdown(site: str, node: Tag, role: str, stats: dict[str, int], *, in
     return answer
 
 
+def _doubao_status_text(site: str, node: Tag, role: str) -> str | None:
+    """Return a short Doubao progress bubble, which is not a conversation turn.
+
+    Doubao's loaded page can expose a progress bubble as a second
+    ``union_message`` with ``receive_message`` and ``message_text_content``.
+    The managed OpenCLI selectors identify the surrounding message root but do
+    not distinguish this progress signal from a final answer, so use the
+    explicit status markers when present and a short, known progress phrase as
+    the fallback.  Ordinary answer prose is left untouched.
+    """
+    if site != "doubao" or role != "assistant":
+        return None
+    _, content = _role_content(site, node)
+    text = re.sub(r"\s+", " ", content.get_text(" ", strip=True)).strip()
+    if not text or len(text) > 160:
+        return None
+    structural = node.select_one(DOUBAO_STATUS_SELECTOR) is not None
+    if structural or DOUBAO_STATUS_TEXT.fullmatch(text):
+        return text
+    return None
+
+
+def _prepend_thinking_sections(text: str, sections: list[str]) -> str:
+    if not sections:
+        return text
+    joined = "\n\n".join(section for section in sections if section)
+    if not joined:
+        return text
+    prefix = "#### 思考过程\n\n"
+    if text.startswith(prefix):
+        body = text[len(prefix):]
+        final_marker = "\n\n#### 最终回答\n\n"
+        if final_marker in body:
+            thought, answer = body.split(final_marker, 1)
+            return prefix + joined + "\n\n" + thought + final_marker + answer
+        return prefix + joined + "\n\n" + body
+    return prefix + joined + ("\n\n#### 最终回答\n\n" + text if text else "")
+
+
 def _session_title(soup: BeautifulSoup, url: str) -> str | None:
     target = urlsplit(url)
 
@@ -301,16 +346,29 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     if login_path or login_form or (not roots and login_cta):
         return normalize_login_result(TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code="login_required"), item)
     turns = []
-    stats: dict[str, int] = {"math_fallback_count": 0, "embedded_image_omitted_count": 0, "embedded_icon_removed_count": 0, "thinking_omitted_count": 0, "thinking_included_count": 0}
+    stats: dict[str, int] = {"math_fallback_count": 0, "embedded_image_omitted_count": 0, "embedded_icon_removed_count": 0, "thinking_omitted_count": 0, "thinking_included_count": 0, "status_omitted_count": 0, "status_included_count": 0}
+    pending_statuses: list[str] = []
     for node in roots:
         role, content = _role_content(site, node)
         role = normalize_turn_role(role)
         if role not in {"user", "assistant", "system", "tool"}:
             continue
+        status_text = _doubao_status_text(site, node, role)
+        if status_text is not None:
+            key = "status_included_count" if item.raw_meta.get("include_thinking") is True else "status_omitted_count"
+            stats[key] += 1
+            if item.raw_meta.get("include_thinking") is True:
+                pending_statuses.append(status_text)
+            continue
         text = _turn_markdown(site, node, role, stats, include_thinking=item.raw_meta.get("include_thinking") is True)
+        if role == "assistant" and pending_statuses:
+            text = _prepend_thinking_sections(text, pending_statuses)
+            pending_statuses.clear()
         if not text:
             continue
         turns.append(TurnBlock(role=role, text=text, message_id=node.get("data-message-id") or node.get("data-conv-id")))
+    if pending_statuses and turns and turns[-1].role == "assistant":
+        turns[-1] = replace(turns[-1], text=_prepend_thinking_sections(turns[-1].text, pending_statuses))
     if not turns:
         return TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=backend, error_code="ai_chat_empty", error_summary="当前页没有可读取的对话轮次；请先打开并加载会话。")
     generating = _generating(soup)
@@ -334,5 +392,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
                       *([f"已删除内嵌小图标：{stats['embedded_icon_removed_count']} 个。"] if stats["embedded_icon_removed_count"] else []),
                       *([f"已省略思考过程：{stats['thinking_omitted_count']} 段。"] if stats["thinking_omitted_count"] else []),
                       *([f"已保留思考过程：{stats['thinking_included_count']} 段。"] if stats["thinking_included_count"] else []),
+                      *([f"已省略状态提示：{stats['status_omitted_count']} 段。"] if stats["status_omitted_count"] else []),
+                      *([f"已保留状态提示：{stats['status_included_count']} 段。"] if stats["status_included_count"] else []),
                       "思考过程仅按明确 DOM 区块识别；未识别的结构保留原样。"],
     )

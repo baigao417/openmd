@@ -129,6 +129,42 @@ def test_unknown_thinking_prose_and_user_example_are_never_guessed_away():
     assert result.metadata['thinking_omitted_count'] == 0
 
 
+def test_doubao_status_bubble_is_not_an_assistant_turn_and_can_be_included_as_thinking():
+    html = '''<main data-testid="message-list">
+      <div data-testid="union_message"><div data-testid="send_message"><div data-testid="message_text_content">Synthetic question.</div></div></div>
+      <div data-testid="union_message"><div data-testid="receive_message"><div data-testid="message_text_content">这个问题我需要花点时间来处理。</div></div></div>
+      <div data-testid="union_message"><div data-testid="thinking_content">Synthetic reasoning.</div><div data-testid="receive_message"><div data-testid="message_text_content">Synthetic final answer.</div></div></div>
+    </main>'''
+    default = extract(html, 'doubao')
+    assert [turn.role for turn in default.blocks] == ['user', 'assistant']
+    assert '这个问题我需要花点时间来处理。' not in default.text
+    assert default.metadata['status_omitted_count'] == 1
+    assert any('已省略状态提示：1 段' in note for note in default.source_notes)
+    from openmd.core.renderer import render_conversation_blocks
+    rendered = render_conversation_blocks(default.blocks, source_url=URLS['doubao'], platform='doubao', exported_at='synthetic', source_notes=default.source_notes)
+    assert '轮次数：2' in rendered
+    included = extract(html, 'doubao', include_thinking=True)
+    assert [turn.role for turn in included.blocks] == ['user', 'assistant']
+    assert included.blocks[1].text.index('#### 思考过程') < included.blocks[1].text.index('这个问题我需要花点时间来处理。')
+    assert included.blocks[1].text.index('这个问题我需要花点时间来处理。') < included.blocks[1].text.index('Synthetic reasoning.')
+    assert included.metadata['status_included_count'] == 1
+
+
+def test_turn_body_headings_are_demoted_without_touching_fenced_code():
+    from openmd.core.renderer import render_conversation_blocks
+    text = '# H1\n\n## H2\n\n### H3\n\n#### H4\n\n**Bold heading**\n\n```text\n# code H1\n### code H3\n```'
+    rendered = render_conversation_blocks(
+        [{'type': 'turn', 'role': 'assistant', 'text': text}],
+        source_url=URLS['chatgpt'], platform='chatgpt', exported_at='synthetic',
+    )
+    assert '#### H1' in rendered
+    assert '##### H2' in rendered
+    assert '###### H3' in rendered
+    assert '###### H4' in rendered
+    assert '**Bold heading**' in rendered
+    assert '# code H1' in rendered and '### code H3' in rendered
+
+
 def test_cli_thinking_flag_and_snapshot_use_same_option(tmp_path, capsys):
     import json
     from openmd.cli import main

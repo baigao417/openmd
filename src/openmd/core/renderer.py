@@ -40,6 +40,36 @@ _SOURCE_LABELS = {
     "partial_extraction": "部分提取",
 }
 
+
+def _demote_turn_headings(text: str) -> str:
+    """Keep turn headings above Markdown headings in the original turn body."""
+    lines = text.splitlines(keepends=True)
+    output: list[str] = []
+    fence: str | None = None
+    for line in lines:
+        stripped = line.lstrip(" ")
+        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence is not None:
+            output.append(line)
+            if fence_match and fence_match.group(1)[0] == fence[0] and len(fence_match.group(1)) >= len(fence):
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            output.append(line)
+            continue
+        if stripped.rstrip("\r\n") in {"#### 思考过程", "#### 最终回答"}:
+            output.append(line)
+            continue
+        match = re.match(r"^( {0,3})(#{1,6})([ \t]+.*|[ \t]*)$", line.rstrip("\r\n"))
+        if match:
+            level = min(6, len(match.group(2)) + 3)
+            ending = line[len(line.rstrip("\r\n")):]
+            output.append(match.group(1) + ("#" * level) + match.group(3) + ending)
+        else:
+            output.append(line)
+    return "".join(output)
+
 _COVERAGE_LABELS = {
     "provider_declared_complete": "提供方声明完整",
     "visible_branch": "当前可见分支",
@@ -247,7 +277,7 @@ def render_conversation_blocks(
             role = str(value.get("role") or "unknown")
             timestamp = value.get("time")
             heading = f"### {role}" + (f" · {timestamp}" if timestamp else "")
-            lines.extend([heading, "", str(value.get("text") or ""), ""])
+            lines.extend([heading, "", _demote_turn_headings(str(value.get("text") or "")), ""])
         elif kind == "cue":
             lines.extend([f"[{value.get('start')}–{value.get('end')}]", "", str(value.get("text") or ""), ""])
         elif kind == "table":

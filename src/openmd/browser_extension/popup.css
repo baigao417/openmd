@@ -42,6 +42,13 @@ body.popup { width: 300px; padding: 12px; display: grid; gap: 8px; }
 .loc-path { font: 11.5px/1.4 Consolas, "Cascadia Mono", monospace; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .msg { margin: 0; font-size: 12px; color: var(--bad); }
 .msg.ok { color: var(--ok); }
+.recent { border-top: 1px solid var(--rule); padding-top: 8px; display: grid; gap: 6px; }
+.recent h2 { margin: 0; font-size: 12px; color: var(--muted); }
+.recent ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.recent-job { display: grid; gap: 4px; background: var(--card); border: 1px solid var(--rule); border-radius: 7px; padding: 6px 8px; }
+.recent-job button { justify-self: start; border: 0; border-radius: 5px; padding: 4px 7px; background: var(--green-soft); color: var(--green); cursor: pointer; }
+.recent-job button:disabled { opacity: .55; cursor: wait; }
+.recent-empty { color: var(--muted); font-size: 12px; }
 
 /* options page */
 body.options { padding-block: 32px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }

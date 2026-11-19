@@ -279,6 +279,21 @@ def _snapshot_assets(soup: BeautifulSoup, *, kind: str) -> list[str]:
     return values
 
 
+# Parts of an open note that are not the note: comments, interaction bars,
+# follow/share controls, the comment box and the feed behind a modal.
+_XHS_NOISE = ", ".join((
+    "script", "style", "noscript", ".comments-el", ".comments-container", ".comment-item",
+    ".interact-container", ".engage-bar", ".interactions", ".input-box", ".note-follow",
+    ".follow-button", ".share-wrapper", "button", "section.note-item", ".feeds-container",
+))
+
+
+def _xhs_chrome_asset(url: str) -> bool:
+    """Avatars and site decoration are page chrome, not the note's media."""
+    host = urlsplit(url).netloc.lower()
+    return host.startswith("sns-avatar") or host.startswith("picasso-static") or host.startswith("fe-static")
+
+
 def _extract_xiaohongshu_snapshot(html: str, item, path: Path) -> TranscriptResult:
     soup = BeautifulSoup(html, "html.parser")
     expected_id = str(item.raw_meta.get("snapshot_note_id") or "").strip()
@@ -295,29 +310,43 @@ def _extract_xiaohongshu_snapshot(html: str, item, path: Path) -> TranscriptResu
             return _failed("xiaohongshu_loaded_page_mismatch", "当前已加载页面不是请求的小红书笔记。请返回目标笔记后重新保存。")
         if len(linked_ids) >= 3:
             return _failed("xiaohongshu_loaded_page_mismatch", "当前已加载页面是小红书推荐流，不是目标笔记。请返回目标笔记后重新保存。")
-    root = note_root or soup.select_one("main") or soup.body or soup
-    title = _first_snapshot_text(soup, (
-        "[data-testid='note-title']", ".title", "h1", "meta[property='og:title']", "title",
-    )) or item.title or "小红书笔记"
-    author = _first_snapshot_text(soup, (
-        "[data-testid='user-name']", "[data-testid='author-name']", ".author-name", ".user-name", ".author",
+    canonical = soup.select_one("link[rel='canonical'][href], meta[property='og:url'][content]")
+    canonical_id = re.search(r"/(?:explore|discovery/item|item)/([A-Za-z0-9]+)", str(canonical.get("href") or canonical.get("content"))) if canonical else None
+    if expected_id and canonical_id and canonical_id.group(1) != expected_id:
+        return _failed("xiaohongshu_loaded_page_mismatch", "当前已加载页面不是请求的小红书笔记。请返回目标笔记后重新保存。")
+    # Everything below reads only the open note. A note opened from the feed is a
+    # modal over feed cards that carry their own .title/.author, and the modal
+    # holds comments with avatars, dates and like counts (round10c real sample).
+    root = BeautifulSoup(str(note_root or soup.select_one("main") or soup.body or soup), "html.parser")
+    for node in list(root.select(_XHS_NOISE)):
+        node.decompose()
+    title = _first_snapshot_text(root, (
+        "#detail-title", "[data-testid='note-title']", ".note-content .title", ".title", "h1",
+    )) or _first_snapshot_text(soup, ("meta[property='og:title']", "title")) or item.title or "小红书笔记"
+    author = _first_snapshot_text(root, (
+        "[data-testid='user-name']", "[data-testid='author-name']", ".author-wrapper .username",
+        ".author .username", ".author-name", ".user-name", ".author",
     )) or item.author
-    published_at = _first_snapshot_text(soup, (
-        "time[datetime]", "[data-publish-time]", "[data-published-at]", ".publish-time", ".date",
+    published_at = _first_snapshot_text(root, (
+        "time[datetime]", "[data-publish-time]", "[data-published-at]", ".publish-time",
+        ".note-content .date", ".bottom-container .date", ".date",
     )) or item.published_at
-    images = _snapshot_assets(root, kind="image")
-    videos = _snapshot_assets(root, kind="video")
+    media = root.select_one(".media-container, [data-testid='note-media'], .swiper") or root
+    images = [url for url in _snapshot_assets(media, kind="image") if not _xhs_chrome_asset(url)]
+    videos = _snapshot_assets(media, kind="video")
+    content = root.select_one("#detail-desc, [data-testid='note-content'], .note-content .desc")
+    body_source = content if content is not None else root
     tags: list[str] = []
-    for node in root.select(".tag, [data-testid*='tag'], a[href*='hashtag']"):
+    for node in body_source.select(".tag, #hash-tag, [data-testid*='tag'], a[href*='hashtag']"):
         value = node.get_text(" ", strip=True)
         if value and value not in tags:
             tags.append(value if value.startswith("#") else "#" + value)
-    for value in root.get_text(" ", strip=True).split():
+    for value in body_source.get_text(" ", strip=True).split():
         if value.startswith("#") and value not in tags:
             tags.append(value.rstrip("，。！？.,"))
 
-    body = BeautifulSoup(str(root), "html.parser")
-    for node in list(body.select("script, style, noscript, img, video, source, .tag, [data-testid*='tag'], a[href*='hashtag'], [data-testid='note-title'], [data-testid='user-name'], [data-testid='author-name'], time, .publish-time, .date")):
+    body = BeautifulSoup(str(body_source), "html.parser")
+    for node in list(body.select("script, style, noscript, img, video, source, .tag, #hash-tag, [data-testid*='tag'], a[href*='hashtag'], #detail-title, [data-testid='note-title'], [data-testid='user-name'], [data-testid='author-name'], .author-wrapper, .author, time, .publish-time, .date, .media-container, .swiper")):
         node.decompose()
     text = html_to_markdown(str(body)).strip()
     if text.startswith("# ") and text.splitlines()[0].strip().removeprefix("# ").strip() == title.strip():

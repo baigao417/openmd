@@ -40,6 +40,15 @@ def _identifier(value: object) -> str:
     return "openmd-id-" + hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
 
 
+def _structural_id(value: object) -> str:
+    text = str(value)
+    # ASCII only: str.isalpha() also accepts CJK, so an id holding a person's
+    # name in Chinese would otherwise survive sanitizing.
+    if 3 <= len(text) <= 40 and text.isascii() and any(char.isalpha() for char in text) and all(char.isalpha() or char == "-" for char in text):
+        return text
+    return _identifier(value)
+
+
 def _replacement(text: str) -> tuple[str, int]:
     count = 0
     out: list[str] = []
@@ -69,6 +78,11 @@ def _safe_url(value: str, *, source: bool = False) -> str:
     # Samples retain only the origin. This removes paths, queries and fragments,
     # including session IDs, while keeping a useful site hint for maintainers.
     return f"{parsed.scheme}://{parsed.netloc}/" if not source else f"{parsed.scheme}://{parsed.netloc}/"
+
+
+def sanitize_url(value: str) -> str:
+    """Return the bounded origin form used in sanitized feedback artifacts."""
+    return _safe_url(value, source=True)
 
 
 def _structure_hash(soup: BeautifulSoup) -> str:
@@ -113,8 +127,10 @@ def sanitize_snapshot(html: str, url: str, *, captured_at: str | None = None) ->
             if key_text in {"style", "srcset", "datetime", "value", "title", "alt", "aria-label", "content"}:
                 node.attrs.pop(key, None); stats["scrubbed_attributes"] += 1; continue
             if key_text in {"href", "src", "action", "poster"}:
-                node.attrs[key] = _safe_url(str(value)); stats["sanitized_urls"] += 1; continue
-            if key_text == "id" or key_text.endswith("-id") or key_text in {"name", "for"}:
+                node.attrs[key] = sanitize_url(str(value)); stats["sanitized_urls"] += 1; continue
+            if key_text == "id":
+                node.attrs[key] = _structural_id(value); stats["scrubbed_attributes"] += 1; continue
+            if key_text.endswith("-id") or key_text in {"name", "for"}:
                 node.attrs[key] = _identifier(value); stats["scrubbed_attributes"] += 1; continue
             if key_text == "class":
                 node.attrs[key] = [str(v) for v in value] if isinstance(value, list) else str(value).split(); continue
@@ -148,7 +164,7 @@ def sanitize_snapshot(html: str, url: str, *, captured_at: str | None = None) ->
     serialized = str(soup)
     manifest = {
         "site": (urlsplit(url).hostname or "").lower(),
-        "source_url": _safe_url(url, source=True),
+        "source_url": sanitize_url(url),
         "captured_at": captured_at or datetime.now(timezone.utc).isoformat(),
         "structure_hash": _structure_hash(soup),
         "replacement_stats": stats,

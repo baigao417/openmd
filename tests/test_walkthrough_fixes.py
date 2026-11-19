@@ -220,7 +220,27 @@ def test_http_head_falls_back_to_get_and_only_definitive_errors_block(monkeypatc
             raise urllib.error.HTTPError(request.full_url, code, "fixture", {}, None)
     monkeypatch.setattr(input_validation.urllib.request, "build_opener", lambda *a: Opener())
     assert input_validation.network_preflight("https://example.test/missing") == expected
-    assert calls == (["HEAD"] if expected else ["HEAD", "GET"])
+    assert calls == ["HEAD", "GET"]
+
+
+def test_head_not_found_is_not_trusted_when_get_serves_the_page(monkeypatch):
+    # Douyin answers HEAD with 404 for a live /jingxuan?modal_id= page that GET serves.
+    monkeypatch.setattr(input_validation.socket, "getaddrinfo", lambda *a, **k: [])
+    calls = []
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *exc):
+            return False
+    class Opener:
+        def open(self, request, **kwargs):
+            calls.append(request.get_method())
+            if request.get_method() == "HEAD":
+                raise urllib.error.HTTPError(request.full_url, 404, "fixture", {}, None)
+            return Response()
+    monkeypatch.setattr(input_validation.urllib.request, "build_opener", lambda *a: Opener())
+    assert input_validation.network_preflight("https://www.douyin.com/jingxuan?modal_id=1") is None
+    assert calls == ["HEAD", "GET"]
 
 
 def test_timeout_does_not_block(monkeypatch):

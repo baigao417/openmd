@@ -188,20 +188,22 @@ def _validate_video(video: object) -> str:
     return str(video)
 
 
-def _enqueue(url: object, destination: Path, batch: str | None = None, video: str = "note") -> dict[str, Any]:
+def _enqueue(url: object, destination: Path, batch: str | None = None, video: str = "note", feedback_opt_in: bool = False) -> dict[str, Any]:
     url = _validate_url(url)
     job_id = uuid.uuid4().hex
     job_dir = jobs_root() / job_id
     job_dir.mkdir(parents=True)
-    status = {"id": job_id, "state": "queued", "url": url, "save_to": str(destination), "created": time.time(), "seq": _next_seq(), "attempts": 0, "video": video}
+    status = {"id": job_id, "state": "queued", "url": url, "save_to": str(destination), "created": time.time(), "seq": _next_seq(), "attempts": 0, "video": video, "feedback_opt_in": feedback_opt_in}
     if batch:
         status["batch"] = batch
     _write_status(job_dir, status)
     return status
 
 
-def start_job(url: object, save_to: object = None, *, video: object = None, spawn=subprocess.Popen) -> dict[str, Any]:
-    status = _enqueue(url, _validate_destination(save_to), video=_validate_video(video))
+def start_job(url: object, save_to: object = None, *, video: object = None, feedback_opt_in: object = False, spawn=subprocess.Popen) -> dict[str, Any]:
+    if type(feedback_opt_in) is not bool:
+        raise ValueError("invalid_feedback_opt_in")
+    status = _enqueue(url, _validate_destination(save_to), video=_validate_video(video), feedback_opt_in=feedback_opt_in)
     _spawn_runner(spawn)
     _prune_old_jobs()
     return status
@@ -257,12 +259,14 @@ def start_snapshot_job(
     return status
 
 
-def start_batch(urls: object, save_to: object = None, *, video: object = None, spawn=subprocess.Popen) -> dict[str, Any]:
+def start_batch(urls: object, save_to: object = None, *, video: object = None, feedback_opt_in: object = False, spawn=subprocess.Popen) -> dict[str, Any]:
     """Queue several links; they run one after another so ASR never overloads the GPU."""
     if not isinstance(urls, list) or not urls:
         raise ValueError("no_urls")
     destination = _validate_destination(save_to)
     video = _validate_video(video)
+    if type(feedback_opt_in) is not bool:
+        raise ValueError("invalid_feedback_opt_in")
     batch = uuid.uuid4().hex
     jobs, rejected, seen = [], [], set()
     for url in urls[:MAX_BATCH]:
@@ -271,7 +275,7 @@ def start_batch(urls: object, save_to: object = None, *, video: object = None, s
             continue
         seen.add(key)
         try:
-            jobs.append(_enqueue(url, destination, batch, video))
+            jobs.append(_enqueue(url, destination, batch, video, feedback_opt_in))
         except ValueError as exc:
             rejected.append({"url": str(url)[:200], "error": sanitize_error_summary(exc)})
     if jobs:
@@ -431,23 +435,22 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
                 login = login_for_url(status["url"])
                 status.update(error_code="login_required", login=login, error=login_hint(login))
                 _pause_login_jobs(status, login)
-        result_status = result.get("status")
-        failed_or_partial = done.returncode != 0 or not result.get("ok") or result_status in {"partial", "failed"}
-        should_keep_feedback = status.get("snapshot") and status.get("feedback_opt_in") is True and failed_or_partial
-        if should_keep_feedback:
-            # Keep only a structural, synthetic source for a later report command.
-            # The captured page itself is removed below and is never an artifact.
-            from openmd.diagnostics.sanitize import sanitize_snapshot
-            try:
-                safe = sanitize_snapshot(Path(status["snapshot_path"]).read_text(encoding="utf-8", errors="replace"), status["url"])
+    except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
+        status.update(state="failed", error="job_failed" if status.get("mcp") else sanitize_error_summary(exc) or "job_failed")
+    if status.get("snapshot") and status.get("feedback_opt_in") is True:
+        # Keep one structural, synthetic source for a later report command for
+        # every completed snapshot task. The captured page itself is removed below.
+        from openmd.diagnostics.sanitize import sanitize_snapshot
+        try:
+            snapshot_path = Path(str(status.get("snapshot_path") or ""))
+            if snapshot_path.is_file():
+                safe = sanitize_snapshot(snapshot_path.read_text(encoding="utf-8", errors="replace"), status["url"])
                 safe_path = job_dir / "sanitized-structure.html"
                 safe_path.write_text(safe.html, encoding="utf-8")
                 status["sanitized_snapshot_path"] = str(safe_path)
                 status["sanitized_manifest"] = safe.manifest
-            except (OSError, ValueError):
-                pass
-    except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
-        status.update(state="failed", error="job_failed" if status.get("mcp") else sanitize_error_summary(exc) or "job_failed")
+        except (OSError, ValueError):
+            pass
     status["finished"] = time.time()
     status.pop("pid", None)
     status.pop("child_pid", None)
@@ -617,11 +620,11 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
                              error="扩展与本机 openmd 协议不兼容，请运行 openmd browser-setup 后重新加载扩展。")
             return reply
         if kind == "save":
-            return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
+            return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "save_snapshot":
             return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"), include_thinking=message.get("include_thinking", False), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "save_many":
-            return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"))}
+            return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "status":
             status = _recover(read_status(str(message.get("id", ""))))
             ensure_runner()
@@ -651,7 +654,9 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
             from openmd.diagnostics.feedback import build_feedback_package_for_job
             job_id = str(message.get("id", ""))
             status = read_status(job_id)
-            if not status.get("sanitized_snapshot_path"):
+            if status.get("state") == "unknown":
+                return {"ok": False, "error_code": "job_not_found", "next_action": "请确认任务 ID，并在同一 Openmd 数据目录中重试。"}
+            if status.get("feedback_opt_in") is not True:
                 return {"ok": False, "error_code": "feedback_not_available", "next_action": "请在扩展设置中开启脱敏问题包后重新保存一次。"}
             destination = _validate_destination(message.get("save_to")) / "Openmd-problem-reports" / job_id
             return {"ok": True, "report": build_feedback_package_for_job(job_id, destination)}

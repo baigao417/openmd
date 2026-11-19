@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1]
+### 新增 / Added
+- 右键转 Markdown 的菜单项使用 Openmd 仓鼠图标；进度窗口改为品牌暖色样式，显示当前文件与进度条，结束后按类别汇总结果并列出失败原因，可直接打开结果文件夹，全部成功时自动关闭。 / The right-click “Convert to Markdown” entry uses the Openmd hamster icon; the progress window adopts the warm brand style with the current file and a progress bar, then summarizes results by category, lists failure reasons, opens the result folder, and closes itself when everything succeeded.
+- 问题报告覆盖更多情况：链接路线失败的任务也能生成只含回执的脱敏包；开启问题包后，看似成功但结果不对的已加载页面任务可在扩展弹出页的最近任务中手动生成报告；脱敏时保留由 ASCII 字母组成的页面结构名，其余 id 仍做哈希。 / Feedback packages cover more cases: failed link-route tasks produce a receipt-only sanitized package; with packages enabled, a loaded-page task that looked successful but came out wrong can be reported from the recent tasks in the extension popup; sanitizing keeps ASCII-letter structural ids and still hashes all other ids.
+### 修复 / Fixed
+- 从信息流打开的小红书笔记（弹窗）只读取当前打开的笔记，不再误用背后卡片的标题和作者，也不再混入评论、头像和按钮文字；页面上的笔记与请求的不一致时拒收。 / A Xiaohongshu note opened from the feed (as a modal) is read on its own: no title or author from the cards behind it, no comments, avatars or button labels; a page whose note differs from the requested one is rejected.
+- 抖音等对 HEAD 请求返回 404 的页面不再被误判为“页面不存在”，改为再用 GET 确认。 / Pages such as Douyin that answer HEAD with 404 are no longer refused as missing; a GET now confirms first.
+- 问题报告失败时显示真实原因和下一步，不再一律提示“去设置里开启”。 / A failed feedback report now shows the actual reason and next step instead of always pointing to the settings.
+
 ## [0.2.0]
 ### 新增 / Added
 - 新增日文、韩文 README，并同步四语安装、能力和限制说明。 / Add Japanese and Korean READMEs with the same installation, capability, and limitation guidance as the existing guides.

@@ -63,6 +63,10 @@ def _probe_url(url: str) -> str | None:
         except urllib.error.HTTPError as exc:
             code = exc.code
             exc.close()
+            # Some sites (Douyin) answer HEAD with 404 for pages that GET serves
+            # with 200; a HEAD rejection is only confirmed by the GET.
+            if method == "HEAD":
+                continue
             if code in {400, 404, 410, 414, 422}:
                 label = "页面不存在" if code in {404, 410} else "页面无法访问"
                 return f"{label}（{code}）"

@@ -2,6 +2,8 @@
 
 Use this skill when an agent needs a non-interactive, source-faithful Markdown or transcript from Openmd.
 
+With the feedback package option enabled, failed link routes contain only bounded `manifest.json` and `receipt.json`, while every captured page route can additionally retain sanitized `structure.html`, `doctor.json`, and `README.txt` for a later manual report. Never attach raw page content, cookies, account data, or signed URL parameters.
+
 ## Standard invocation
 
 ```bash

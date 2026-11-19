@@ -156,6 +156,59 @@ def test_xiaohongshu_loaded_snapshot_preserves_note_metadata_and_assets(tmp_path
     assert result.metadata["video_url"] == "https://sns-video-bd.xhscdn.com/video.mp4"
 
 
+def test_xiaohongshu_note_opened_from_feed_reads_only_the_open_note(tmp_path):
+    # Structure mirrors a real modal-over-feed page (round10c user sample, text synthetic):
+    # feed cards with their own .title/.author come first; the open note carries
+    # comments with avatars, dates and buttons that must not leak into the note.
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "modal.html"
+    page.write_text("""<html><head><title>别的标题 - 小红书</title>
+      <link rel="canonical" href="https://www.xiaohongshu.com/explore/6af745cc000000002b0243c8"></head><body><div id="app">
+      <div class="feeds-container">
+        <section class="note-item"><a class="title"><span>信息流卡片标题</span></a><div class="author">卡片作者</div>
+          <img src="https://sns-webpic-qc.xhscdn.com/feed/card.jpg"></section>
+        <section class="note-item"><a href="/explore/aaa111">一</a></section><section class="note-item"><a href="/explore/bbb222">二</a></section>
+      </div>
+      <div class="note-detail-mask"><div id="noteContainer" class="note-container">
+        <div class="media-container"><div class="swiper"><div class="swiper-slide"><img src="https://sns-webpic-qc.xhscdn.com/note/one.jpg?x=1"></div>
+          <div class="swiper-slide"><img src="https://sns-webpic-qc.xhscdn.com/note/one.jpg?x=2"></div></div></div>
+        <div class="interaction-container">
+          <div class="author-container"><div class="author-wrapper"><img src="https://sns-avatar-qc.xhscdn.com/avatar/me.jpg"><span class="username">笔记作者</span><button>关注</button></div></div>
+          <div class="note-scroller"><div class="note-content">
+            <div id="detail-title" class="title">真正的笔记标题</div>
+            <div id="detail-desc" class="desc"><span class="note-text"><span>这是笔记正文第一段。</span><a id="hash-tag" class="tag">#职场</a></span></div>
+            <div class="bottom-container"><span class="date">11-18 浙江</span></div>
+          </div>
+          <div class="comments-el"><div class="comments-container"><div class="total">共 2 条评论</div>
+            <div class="comment-item"><img src="https://sns-avatar-qc.xhscdn.com/avatar/c1.jpg"><a class="name">评论者甲</a>
+              <span class="note-text">评论区第一条内容</span><span class="date">11-19</span><span class="count">57</span><span>回复</span></div>
+            <div class="comment-item"><a class="name">评论者乙</a><span class="note-text">评论区第二条内容</span><span>展开 3 条回复</span></div>
+          </div></div></div>
+          <div class="interact-container"><div class="input-box">说点什么...</div><div class="engage-bar">1234</div><button>发送</button><button>取消</button></div>
+        </div>
+      </div></div></div></body></html>""", encoding="utf-8")
+    item = snapshot_item(page, "https://www.xiaohongshu.com/explore/6af745cc000000002b0243c8")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "verified"
+    assert result.title == "真正的笔记标题" and result.author == "笔记作者" and result.published_at == "11-18 浙江"
+    assert "这是笔记正文第一段" in result.text and "- #职场" in result.text
+    for leaked in ("信息流卡片", "卡片作者", "评论区", "评论者", "说点什么", "发送", "回复", "关注", "1234"):
+        assert leaked not in result.text, leaked
+    assert result.metadata["images"] == ["https://sns-webpic-qc.xhscdn.com/note/one.jpg"]
+
+
+def test_xiaohongshu_snapshot_rejects_a_page_whose_canonical_note_differs(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "other.html"
+    page.write_text("""<html><head><link rel="canonical" href="https://www.xiaohongshu.com/explore/zzz999"></head><body>
+      <div id="noteContainer"><div id="detail-title">另一篇</div><div id="detail-desc">正文</div></div></body></html>""", encoding="utf-8")
+    item = snapshot_item(page, "https://www.xiaohongshu.com/explore/6af745cc000000002b0243c8")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.error_code == "xiaohongshu_loaded_page_mismatch"
+
+
 def test_xiaohongshu_snapshot_rejects_login_wall(tmp_path):
     from openmd.backends.loaded_chat import snapshot_item
 

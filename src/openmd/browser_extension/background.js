@@ -107,6 +107,12 @@ const isLoadedAiChat = (url) => {
   try { const parsed = new URL(url); return isWeb(url) && AI_CHAT_HOSTS.includes(parsed.hostname); }
   catch { return false; }
 };
+const isLoadedXiaohongshuNote = (url) => {
+  try {
+    const parsed = new URL(url);
+    return isWeb(url) && parsed.hostname === "www.xiaohongshu.com" && /^\/(?:explore|discovery\/item)\//.test(parsed.pathname);
+  } catch { return false; }
+};
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
@@ -279,7 +285,7 @@ async function saveTabsImpl(tabs, locationId) {
     return result;
   };
   for (const tab of web) {
-    if (!isLoadedAiChat(tab.url)) { pending.push(tab); continue; }
+    if (!isLoadedAiChat(tab.url) && !isLoadedXiaohongshuNote(tab.url)) { pending.push(tab); continue; }
     const previous = await flush();
     if (!previous?.ok) return previous;
     const tabId = tab.id ?? tab.tabId;
@@ -357,7 +363,7 @@ async function saveSnapshotImpl(tabId, locationId) {
       return fail("没法保存当前页", "当前页面不是可保存的 http(s) 页面。");
     }
     const { includeThinking } = await getSettings();
-    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path, include_thinking: includeThinking === true, feedback_opt_in: (await getSettings()).allowFeedbackPackage === true });
+    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path, include_thinking: isLoadedAiChat(result.url) && includeThinking === true, feedback_opt_in: (await getSettings()).allowFeedbackPackage === true });
     if (!reply.ok) return fail("没能保存当前页", reply.error);
     await track([{ ...reply.job, tabId }], reply.job.id, location.name);
     return { ok: true, count: 1, location: location.name };

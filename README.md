@@ -155,7 +155,7 @@ Openmd is not a knowledge base or a RAG retrieval system. It focuses on the foun
 | **AI chat** | Doubao, Gemini, Qwen, Yuanbao, Grok, DeepSeek (an open conversation page) | Partial | Needs the browser extension: click on the page to save what is already loaded, or let an agent hand the page over with `--as-snapshot`; covers the visible branch; model thinking is omitted by default |
 | | ChatGPT conversation pages; ChatGPT / Claude official export ZIP or JSON | Experimental | A ChatGPT page that does not render the user's prompts is saved as partial; official exports import locally, without a browser |
 | **Chat history** | QQ group export files (JSON / HTML / TXT) | Paused | Export parsing exists but is not yet offered as a stable feature; Openmd never reads or decrypts chat databases |
-| **Experimental** | Douyin, Xiaohongshu | Experimental | Needs the browser extension and login; these sites often block automated reads, so stability and full coverage are not promised |
+| **Experimental** | Douyin, Xiaohongshu | Experimental | Needs the browser extension and login; these sites often block automated reads, so stability and full coverage are not promised. For a Xiaohongshu note, open it in the browser and click the extension (reads the loaded page); Douyin uses media download plus local ASR |
 
 ### Local document formats
 

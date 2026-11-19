@@ -64,6 +64,16 @@
       "detector": "title_suffix_cleaning",
       "detection_basis": "AST: re.sub suffix removal with an end anchor and a site-name alias (for example 豆包 or Google Gemini); owner calls are not matches.",
       "guidance": "AI 对话标题清洗统一调用 core.chat_title.clean_chat_title。"
+    },
+    {
+      "name": "safe_receipt_shape",
+      "owner": "mcp_jobs.py",
+      "owner_function": "receipt",
+      "allowed_modules": ["mcp_jobs.py"],
+      "extensions": [".py"],
+      "detector": "raw_receipt_copy",
+      "detection_basis": "AST: status/result or status/receipt persistence receives a dict comprehension or direct field copy from result.get for next_action/error/content/text/body-like fields; calls to mcp_jobs.receipt are allowed.",
+      "guidance": "持久化 job status 只调用 mcp_jobs.receipt(result)，不要直接复制原始结果字段。"
     }
   ]
 }

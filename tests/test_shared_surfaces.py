@@ -27,6 +27,7 @@ def test_manifest_has_the_required_first_batch_and_behavior_basis():
         "process_startup",
         "completeness_summary",
         "ai_chat_title_cleaning",
+        "safe_receipt_shape",
     }
     assert entries["completeness_summary"]["owner"] == "core/completeness.py"
     assert all(entry.get("detector") and entry.get("detection_basis") for entry in entries.values())
@@ -67,6 +68,14 @@ import re
 def clean(title):
     return re.sub(r'\s*[-–—|·]\s*(?:豆包|Google Gemini)\s*$', '', title).strip()
 """,
+        "unsafe_job_receipt.py": """
+def persist_result(status, result):
+    status[\"result\"] = {key: result.get(key) for key in (\"status\", \"source_level\", \"completeness\", \"error_code\", \"next_action\") if result.get(key) is not None}
+""",
+        "unsafe_job_error.py": """
+def persist_error(status, result):
+    status[\"receipt\"][\"error\"] = result[\"error\"]
+""",
     }
     for name, source in cases.items():
         (tmp_path / name).write_text(source, encoding="utf-8")
@@ -79,6 +88,7 @@ def clean(title):
         "process_startup",
         "completeness_summary",
         "ai_chat_title_cleaning",
+        "safe_receipt_shape",
     }, format_violations(violations)
 
 
@@ -92,6 +102,7 @@ from openmd.core.preferences import save_preferences
 from openmd.runtime.interpreters import owned_popen
 from openmd.core.completeness import check_completeness
 from openmd.core.chat_title import clean_chat_title
+from openmd.mcp_jobs import receipt
 
 def use_owners(item, result, command):
     extension_file_hashes(Path('.'))
@@ -100,6 +111,9 @@ def use_owners(item, result, command):
     owned_popen(command)
     check_completeness(item, result)
     return clean_chat_title('gemini', 'title')
+
+def persist_safe(status, result):
+    status['result'] = receipt(result)
 """,
         encoding="utf-8",
     )

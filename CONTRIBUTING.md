@@ -72,6 +72,18 @@ Openmd 只做一件事：**把链接变成干净的 Markdown 原文 / 逐字稿*
 
 欢迎用 Claude Code、Codex、Cursor 等工具贡献。仓库里的 [AGENTS.md](AGENTS.md) 是给 Agent 的路由表，指向各子系统文档。要求和人一样：先失败的测试、真实样本证据、写清没验证什么。PR 由 Agent 生成时请在描述里注明，提交者对内容负责。
 
+### 生成脱敏问题包
+
+保存结果不完整或失败时，可以从本地 HTML 生成可检查的问题包：
+
+```bash
+openmd report feedback page.html --url https://example.org/page -o out/problem-report
+```
+
+也可以把扩展任务的 job id 作为输入。命令只写入脱敏的 `structure.html`、
+`manifest.json`、`receipt.json`、`doctor.json` 和检查说明；原始页面、cookie、
+账号信息不会进入问题包。附加到 issue 前请先逐项检查这些文件。
+
 ## 行为准则
 
 就事论事，对人友善。维护者有权关闭长期无回应的 issue / PR（会先提醒）。

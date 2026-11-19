@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 def build_parser() -> argparse.ArgumentParser:
-    from .cli import ADVANCED_COMMANDS, DOCTOR_PROFILES, GO_DAILY_OPTIONS, PLATFORM_IDS, _add_shared_options, argparse, cmd_batch, cmd_capabilities, cmd_collect, cmd_doctor, cmd_ingest, cmd_plan, cmd_report_weixin_author_batch, cmd_routes
+    from .cli import ADVANCED_COMMANDS, DOCTOR_PROFILES, GO_DAILY_OPTIONS, PLATFORM_IDS, _add_shared_options, argparse, cmd_batch, cmd_capabilities, cmd_collect, cmd_doctor, cmd_ingest, cmd_plan, cmd_report_feedback, cmd_report_weixin_author_batch, cmd_routes
 
     parser = argparse.ArgumentParser(
         prog="openmd",
@@ -197,6 +197,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="report artifact format",
     )
     weixin_author_batch.set_defaults(func=cmd_report_weixin_author_batch)
+    feedback = report_subparsers.add_parser("feedback", help="生成脱敏问题包")
+    feedback.add_argument("input", help="job id 或本地 HTML 文件")
+    feedback.add_argument("--url", required=False, help="本地 HTML 对应的原始 http(s) URL")
+    feedback.add_argument("-o", "--out", required=True, help="问题包目录")
+    feedback.set_defaults(func=cmd_report_feedback)
     return parser
 
 

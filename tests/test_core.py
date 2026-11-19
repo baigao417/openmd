@@ -1174,13 +1174,14 @@ class BilibiliProviderTests(unittest.TestCase):
             source_type="video",
         )
 
-        result = provider.extract(
-            BackendExtractRequest(
-                item=item,
-                backend_chain=(BILIBILI_ASR_FALLBACK_BACKEND,),
-                allow_fallback=False,
+        with patch("openmd.backends.bilibili.yt_dlp_command", return_value=["yt-dlp"]):
+            result = provider.extract(
+                BackendExtractRequest(
+                    item=item,
+                    backend_chain=(BILIBILI_ASR_FALLBACK_BACKEND,),
+                    allow_fallback=False,
+                )
             )
-        )
 
         self.assertTrue(result.has_usable_text)
         self.assertEqual(result.source_level, "media_asr")
@@ -1193,7 +1194,7 @@ class BilibiliProviderTests(unittest.TestCase):
         self.assertNotIn("source_ref", result.metadata)
         self.assertIsNotNone(fake_asr.seen_path)
         self.assertFalse(fake_asr.seen_path.exists())
-        self.assertEqual(seen_commands[0][0], "yt-dlp")
+        self.assertTrue("yt-dlp" in seen_commands[0] or seen_commands[0][:3] == [sys.executable, "-m", "yt_dlp"])
         self.assertIn("--extract-audio", seen_commands[0])
 
     def test_opencli_subtitle_provider_normalizes_table_output_as_auto_caption(self) -> None:

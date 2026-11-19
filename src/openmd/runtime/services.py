@@ -19,6 +19,7 @@ from openmd.core.opencli_output import load_opencli_json
 _START_LOCK = threading.Lock()
 _DAEMONS: list[subprocess.Popen] = []
 _CONTROL_COMMANDS = {"daemon", "--help", "-h", "--version", "-V", "help", "list", "completion"}
+_BRIDGE_PREPARED = False
 
 
 def _opencli_launch(command, env=None) -> tuple[list[str], list[str]] | None:
@@ -63,6 +64,9 @@ def _opencli_launch(command, env=None) -> tuple[list[str], list[str]] | None:
         tail = tail[2:]
     if not tail or tail[0] in _CONTROL_COMMANDS:
         return None
+    from .managed_tools import command_uses_browser
+    if command_uses_browser(tail, package_root=entry.parents[2]) is False:
+        return None
     daemon = entry.with_name("daemon.js")
     if not binary or not entry.is_file() or not daemon.is_file():
         return None
@@ -95,7 +99,10 @@ def _start_opencli_daemon_detached(daemon_argv, *, env=None):
     binary, script = daemon_argv
     if Path(binary).name.lower() not in {"node", "node.exe"} or not Path(script).as_posix().lower().endswith("/@jackwener/opencli/dist/src/daemon.js"):
         raise ValueError("Only the installed OpenCLI daemon may be detached")
-    options = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    from .interpreters import process_options
+    options = process_options()
+    if os.name == "nt":
+        options["creationflags"] |= subprocess.CREATE_BREAKAWAY_FROM_JOB
     process = subprocess.Popen([binary, script], env=env, cwd=str(Path(script).parent),
                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                stderr=subprocess.DEVNULL, close_fds=True, **options)
@@ -147,6 +154,7 @@ def ensure_opencli_daemon(command, *, env=None, cwd=None) -> None:
     launch = _opencli_launch(command, env)
     if launch is None:
         return
+    check_daemon_version()
     launcher, daemon_argv = launch
     # Lock waits stay in short Python slices, like the owned process waiter.
     while not _START_LOCK.acquire(timeout=.1):
@@ -157,6 +165,7 @@ def ensure_opencli_daemon(command, *, env=None, cwd=None) -> None:
     try:
         try:
             if _daemon_running(launcher, env=env, cwd=cwd):
+                prepare_openmd_bridge(env)
                 return
         except OSError:
             return  # status unknown: never launch a second service blindly
@@ -165,6 +174,7 @@ def ensure_opencli_daemon(command, *, env=None, cwd=None) -> None:
         while time.monotonic() < deadline:
             try:
                 if _daemon_running(launcher, env=env, cwd=cwd):
+                    prepare_openmd_bridge(env)
                     return
             except OSError:
                 pass
@@ -173,3 +183,105 @@ def ensure_opencli_daemon(command, *, env=None, cwd=None) -> None:
             time.sleep(.1)
     finally:
         _START_LOCK.release()
+
+
+def daemon_status(timeout: float = 1.0):
+    """Read the loopback daemon identity; no proxy, cookies or profile storage."""
+    import json
+    import urllib.error
+    import urllib.request
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        request = urllib.request.Request("http://127.0.0.1:19825/status", headers={"X-OpenCLI": "1"})
+        with opener.open(request, timeout=timeout) as response:
+            return json.load(response)
+    except urllib.error.URLError as exc:
+        import errno
+        if getattr(exc.reason, "errno", None) in {errno.ECONNREFUSED, 10061} or getattr(exc.reason, "winerror", None) == 10061:
+            return None
+        raise OSError("opencli_daemon_status_unavailable") from exc
+    except (OSError, ValueError) as exc:
+        raise OSError("opencli_daemon_status_unavailable") from exc
+
+
+def check_daemon_version():
+    from .managed_tools import OPENCLI_VERSION
+    status = daemon_status()
+    if status is not None and status.get("daemonVersion") != OPENCLI_VERSION:
+        # Never stop or replace another installation's service.
+        version = str(status.get("daemonVersion", "unknown"))[:32]
+        raise OSError(f"opencli_daemon_foreign: daemon {version}; expected {OPENCLI_VERSION}; close the other OpenCLI first")
+
+
+def _bridge_request(action, **fields):
+    import json
+    import uuid
+    import urllib.request
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request("http://127.0.0.1:19825/command",
+        data=json.dumps({"id": str(uuid.uuid4()), "contextId": "openmd", "action": action, **fields}).encode(),
+        headers={"Content-Type": "application/json", "X-OpenCLI": "1"})
+    with opener.open(request, timeout=5) as response:
+        return json.load(response)
+
+
+def prepare_openmd_bridge(env=None):
+    """Configure only our bridge; old loaded extensions get an honest deferred receipt."""
+    global _BRIDGE_PREPARED
+    if (env or os.environ).get("OPENCLI_PROFILE", "openmd") != "openmd":
+        return
+    from openmd.core.local_config import load_local_config
+    from openmd.core.preferences import data_directory
+    from .tempdirs import pid_alive
+    import json
+    base = os.environ if env is None else env
+    settings = load_local_config().get("browser", {})
+    try:
+        reply = _bridge_request("openmd-configure", ownerPid=os.getpid(),
+            idleMs=float(base.get("OPENMD_BROWSER_IDLE_SECONDS", settings.get("idle_timeout_seconds", 120))) * 1000,
+            sound=base.get("OPENMD_BROWSER_SOUND") == "1", show=base.get("OPENMD_SHOW_BROWSER") == "1",
+            windowStrategy=base.get("OPENMD_BROWSER_WINDOW_STRATEGY", settings.get("window_strategy", "existing-window")))
+        if not reply.get("ok"):
+            receipt = {"status": "joint_reload_required", "tabsClosed": None, "windowsClosed": None, "failures": None}
+        else:
+            if _BRIDGE_PREPARED:
+                return
+            leases = _bridge_request("openmd-owned-leases").get("data", [])
+            dead = [row["ownerPid"] for row in leases if type(row.get("ownerPid")) is int and row["ownerPid"] > 0 and not pid_alive(row["ownerPid"])]
+            swept = _bridge_request("openmd-cleanup-orphans", deadPids=dead)
+            receipt = {"status": "verified" if swept.get("ok") else "failed", **swept.get("data", {})}
+            begun = _bridge_request("openmd-begin-job", ownerPid=os.getpid())
+            if not begun.get("ok"):
+                receipt["status"] = "failed"
+        _BRIDGE_PREPARED = True
+    except (OSError, ValueError, TypeError):
+        receipt = {"status": "bridge_unavailable", "tabsClosed": None, "windowsClosed": None, "failures": None}
+    # A separate browser lifecycle runlog avoids changing item result schemas.
+    path = data_directory() / "browser-cleanup.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"event_type": "browser_cleanup", "profile": "openmd", **receipt}) + "\n")
+
+
+def finish_openmd_bridge():
+    """Close this controller's owned leases and job anchor; never a user window."""
+    global _BRIDGE_PREPARED
+    if not _BRIDGE_PREPARED:
+        return
+    _BRIDGE_PREPARED = False
+    from openmd.core.preferences import data_directory
+    import json
+    try:
+        reply = _bridge_request("openmd-end-job", ownerPid=os.getpid())
+        data = reply.get("data", {})
+        status = "joint_reload_required" if not reply.get("ok") else "partial" if data.get("remainingOwned") or data.get("failures") else "verified"
+        receipt = {"status": status, **data}
+    except (OSError, ValueError, TypeError):
+        receipt = {"status": "cleanup_unavailable"}
+    try:
+        path = data_directory() / "browser-cleanup.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"event_type": "browser_cleanup", "phase": "finish", "profile": "openmd", **receipt}) + "\n")
+    except OSError:
+        pass

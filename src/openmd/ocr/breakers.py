@@ -53,7 +53,7 @@ def repetition_trip(text: str, config: dict) -> dict | None:
     return None
 
 
-def estimate_expected_chars(image, config: dict) -> dict:
+def estimate_expected_chars(image, config: dict, *, columns: bool = False) -> dict:
     import numpy as np
     from PIL import Image, ImageOps
 
@@ -71,7 +71,23 @@ def estimate_expected_chars(image, config: dict) -> dict:
     density = float(dark.mean())
     density_factor = max(0.65, min(1.8, density / 0.055))
     estimated = int(max(256, min(120000, bands * width_chars * density_factor * 1.75)))
-    return {"estimated_chars": estimated, "ink_rows": bands, "probe_size": list(probe.size), "ink_fraction": round(density, 5), "max_length_chars": int(estimated * config["length_multiplier"])}
+    extra = {}
+    if columns:
+        # A full-height picture or vertical page border can connect all text
+        # rows into one ink band. Probe narrow vertical strips independently;
+        # their widths partition the original capacity (never count each strip
+        # as a full page). This changes the budget, not image reading order.
+        strip_rows, strip_chars = [], 0.0
+        for strip in np.array_split(dark, min(8, probe.width), axis=1):
+            active_rows = strip.mean(axis=1) > 0.012
+            count = int(np.count_nonzero(active_rows & ~np.concatenate(([False], active_rows[:-1]))))
+            factor = max(0.65, min(1.8, float(strip.mean()) / 0.055))
+            strip_rows.append(count)
+            strip_chars += count * max(1, round(strip.shape[1] / 13)) * factor * 1.75
+        extra = {"estimated_chars_full_page": estimated, "column_ink_rows": strip_rows,
+                 "capacity_probe": "vertical_strips_image_only"}
+        estimated = max(estimated, int(min(120000, strip_chars)))
+    return {"estimated_chars": estimated, "ink_rows": bands, "probe_size": list(probe.size), "ink_fraction": round(density, 5), "max_length_chars": int(estimated * config["length_multiplier"]), **extra}
 
 
 def breaker_reason(text: str, budget: dict, config: dict) -> dict | None:

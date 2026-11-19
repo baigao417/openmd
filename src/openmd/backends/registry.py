@@ -42,6 +42,7 @@ class BackendRuntimeOptions:
     enable_media_download_backends: bool = False
     enable_asr_backends: bool = False
     enable_cloud_backends: bool = False
+    enable_local_export_backends: bool = False
     keep_media_artifacts: bool = False
     media_artifact_dir: str | None = None
 
@@ -241,4 +242,6 @@ def _load_backend_extension_modules(
 
 
 def _backend_extension_module_names(platform: str) -> tuple[str, str]:
+    if platform == "page_snapshot":
+        return ("openmd.backends.snapshot",)
     return (f"openmd.backends.{platform}", f"openmd.backends.{platform}_providers")

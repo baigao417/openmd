@@ -20,6 +20,8 @@ def projections(root: Path) -> dict[Path, str]:
     result = {path: json.dumps(value, ensure_ascii=False, indent=2) + '\n' for path, value in outputs.items()}
     routes = declaration['routes']
     result[root / 'docs/routes.generated.md'] = render_route_table({**routes, 'overlay_applied': False})
+    from openmd.runtime.opencli_inventory import projections as inventory_projections
+    result.update(inventory_projections(root))
     return result
 
 

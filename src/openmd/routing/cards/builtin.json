@@ -588,6 +588,164 @@
       "requires_login": false,
       "cost_class": "cloud_api",
       "status_policy": "provider_defined"
+    },
+    {
+      "id": "document.engines",
+      "provider": "document.engines",
+      "sources": [
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "page_snapshot.defuddle",
+      "provider": "page_snapshot.defuddle",
+      "sources": [
+        "page_snapshot"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.chatgpt.detail",
+      "provider": "opencli.chatgpt.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.deepseek.detail",
+      "provider": "opencli.deepseek.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.claude.detail",
+      "provider": "opencli.claude.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.doubao.detail",
+      "provider": "opencli.doubao.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.gemini.detail",
+      "provider": "opencli.gemini.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.qwen.detail",
+      "provider": "opencli.qwen.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.yuanbao.detail",
+      "provider": "opencli.yuanbao.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.grok.detail",
+      "provider": "opencli.grok.detail",
+      "sources": [
+        "ai_chat"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser",
+        "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
     }
   ]
 }

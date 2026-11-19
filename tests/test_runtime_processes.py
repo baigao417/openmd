@@ -50,7 +50,7 @@ DIRECT_WAIT_ALLOWLIST = {
     ("runtime/interpreters.py", "finished.wait(min(poll_s, remaining))"),
     ("runtime/interpreters.py", "finished.wait(poll_s)"),
     # Background GPU sampling only; maximum 3s, no worker/media/model launched.
-    ("ocr/pipeline.py", "subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=3, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)"),
+    ("ocr/pipeline.py", "subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=3, **process_options())"),
     # A thread event, not a child-process wait.
     ("ocr/pipeline.py", "self.stop.wait(0.35)"),
 }
@@ -258,13 +258,13 @@ def test_repeated_job_and_pipe_use_does_not_accumulate_handles():
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows batch shim launch")
-def test_owned_launch_resolves_cmd_shim_and_preserves_ampersand_url(tmp_path, monkeypatch):
+def test_owned_launch_resolves_generic_cmd_shim_and_preserves_ampersand_url(tmp_path, monkeypatch):
     child_script = tmp_path / "capture_args.py"
     child_script.write_text(
         "import json,sys;print(json.dumps(sys.argv[1:]))\n",
         encoding="utf-8",
     )
-    shim = tmp_path / "opencli.cmd"
+    shim = tmp_path / "fixture-tool.cmd"
     shim.write_text(
         f'@echo off\r\n"{sys.executable}" "{child_script}" %*\r\n',
         encoding="utf-8",
@@ -275,7 +275,7 @@ def test_owned_launch_resolves_cmd_shim_and_preserves_ampersand_url(tmp_path, mo
     url = "https://example.test/watch?v=one&list=two"
 
     result = runtime.run_interruptibly(
-        ["opencli", "wx", url], capture_output=True, text=True, timeout=10
+        ["fixture-tool", "wx", url], capture_output=True, text=True, timeout=10
     )
 
     assert result.returncode == 0, result.stderr

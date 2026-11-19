@@ -17,6 +17,34 @@
 
 ---
 
+## 2026-11-19 验证环境：worktree 全绿，合并后的真实 checkout 才暴露问题 → 已晋升 CS-9
+- 现象：生成器把已安装的 `node_modules` 当成插件源码扫描，导致崩溃；可编辑安装的外部插件把改到一半的状态泄漏给 core 测试；运行时迁移后，浏览器原生宿主 launcher 仍指向已删除的解释器，扩展完全不可用；可选 SDK 缺失时测试被静默跳过。
+- 原因：验收只写“测试通过”，没写清在哪个环境被谁消费。worktree 没装依赖、没注册扩展；外部注册的使用方（注册表、扩展副本）不在仓库内，迁移时被漏掉。
+- 规则：见 CS-9。生成和扫描类检查要在装好依赖的 checkout 上跑一次；core 测试默认隔离外部插件；doctor 检查已注册宿主的解释器和扩展副本；可选依赖导致的 skip 要在报告里写明，并在装了依赖的环境里补跑。
+- 证据：tests/test_opencli_inventory.py::test_owned_sources_skip_installed_node_modules；tests/test_plugin_isolation.py；tests/test_browser_diagnostics.py；CI 的依赖安装步骤。
+- 同类出现：2026-11-15, 2026-11-17, 2026-11-19
+
+## 2026-11-19 并行开发：共享面没有唯一 owner，出现第二份实现
+- 现象：OpenCLI 补丁出现两套登记，扩展身份哈希出现两份实现，完整度汇总规则让两个检查器永远停在 unknown。git 能合并文本，但发现不了这些语义冲突。
+- 原因：分工只说明“本组做什么”，没有声明“哪些是共享面、归谁”。
+- 规则：并行任务开工前，先列出共享面（注册表、身份规则、诊断小节、偏好写入、CLI 选项表）及其唯一 owner；其他组只调用 owner 的函数。合并后在主 checkout 跑全量，并检索有没有第二份实现。
+- 证据：src/openmd/runtime/opencli_patches.py（唯一补丁来源）；src/openmd/browser_extension_sync.py::extension_file_hashes；tests/test_completeness.py::test_conversation_checks_combine_turn_and_count_evidence。
+- 同类出现：2026-11-19
+
+## 2026-11-19 输出质量：按假设写的合成 fixture 代表不了真实页面
+- 现象：已加载 AI 对话页的解析器在离线测试中全绿，真实页面上却漏掉了 ChatGPT 的用户提问、把 KaTeX 公式压扁、整段内联超大 data URI 图片，并把思考过程混进了回答。
+- 原因：fixture 按对 DOM 的猜测写成，没有用真实页面结构；验收也没有像用户那样逐份读产物。
+- 规则：解析器的回归样本保留真实页面的 DOM 结构，正文替换为合成文字；用户可见的产物在验收时逐份读过（标题、角色、结构、公式、图片、噪音）。漏抓某个角色时，完整度必须降级。
+- 证据：tests/test_f_chat_quality.py；tests/test_f_loaded_chat.py。
+- 同类出现：2026-11-19
+
+## 2026-11-19 用户状态：非交互调用改写了用户的默认保存目录
+- 现象：Agent 或测试执行 `go -o <目录> --json` 后，用户的 `last_save_directory` 被改成了测试目录。
+- 原因：“记住保存目录”只判断了是否 TTY，没有区分机器调用。
+- 规则：只有人机交互的保存才更新偏好；`--json`、`--yes`、batch、MCP 等机器调用不写入。真实验收在运行前后比对用户状态文件。
+- 证据：tests/test_save_preferences.py。
+- 同类出现：2026-11-19
+
 ## 2026-11-17 测试隔离：临时数据目录仍会被本机工具位置覆盖
 - 现象：全量 pytest 在保留本机配置的开发 checkout 中失败，托管工具测试尝试创建真实运行时目录。
 - 原因：测试只设置临时 OPENMD_DATA_DIR，本机 tools.opencli.root 优先级更高；外部隔离环境下的全绿掩盖了默认测试入口的问题。

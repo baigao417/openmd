@@ -7,6 +7,7 @@ import re
 from dataclasses import replace
 
 from .models import ContentItem, TranscriptResult
+from .login import normalize_login_result
 
 
 _ERROR_HEADING = re.compile(
@@ -237,6 +238,53 @@ def navigation_shell_reason(text: str) -> str | None:
     return None
 
 
+_LOGIN_PROMPT = re.compile(
+    r"^(?:(?:please\s+)?(?:sign[ -]?in|log[ -]?in|register|sign[ -]?up)"
+    r"(?:\s+(?:to|with|using|for|or|your|an?)[^.!?。]{0,90})?[.!。！]?|"
+    r"(?:请先?|请)?(?:扫码|扫描二维码)?登录(?:后(?:查看|阅读|继续|访问)(?:完整|全部)?(?:内容|正文|文章)?|以继续|账号|帐号)?[。！]?|"
+    r"(?:注册|创建)(?:账号|帐号|账户)|登录\s*[|/或]\s*注册)$", re.I,
+)
+_LOGIN_UI = re.compile(
+    r"^(?:username(?: or email address)?|email(?: address)?|password|forgot (?:your )?password\??|"
+    r"remember me|keep me (?:signed|logged) in|create (?:an? )?(?:account|passkey)|"
+    r"(?:continue|sign in|log in) with .{1,40}|(?:new to .{1,40}|don't have an account)\??|"
+    r"用户名|密码|手机号|验证码|忘记密码|记住我|扫码登录|短信登录|登录即表示.{0,80})[：:]?$", re.I,
+)
+
+
+def login_wall_reason(text: str, title: str | None = None) -> bool:
+    """Reject short account screens; references in prose/code remain articles."""
+    value = _outside_code(text)
+    if re.search(r"<form\b", value, re.I):
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(value, "html.parser")
+        for hidden in soup.find_all(["script", "style", "noscript", "nav", "footer"]):
+            hidden.decompose()
+        visible = soup.get_text("\n", strip=True)
+        for form in soup.find_all("form"):
+            password = form.find("input", attrs={"type": re.compile(r"^password$", re.I)})
+            if password is not None:
+                # Require the form to dominate; short articles can also embed
+                # real demonstration controls outside fenced code.
+                form_text = form.get_text(" ", strip=True)
+                outside = visible.replace(form.get_text("\n", strip=True), "")
+                if len(re.sub(r"\s+", "", outside)) < 180 and len(visible) < 2200 and len(form_text) >= len(visible) * 0.6:
+                    return True
+        value = visible
+    plain = html.unescape(re.sub(r"<[^>]+>", "\n", value))
+    plain = _MD_LINK.sub(r"\1", _MD_IMAGE.sub("", plain))
+    lines = [re.sub(r"^[#>*\-\s]+|[*\s]+$", "", line).strip() for line in plain.splitlines() if line.strip()]
+    if not lines or len(plain) > 2200:
+        return False
+    prompts = sum(bool(_LOGIN_PROMPT.fullmatch(line)) for line in lines)
+    ui = sum(bool(_LOGIN_UI.fullmatch(line)) for line in lines)
+    title_auth = bool(re.fullmatch(r"(?:sign[ -]?in|log[ -]?in|login|register|sign[ -]?up)(?:\s+(?:to|[|–—-])\s*.{1,60})?|登录(?:[|\s·-].{0,40})?|注册", str(title or "").strip(), re.I))
+    if any(len(line) > 180 for line in lines):
+        return False
+    return bool((prompts and (prompts + ui) >= len(lines) * 0.6) or (title_auth and ui >= 2))
+
+
 def validate_extraction_content(
     result: TranscriptResult, item: ContentItem | None = None, *, target: str = "content"
 ) -> TranscriptResult:
@@ -247,7 +295,10 @@ def validate_extraction_content(
     Explicit metadata requests are separate from the default content target.
     """
     if result.status not in {"verified", "partial"}:
-        return result
+        return normalize_login_result(result, item)
+    if item is not None and item.source_type in {"article", "mixed"} and item.platform not in {"pdf", "office", "screenshot", "ai_chat"} and login_wall_reason(result.text, result.title):
+        rejected = _reject_content(result, "login_wall", "网页返回登录墙，未取得目标正文。", failure_class="user_resolvable")
+        return normalize_login_result(rejected, item)
     result = _normalize_web_body(result, item)
     reason = browser_error_page_reason(result.text, result.title)
     if reason is not None:
@@ -274,7 +325,7 @@ def validate_extraction_content(
         return _reject_content(result, "content_metadata_only", "The backend produced metadata rather than the requested source content.")
     if metadata.get("page_shell") is True or metadata.get("content_kind") in {"shell", "navigation"}:
         return _reject_content(result, "content_shell", "The backend produced a page shell rather than the requested source content.")
-    if item is not None and item.platform == "web_article" and navigation_shell_reason(result.text):
+    if item is not None and item.platform in {"web_article", "page_snapshot"} and navigation_shell_reason(result.text):
         return _reject_content(result, "content_navigation_shell", "页面只有导航或图片，没有正文；链接可能不存在或需要登录。")
     if not result.text.strip():
         # OCR document routes intentionally preserve terminal gaps for review.

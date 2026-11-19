@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 def build_parser() -> argparse.ArgumentParser:
-    from .cli import ADVANCED_COMMANDS, DOCTOR_PROFILES, GO_DAILY_OPTIONS, PLATFORM_IDS, _add_shared_options, argparse, cmd_batch, cmd_capabilities, cmd_collect, cmd_doctor, cmd_ingest, cmd_plan, cmd_report_weixin_author_batch, cmd_routes
+    from .cli import ADVANCED_COMMANDS, DOCTOR_PROFILES, GO_DAILY_OPTIONS, PLATFORM_IDS, _add_shared_options, argparse, cmd_batch, cmd_capabilities, cmd_collect, cmd_doctor, cmd_ingest, cmd_plan, cmd_report_feedback, cmd_report_weixin_author_batch, cmd_routes
 
     parser = argparse.ArgumentParser(
         prog="openmd",
@@ -23,6 +23,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
+    from .mcp_server import cmd_mcp
+    mcp = subparsers.add_parser("mcp", description="Run the optional stdio MCP server")
+    mcp.set_defaults(func=cmd_mcp)
+
+    from openmd.runtime.recommendations import cmd_models_install, matrix
+    models = subparsers.add_parser('models', description='Local model installation plans; never downloads')
+    model_commands = models.add_subparsers(dest='models_command', required=True)
+    install = model_commands.add_parser('install', description='Print downloads, estimated sizes and destinations only')
+    install.add_argument('tier', choices=sorted(matrix()['tiers']))
+    from pathlib import Path
+    install.add_argument('--root', type=Path, help='planned model destination; no directory is created')
+    install.set_defaults(func=cmd_models_install)
+
+    from .cli_commands import cmd_opencli
+    passthrough = subparsers.add_parser("opencli", description="Managed OpenCLI; read-only unless --allow-write")
+    passthrough.add_argument("--allow-write", action="store_true")
+    passthrough.add_argument("opencli_args", nargs=argparse.REMAINDER)
+    passthrough.set_defaults(func=cmd_opencli)
+
     from openmd.runtime.prepared_models import cmd_prepare_models
     asr = subparsers.add_parser("asr", description="Prepare existing local ASR weights without downloading models")
     asr_commands = asr.add_subparsers(dest="asr_command", required=True)
@@ -31,6 +50,23 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--max-shard-mb", type=int, default=512, help="maximum file size in MiB, including header (default 512)")
     prepare.add_argument("--prepared-root", help="prepared model root; configure asr_models.prepared_root to load it later")
     prepare.set_defaults(func=cmd_prepare_models)
+
+    from openmd.shell_menu import cmd_shell_menu
+    shell_menu = subparsers.add_parser("shell-menu", help="本地文件右键转 Markdown")
+    shell_menu_commands = shell_menu.add_subparsers(dest="shell_menu_action", required=True)
+    convert = shell_menu_commands.add_parser("convert", help="转换一个文件或镜像转换一个文件夹")
+    convert.add_argument("input")
+    convert.add_argument("--out")
+    convert.add_argument("--max-files", type=int, default=1000)
+    convert.add_argument("--max-bytes", type=int, default=100 * 1024 * 1024)
+    convert.add_argument("--confirm-large", action="store_true")
+    convert.add_argument("--gui", action="store_true", help=argparse.SUPPRESS)
+    convert.add_argument("--json", action="store_true")
+    convert.set_defaults(func=cmd_shell_menu)
+    for action in ("install", "uninstall", "status"):
+        command = shell_menu_commands.add_parser(action)
+        command.add_argument("--platform", choices=("windows", "macos", "linux"))
+        command.set_defaults(func=cmd_shell_menu)
 
     # Advanced commands are registered without help text so the daily help stays short;
     # they keep working exactly as before.
@@ -48,7 +84,18 @@ def build_parser() -> argparse.ArgumentParser:
     go.add_argument("--yes", action="store_true", help="compatibility no-op: a destination is the grant; capability flags narrow it")
     go.add_argument("--json", action="store_true", help="输出机器可读的 JSON 结果")
     go.add_argument("--verbose", action="store_true", help="显示用了哪条工具路线和诊断信息")
-    go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频时（目前 X）：note 只注明有视频（默认）；text 附上视频逐字稿；file 再保留视频文件")
+    go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频/音频时：note 只注明媒体（默认）；text 附上逐字稿；file 再保留媒体文件")
+    go.add_argument("--as-snapshot", action="store_true", help="把本地 HTML 当作浏览器当前页快照处理")
+    go.add_argument("--include-thinking", action="store_true", help="AI 对话：在对应回答前保留页面中的思考过程（默认省略）")
+    go.add_argument("--url", dest="snapshot_url", help="快照对应的原始 http(s) URL")
+    go.add_argument("--chatgpt-export", action="store_true", help="导入本地 ChatGPT 官方 conversations.json 或 zip")
+    go.add_argument("--chatgpt-title", help="官方导入：标题关键词")
+    go.add_argument("--chatgpt-since", help="官方导入：创建时间下限（ISO 日期或 Unix 秒）")
+    go.add_argument("--chatgpt-until", help="官方导入：创建时间上限（含边界）")
+    go.add_argument("--claude-export", action="store_true", help="离线导入 Claude 官方 conversations.json 或 zip")
+    go.add_argument("--claude-title", help="Claude 官方导入：标题关键词")
+    go.add_argument("--claude-since", help="Claude 官方导入：创建时间下限（ISO 日期或 Unix 秒）")
+    go.add_argument("--claude-until", help="Claude 官方导入：创建时间上限（含边界）")
     for action in go._actions:
         if action.dest == "raw":
             action.help = "保留原始逐行时间戳 / 表格，不合并段落"
@@ -167,6 +214,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="report artifact format",
     )
     weixin_author_batch.set_defaults(func=cmd_report_weixin_author_batch)
+    feedback = report_subparsers.add_parser("feedback", help="生成脱敏问题包")
+    feedback.add_argument("input", help="job id 或本地 HTML 文件")
+    feedback.add_argument("--url", required=False, help="本地 HTML 对应的原始 http(s) URL")
+    feedback.add_argument("-o", "--out", required=True, help="问题包目录")
+    feedback.set_defaults(func=cmd_report_feedback)
     return parser
 
 
@@ -272,4 +324,9 @@ def _add_shared_options(
         "--enable-browser-backends",
         action="store_true",
         help="opt in to browser-context backends such as OpenCLI for matching collection inputs",
+    )
+    parser.add_argument(
+        "--enable-local-export",
+        action="store_true",
+        help="显式允许读取本机导出工具（例如 wx-cli）的高隐私本地数据",
     )

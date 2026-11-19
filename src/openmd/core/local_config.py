@@ -59,8 +59,16 @@ def load_local_config() -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("schema") != SCHEMA:
         raise ValueError("local_config_schema: expected openmd.local/v1")
     _check_keys(value)
-    if set(value) - {"schema", "asr_python", "qwen3_batch_size", "ocr_python", "ollama_url", "ocr", "soffice", "model_roots", "tools", "route_overlay", "xiaoe_long_asr", "asr_models", "asr_memory"}:
+    if set(value) - {"schema", "asr_python", "qwen3_batch_size", "ocr_python", "ollama_url", "ocr", "soffice", "model_roots", "tools", "route_overlay", "xiaoe_long_asr", "asr_models", "asr_memory", "browser"}:
         raise ValueError("local_config_unknown_field")
+    if "browser" in value:
+        setting = value["browser"]
+        if (not isinstance(setting, dict) or set(setting) - {"idle_timeout_seconds", "window_strategy"}
+                or type(setting.get("idle_timeout_seconds", 120)) not in (int, float)
+                or not 1 <= setting.get("idle_timeout_seconds", 120) <= 86400
+                or not isinstance(setting.get("window_strategy", "existing-window"), str)
+                or setting.get("window_strategy", "existing-window") not in {"offscreen-reuse", "reuse", "existing-window"}):
+            raise ValueError("local_config_browser_invalid")
     if "asr_models" in value:
         setting = value["asr_models"]
         if (not isinstance(setting, dict) or set(setting) - {"prepared_root"}
@@ -94,6 +102,17 @@ def load_local_config() -> dict[str, Any]:
         raise ValueError("local_config_model_roots_invalid")
     if "tools" in value and not isinstance(value["tools"], dict):
         raise ValueError("local_config_tools_invalid")
+    if "wx" in value.get("tools", {}):
+        setting = value["tools"]["wx"]
+        if (not isinstance(setting, dict) or set(setting) - {"root"}
+                or not isinstance(setting.get("root"), str) or not setting["root"].strip()):
+            raise ValueError("wx_location_invalid")
+    if "opencli" in value.get("tools", {}):
+        setting = value["tools"]["opencli"]
+        if (not isinstance(setting, dict) or set(setting) - {"root", "config_dir"}
+                or not isinstance(setting.get("root"), str) or not setting["root"].strip()
+                or ("config_dir" in setting and (not isinstance(setting["config_dir"], str) or not setting["config_dir"].strip()))):
+            raise ValueError("managed_opencli_location_invalid")
     if "route_overlay" in value and not isinstance(value["route_overlay"], str):
         raise ValueError("local_config_route_overlay_invalid")
     return value

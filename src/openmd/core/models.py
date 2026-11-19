@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 
 InputType = Literal["single", "batch", "collection", "generic"]
+BlockType = Literal["turn", "cue", "table"]
 SourceType = Literal[
     "article",
     "video",
@@ -96,6 +97,83 @@ class ExtractionComponent:
     failure_class: FailureClass | None = None
 
 
+def normalize_turn_role(role: str) -> str:
+    """Normalize standard AI roles without guessing unknown speaker identities."""
+    normalized = role.strip().lower()
+    return normalized if normalized in {"user", "assistant", "system", "tool"} else role
+
+
+@dataclass(frozen=True)
+class TurnBlock:
+    """One verbatim conversation turn."""
+
+    role: str
+    text: str
+    time: str | None = None
+    message_id: str | None = None
+    type: BlockType = "turn"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "role", normalize_turn_role(self.role))
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in {
+                "type": self.type,
+                "role": self.role,
+                "text": self.text,
+                "time": self.time,
+                "message_id": self.message_id,
+            }.items()
+            if value is not None
+        }
+
+
+@dataclass(frozen=True)
+class CueBlock:
+    """A time range attached to a transcript or media cue."""
+
+    start: float | str
+    end: float | str
+    text: str
+    type: BlockType = "cue"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"type": self.type, "start": self.start, "end": self.end, "text": self.text}
+
+
+@dataclass(frozen=True)
+class TableBlock:
+    """A table with an explicit marker for merged-cell degradation."""
+
+    rows: list[list[Any]]
+    merged_cells: list[dict[str, Any]] = field(default_factory=list)
+    type: BlockType = "table"
+
+    def as_dict(self) -> dict[str, Any]:
+        value: dict[str, Any] = {"type": self.type, "rows": self.rows}
+        if self.merged_cells:
+            value["merged_cells"] = self.merged_cells
+        return value
+
+
+def block_as_dict(block: Any) -> dict[str, Any]:
+    """Project a typed or legacy mapping block into the package shape."""
+    if hasattr(block, "as_dict") and callable(block.as_dict):
+        value = block.as_dict()
+    elif isinstance(block, dict):
+        value = dict(block)
+    else:
+        raise TypeError("block must be a mapping or typed block")
+    kind = value.get("type")
+    if kind not in {"turn", "cue", "table"}:
+        raise ValueError("unsupported_block_type")
+    if kind == "turn" and isinstance(value.get("role"), str):
+        value["role"] = normalize_turn_role(value["role"])
+    return value
+
+
 @dataclass(frozen=True)
 class ContentItem:
     platform: str
@@ -130,6 +208,7 @@ class TranscriptResult:
     author: str | None = None
     published_at: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    blocks: list[Any] = field(default_factory=list)
     extraction_contract_version: str | None = None
     components: list[ExtractionComponent] = field(default_factory=list)
 

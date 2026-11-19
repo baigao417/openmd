@@ -23,12 +23,15 @@ def settings() -> dict:
     value["ovis_model"] = os.getenv("OPENMD_OCR_OVIS_MODEL") or value["ovis_model"]
     value["minicpm_model"] = os.getenv("OPENMD_OCR_MINICPM_MODEL") or value["minicpm_model"]
     for key, item in value.items():
-        if key.endswith("_model"):
+        if key == 'engine':
+            if item not in {'ocr.chain', 'ocr.ovis3', 'ocr.minicpm', 'ocr.rapidocr'}:
+                raise ValueError('ocr_engine_unknown')
+        elif key.endswith("_model"):
             if not isinstance(item, str) or not item.strip() or any(ord(c) < 32 for c in item):
                 raise ValueError(f"ocr_setting_invalid: {key}")
         elif isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(item) or item <= 0:
             raise ValueError(f"ocr_setting_invalid: {key}")
-    for key in ("repeat_min_chars", "repeat_count", "num_predict", "num_ctx", "max_pixels", "tile_height", "pdf_dpi", "textlayer_min_chars", "office_sparse_chars"):
+    for key in ("repeat_min_chars", "repeat_count", "num_predict", "num_ctx", "max_pixels", "large_portrait_max_pixels", "tile_height", "pdf_dpi", "textlayer_min_chars", "office_sparse_chars"):
         if not isinstance(value[key], int):
             raise ValueError(f"ocr_setting_integer_required: {key}")
     if not 0 < value["tile_overlap"] < 0.5 or not 0 < value["tile_search"] < 0.5:

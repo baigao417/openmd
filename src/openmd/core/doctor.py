@@ -20,6 +20,7 @@ def _module_available(name: str) -> bool:
 
 
 def _media_diagnostics() -> dict[str, Any]:
+    from openmd.media_tools import yt_dlp_diagnostics
     from openmd.runtime.interpreters import select_asr_runtime
     from openmd.runtime.models import configured_models
     from openmd.runtime.prepared_models import preparation_status
@@ -41,6 +42,7 @@ def _media_diagnostics() -> dict[str, Any]:
         "asr_runtime": runtime.as_dict(),
         "models": {key: model.as_dict() for key, model in models.items()},
         "model_preparation": preparation,
+        "yt_dlp": yt_dlp_diagnostics(),
         "ready": ready,
         "next_action": next_action,
     }
@@ -81,6 +83,17 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
         "account_actions": "not_performed",
         "ready": manifest_valid,
     }
+    from openmd.engines.diagnostics import document_formats
+    diagnostics['document_formats'] = document_formats()
+    from openmd.browser_diagnostics import browser_host_diagnostics
+    diagnostics['browser_host'] = browser_host_diagnostics()
+    from openmd.runtime.opencli_patches import patch_diagnostics
+    diagnostics['opencli_patches'] = patch_diagnostics()
+    from openmd.routing.loader import route_verification_status
+    diagnostics['route_verification'] = route_verification_status()
+    from openmd.runtime.recommendations import hardware, recommend
+    diagnostics['hardware'] = hardware()
+    diagnostics['model_recommendation'] = recommend(diagnostics['hardware'])
     if profile == "all":
         diagnostics.update(_media_diagnostics())
         diagnostics["openmd_on_path"] = shutil.which("openmd") is not None
@@ -108,4 +121,8 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
         diagnostics["ready"] = manifest_valid and bool(tool_report.get("ok", False))
     else:
         diagnostics.update({"session_owner": "browser_platform_or_sidecar", "private_session_probe": False})
+    host = diagnostics['browser_host']
+    if host['registered'] and not host['ready']:
+        diagnostics['ready'] = False
+        diagnostics['next_action'] = host['next_action']
     return diagnostics

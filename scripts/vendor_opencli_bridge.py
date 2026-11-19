@@ -15,67 +15,22 @@ import hashlib
 import io
 import sys
 import urllib.request
+import urllib.error
 import zipfile
 from pathlib import Path
 
-OPENCLI_TAG = "v2.0.3"
-BRIDGE_VERSION = "1.0.27"
-BRIDGE_SHA256 = "8636d42a0fe44d7ba3b0603dbcd9581e8269ccbca950136d0dfc0ffc39a8a213"
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'src'))
+from openmd.runtime.opencli_patches import (
+    BRIDGE_PATCHES as PATCHES, OPENCLI_TAG, BRIDGE_VERSION, BRIDGE_SHA256, patch_bridge,
+)
+
+LICENSE_SHA256 = "0210b8b66cf00358242cb921ba2be3a46dfe0190159b1b952388a3880ce1ff54"
 LICENSE_URL = f"https://raw.githubusercontent.com/jackwener/opencli/{OPENCLI_TAG}/LICENSE"
 ZIP_URL = f"https://github.com/jackwener/opencli/releases/download/{OPENCLI_TAG}/opencli-extension-v{BRIDGE_VERSION}.zip"
 
-ROOT = Path(__file__).resolve().parents[1]
 EXTENSION = ROOT / "src" / "openmd" / "browser_extension"
 VENDOR = EXTENSION / "vendor" / "opencli-bridge"
-
-# (description, original, replacement): each original must occur exactly as counted.
-PATCHES = [
-    (
-        "fixed profile id so Openmd can select this bridge even when the standalone OpenCLI extension is also connected",
-        "const generated = generateContextId();",
-        'const generated = "openmd"; // Openmd patch: fixed Browser Bridge profile id',
-        1,
-    ),
-    (
-        "report the bridge's own version, not the host Openmd extension's manifest version",
-        "chrome.runtime.getManifest().version",
-        "OPENMD_BRIDGE_VERSION",
-        2,
-    ),
-    (
-        "background work minimizes its window right after creating it",
-        """  const win = await chrome.windows.create({
-    url: startUrl,
-    focused: mode === "foreground",
-    width: 1280,
-    height: 900,
-    type: "normal"
-  });""",
-        """  const win = await chrome.windows.create({
-    url: startUrl,
-    focused: mode === "foreground",
-    width: 1280,
-    height: 900,
-    type: "normal"
-  });
-  // Openmd patch: background reads never stay on screen. windows.create ignores
-  // state:"minimized" on Windows (Edge/Chrome 157), so minimize right after.
-  if (mode !== "foreground") await chrome.windows.update(win.id, { state: "minimized" }).catch(() => {});""",
-        1,
-    ),
-    (
-        "tab group names show Openmd",
-        'interactive: "OpenCLI Browser",',
-        'interactive: "Openmd",',
-        1,
-    ),
-    (
-        "tab group names show Openmd (automation)",
-        'automation: "OpenCLI Adapter"',
-        'automation: "Openmd"',
-        1,
-    ),
-]
 
 # Openmd's own idle page (upstream idle.html is replaced, not patched).
 IDLE_HTML = """<!doctype html>
@@ -94,23 +49,26 @@ HEADER = (
 
 def fetch(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "openmd-vendor"})
-    with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310 - fixed https URLs
+    try:
+        response = urllib.request.urlopen(request, timeout=30)  # noqa: S310 - fixed https URLs
+    except urllib.error.URLError:
+        response = urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request, timeout=30)
+    with response:
         return response.read()
 
 
-def build() -> dict[str, bytes]:
-    archive = fetch(ZIP_URL)
+def build(archive_path: Path | None = None, license_path: Path | None = None) -> dict[str, bytes]:
+    archive = archive_path.read_bytes() if archive_path else fetch(ZIP_URL)
     digest = hashlib.sha256(archive).hexdigest()
     if digest != BRIDGE_SHA256:
         raise SystemExit(f"sha256 mismatch for {ZIP_URL}: {digest}")
     with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
         background = bundle.read("dist/background.js").decode("utf-8")
         bundle.read("idle.html")  # must still exist upstream: the bridge navigates to it
-    for description, original, replacement, count in PATCHES:
-        found = background.count(original)
-        if found != count:
-            raise SystemExit(f"patch no longer applies ({description}): expected {count}, found {found}")
-        background = background.replace(original, replacement)
+    try:
+        background = patch_bridge(background)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     background = HEADER.format(version=BRIDGE_VERSION) + background
     patches = "\n".join(f"- {description}: `{original}` → `{replacement}`" for description, original, replacement, _ in PATCHES)
     vendor_md = (
@@ -121,9 +79,12 @@ def build() -> dict[str, bytes]:
         f"## Modifications by Openmd\n\n{patches}\n\n"
         f"Regenerate with `python scripts/vendor_opencli_bridge.py`; never edit `background.js` by hand.\n"
     )
+    license_bytes = license_path.read_bytes() if license_path else fetch(LICENSE_URL)
+    if hashlib.sha256(license_bytes).hexdigest() != LICENSE_SHA256:
+        raise SystemExit("license sha256 mismatch")
     return {
         "background.js": background.encode("utf-8"),
-        "LICENSE": fetch(LICENSE_URL),
+        "LICENSE": license_bytes,
         "VENDOR.md": vendor_md.encode("utf-8"),
         "../../idle.html": IDLE_HTML.encode("utf-8"),
     }
@@ -132,8 +93,10 @@ def build() -> dict[str, bytes]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="compare the vendored files with a fresh build")
+    parser.add_argument("--archive", type=Path, help="local official release archive, checked against the pinned SHA-256")
+    parser.add_argument("--license-file", type=Path, help="local license, checked against the pinned SHA-256")
     args = parser.parse_args()
-    files = build()
+    files = build(args.archive, args.license_file)
     VENDOR.mkdir(parents=True, exist_ok=True)
     stale = []
     for name, data in files.items():

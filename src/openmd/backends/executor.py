@@ -341,7 +341,19 @@ class BackendExecutor:
         )
 
     def execute(self, request: BackendExtractRequest) -> TranscriptResult:
-        chain = request.backend_chain if request.allow_fallback else request.backend_chain[:1]
+        chain = request.backend_chain
+        # Keep the legacy identity while selecting only applicable providers.
+        if request.item.platform == "pdf" and "document.engines" in chain:
+            from openmd.adapters.local_audio.adapter import local_path_from_input
+            from openmd.core.detector import LOCAL_DOCUMENT_EXTENSIONS
+
+            source = request.item.raw_meta.get("local_path") or request.item.url
+            path = local_path_from_input(source)
+            from openmd.engines.native import PROMOTED
+            if path is not None and (path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS or path.suffix.lower().lstrip('.') in PROMOTED):
+                chain = tuple(backend for backend in chain if backend not in {"pdf.markitdown", "pdf.textlayer", "ocr.chain"})
+        if not request.allow_fallback:
+            chain = chain[:1]
         if not chain:
             return _failed_result(request.item, "not_selected", "backend_chain_empty")
 
@@ -365,6 +377,13 @@ class BackendExecutor:
             from openmd.routing.loader import route_trace
 
             result = replace(result, metadata={**result.metadata, **route_trace(request.item.platform, result.backend)})
+
+            if result.error_code == "login_required":
+                attempts.append({"backend": backend, "error_code": result.error_code})
+                return _with_attempt_notes(replace(result, metadata={**result.metadata, "fallback_attempts": attempts}), attempt_notes)
+
+            if result.status == "verified" and result.metadata.get("sync_no_delta") and request.item.raw_meta.get("sync_source_id"):
+                return _with_attempt_notes(result, attempt_notes)
 
             if result.has_usable_text or (result.status == "partial" and result.metadata.get("terminal_partial") is True):
                 if self._result_enricher is not None:
@@ -405,6 +424,8 @@ class BackendExecutor:
                     allow_fallback=False,
                 )
             )
+            if result.status == "verified" and result.metadata.get("sync_no_delta") and item.raw_meta.get("sync_source_id"):
+                return result
             return validate_extraction_content(result, item)
         except Exception as exc:  # pragma: no cover - final provider safety net
             return _failed_result(item, backend, "backend_provider_error", exc)

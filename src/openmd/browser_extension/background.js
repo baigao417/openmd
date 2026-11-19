@@ -6,24 +6,117 @@ import "./vendor/opencli-bridge/background.js";
 // Daily flow: click the toolbar icon -> save the current page (or every highlighted tab) to the
 // default location. Right-click a selection -> save every link inside it. Jobs run one by one.
 const HOST = "com.openmd.host";
+const PROTOCOL_VERSION = 1;
 const POLL_MS = 2000;
-const SETUP_HINT = "还没连上本机 openmd：请在终端运行 openmd browser-setup，然后重新加载插件。";
+const SETUP_HINT = "请运行 openmd browser-setup 后重新加载扩展。";
 
 function native(message) {
   return new Promise((resolve) => {
     chrome.runtime.sendNativeMessage(HOST, message, (reply) => {
       const err = chrome.runtime.lastError;
-      if (err) resolve({ ok: false, error: /not found|forbidden/i.test(err.message) ? SETUP_HINT : err.message });
+      if (err) resolve({ ok: false, error: `${SETUP_HINT}（${err.message}）` });
       else resolve(reply || { ok: false, error: "本机 openmd 没有回应" });
     });
   });
 }
 
+// The update record survives MV3 worker suspension and runtime.reload(). Keep
+// every attempted content hash, so a broken/mismatched copy cannot reload-loop.
+const UPDATE_ALARM = "openmd-extension-update";
+let activeSaves = 0;
+let saveEpoch = 0;
+let updateChecking = null;
+let updateStateTail = Promise.resolve();
+
+function withUpdateState(action) {
+  const result = updateStateTail.then(action);
+  updateStateTail = result.catch(() => {});
+  return result;
+}
+
+async function saving(action) {
+  activeSaves += 1;
+  saveEpoch += 1;
+  try { return await action(); }
+  finally {
+    activeSaves -= 1;
+    await maybeReloadExtension();
+  }
+}
+
+function maybeReloadExtension() {
+  return withUpdateState(reloadExtensionWhenIdle);
+}
+
+async function reloadExtensionWhenIdle() {
+  const epoch = saveEpoch;
+  const { extensionUpdate = {}, jobs = {} } = await chrome.storage.local.get(["extensionUpdate", "jobs"]);
+  const hash = extensionUpdate.pendingHash;
+  const reloaded = extensionUpdate.reloadedHashes || [];
+  if (!hash || reloaded.includes(hash) || activeSaves || Object.keys(jobs).length) return;
+  await chrome.storage.local.set({ extensionUpdate: {
+    ...extensionUpdate, currentHash: hash, pendingHash: null, reloadedHashes: [...reloaded, hash],
+  } });
+  // Saving may begin while storage.set yields. Give it priority and retain
+  // the pending update without consuming this hash's one reload attempt.
+  if (activeSaves || saveEpoch !== epoch) {
+    await chrome.storage.local.set({ extensionUpdate });
+    return;
+  }
+  chrome.runtime.reload();
+}
+
+async function showSetupNotice(reason) {
+  const { extensionSetupNotice } = await chrome.storage.local.get("extensionSetupNotice");
+  if (extensionSetupNotice === reason) return;
+  await chrome.storage.local.set({ extensionSetupNotice: reason });
+  fail("Openmd 扩展需要修复", `${reason} ${SETUP_HINT}`);
+}
+
+function checkExtensionUpdate() {
+  if (updateChecking) return updateChecking;
+  updateChecking = (async () => {
+    const reply = await native({ type: "ping", protocol_version: PROTOCOL_VERSION });
+    if (!reply.ok) return showSetupNotice(reply.error || "本机 openmd 无法启动。");
+    if (!/^[a-f0-9]{64}$/.test(reply.extension_hash || "")) return showSetupNotice("本机 openmd 尚不支持扩展自动同步。");
+    return withUpdateState(async () => {
+      const { extensionUpdate = {} } = await chrome.storage.local.get("extensionUpdate");
+      const hash = reply.extension_hash;
+      const changed = reply.extension_updated || (extensionUpdate.currentHash && extensionUpdate.currentHash !== hash);
+      const incompatible = reply.protocol_version !== PROTOCOL_VERSION || reply.protocol_compatible === false;
+      // Reload a freshly repaired copy once before asking for manual setup. A
+      // repeated incompatible hash (or an old host) needs explicit intervention.
+      const canRepair = changed && !(extensionUpdate.reloadedHashes || []).includes(hash);
+      if (incompatible && !canRepair) return showSetupNotice("扩展与本机 openmd 协议不兼容。");
+      if (!incompatible) await chrome.storage.local.set({ extensionSetupNotice: null });
+      await chrome.storage.local.set({ extensionUpdate: {
+        ...extensionUpdate, currentHash: extensionUpdate.currentHash || hash,
+        pendingHash: changed ? hash : extensionUpdate.pendingHash,
+      } });
+      await reloadExtensionWhenIdle();
+    });
+  })().catch((error) => fail("扩展更新检查失败", `${String(error?.message || error)} ${SETUP_HINT}`))
+    .finally(() => { updateChecking = null; });
+  return updateChecking;
+}
+
 const isWeb = (url) => /^https?:\/\//.test(url || "");
+// Keep host coverage aligned with backends/loaded_chat.py; parsing lives there.
+const AI_CHAT_HOSTS = ["chatgpt.com", "chat.openai.com", "grok.com", "chat.deepseek.com", "doubao.com", "www.doubao.com", "gemini.google.com", "www.qianwen.com", "qianwen.com", "qianwen.aliyun.com", "tongyi.aliyun.com", "yuanbao.tencent.com"];
+const isLoadedAiChat = (url) => {
+  try { const parsed = new URL(url); return isWeb(url) && AI_CHAT_HOSTS.includes(parsed.hostname); }
+  catch { return false; }
+};
+const isLoadedXiaohongshuNote = (url) => {
+  try {
+    const parsed = new URL(url);
+    return isWeb(url) && parsed.hostname === "www.xiaohongshu.com" && /^\/(?:explore|discovery\/item)\//.test(parsed.pathname);
+  } catch { return false; }
+};
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
-  return { videoMode: "note", ...(settings || { locations: [], defaultId: null, clickMode: "auto" }) };
+  return { videoMode: "note", includeThinking: false, allowFeedbackPackage: false, ...(settings || { locations: [], defaultId: null, clickMode: "auto" }) };
 }
 
 async function applyClickMode() {
@@ -37,7 +130,7 @@ async function applyClickMode() {
 async function seedSettings() {
   const current = await getSettings();
   if (current.locations.length) return;
-  const ping = await native({ type: "ping" });
+  const ping = await native({ type: "ping", protocol_version: PROTOCOL_VERSION });
   if (!ping.ok || !ping.save_to) return;
   const id = crypto.randomUUID();
   await chrome.storage.local.set({ settings: { locations: [{ id, name: "默认", path: ping.save_to }], defaultId: id, clickMode: "auto" } });
@@ -73,6 +166,89 @@ function fail(title, message) {
   notify(title, message);
 }
 
+async function notifyLogin(job, meta) {
+  const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
+  // Persist callbacks across service-worker restarts; one notice per site.
+  const existing = Object.keys(loginNotices).find((id) => loginNotices[id].login.url === job.login.url);
+  const id = existing || `openmd-login:${job.id}`;
+  const notice = loginNotices[id] || { login: job.login, groups: {} };
+  // A site notice can cover multiple batches; each retry retains its own host
+  // batch so it cannot accidentally resume historical failures from that site.
+  notice.groups[job.batch || job.id] = { jobId: job.id, location: meta.location || "默认", snapshot: job.snapshot, tabId: meta.tabId };
+  loginNotices[id] = notice;
+  await chrome.storage.local.set({ loginNotices });
+  if (existing) return;
+  await flash("!", "#b3261e");
+  chrome.notifications.create(id, {
+    type: "basic", iconUrl: "icons/icon-128.png", title: `需要登录 ${job.login.site}`,
+    message: `请在浏览器登录 ${job.login.url}，同站点任务已暂停。`,
+    buttons: [{ title: "去登录" }, { title: "已登录，重试" }],
+    requireInteraction: true,
+  });
+}
+
+async function notifyFeedback(job, meta) {
+  const settings = await getSettings();
+  if (settings.allowFeedbackPackage !== true) return;
+  const id = `openmd-feedback:${job.id}`;
+  chrome.notifications.create(id, {
+    type: "basic", iconUrl: "icons/icon-128.png", title: "保存结果需要检查",
+    message: "结果不完整或失败。可生成脱敏问题报告，附加前请先检查。",
+    buttons: [{ title: "生成问题报告" }], requireInteraction: true,
+  });
+}
+
+chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
+  if (!id.startsWith("openmd-feedback:") || buttonIndex !== 0) return;
+  const jobId = id.slice("openmd-feedback:".length);
+  const settings = await getSettings();
+  const location = await locationFor(settings.defaultId);
+  const reply = await native({ type: "feedback_report", id: jobId, save_to: location?.path });
+  if (reply?.ok) notify("问题报告已生成", "请检查后再附加到 GitHub issue。");
+  else notify("问题报告生成失败", reply?.error || "请在任务列表中重试。");
+});
+
+chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(async () => {
+  const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
+  const notice = loginNotices[id];
+  if (!notice) return;
+  if (buttonIndex === 0 && isWeb(notice.login.url)) {
+    await chrome.tabs.create({ url: notice.login.url });
+  } else if (buttonIndex === 1) {
+    const jobs = [];
+    const pending = {};
+    for (const [batch, group] of Object.entries(notice.groups)) {
+      try {
+        const snapshot = group.snapshot ? await captureSnapshot(group.tabId) : undefined;
+        const reply = await native({ type: "retry_login", id: group.jobId, snapshot });
+        if (reply.ok) jobs.push(...(reply.jobs || []).map((job) => ({ ...job, tabId: group.tabId })));
+        else pending[batch] = group;
+      } catch {
+        pending[batch] = group;
+      }
+    }
+    if (Object.keys(pending).length) {
+      notice.groups = pending;
+      loginNotices[id] = notice;
+    } else {
+      delete loginNotices[id];
+      await chrome.notifications.clear(id);
+    }
+    await chrome.storage.local.set({ loginNotices });
+    if (jobs.length) await track(jobs, crypto.randomUUID(), "原保存位置");
+    if (Object.keys(pending).length) fail("部分任务没能重试", "请在扩展中检查任务状态。");
+  }
+}));
+
+chrome.notifications.onClosed.addListener(async (id, byUser) => {
+  if (!byUser) return;
+  const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
+  if (loginNotices[id]) {
+    delete loginNotices[id];
+    await chrome.storage.local.set({ loginNotices });
+  }
+});
+
 async function locationFor(locationId) {
   const settings = await getSettings();
   return settings.locations.find((l) => l.id === (locationId || settings.defaultId)) || settings.locations[0];
@@ -80,8 +256,8 @@ async function locationFor(locationId) {
 
 async function track(jobs, batch, location) {
   const state = await tracked();
-  for (const job of jobs) state.jobs[job.id] = { title: job.title || job.url, batch };
-  state.batches[batch] = { total: jobs.length, failed: [], location };
+  for (const job of jobs) state.jobs[job.id] = { title: job.title || job.url, batch, tabId: job.tabId };
+  state.batches[batch] = { total: jobs.length, failed: [], location, loginPaused: false };
   await chrome.storage.local.set(state);
   await showRunning(state.jobs);
   poll();
@@ -89,8 +265,46 @@ async function track(jobs, batch, location) {
 
 // ---------------------------------------------------------------- saving
 
+async function saveTabs(tabs, locationId) {
+  return saving(() => saveTabsImpl(tabs, locationId));
+}
+
+async function saveTabsImpl(tabs, locationId) {
+  const web = tabs.filter((tab) => isWeb(tab.url));
+  if (!web.length) return fail("没法保存", "只能保存普通网页（http / https）。");
+  // Flush ordinary URLs in their existing batch. AI pages require the actual
+  // tab handle; never reopen them through saveMany's URL queue.
+  let pending = [];
+  let total = 0;
+  let location;
+  const flush = async () => {
+    if (!pending.length) return { ok: true };
+    const result = await saveMany(pending, locationId);
+    pending = [];
+    if (result?.ok) { total += result.count; location = result.location; }
+    return result;
+  };
+  for (const tab of web) {
+    if (!isLoadedAiChat(tab.url) && !isLoadedXiaohongshuNote(tab.url)) { pending.push(tab); continue; }
+    const previous = await flush();
+    if (!previous?.ok) return previous;
+    const tabId = tab.id ?? tab.tabId;
+    if (!Number.isInteger(tabId)) return fail("读不到当前对话", "请返回原对话标签页再保存。");
+    const result = await saveSnapshot(tabId, locationId);
+    if (!result?.ok) return result;
+    total += result.count;
+    location = result.location;
+  }
+  const last = await flush();
+  return last?.ok ? { ok: true, count: total, location } : last;
+}
+
 // video: "note" (just mention the video), "text" (+ local transcript), "file" (+ the video file).
 async function saveMany(items, locationId, video) {
+  return saving(() => saveManyImpl(items, locationId, video));
+}
+
+async function saveManyImpl(items, locationId, video) {
   const web = items.filter((item) => isWeb(item.url));
   if (!web.length) return fail("没法保存", "只能保存普通网页（http / https）。");
   const location = await locationFor(locationId);
@@ -107,6 +321,55 @@ async function saveMany(items, locationId, video) {
   const jobs = (reply.jobs || [reply.job]).map((job) => ({ ...job, title: titles[job.url] }));
   await track(jobs, reply.batch || jobs[0].id, location.name);
   return { ok: true, count: jobs.length, location: location.name };
+}
+
+async function captureSnapshot(tabId) {
+  const [{ result } = {}] = await chrome.scripting.executeScript({
+    target: { tabId },
+    args: [AI_CHAT_HOSTS],
+    func: (aiHosts) => {
+      let html = document.documentElement?.outerHTML || "";
+      if (aiHosts.includes(location.hostname) && document.documentElement) {
+        const clone = document.documentElement.cloneNode(true);
+        const originals = document.documentElement.querySelectorAll("*");
+        const copies = clone.querySelectorAll("*");
+        originals.forEach((node, index) => {
+          const style = getComputedStyle(node);
+          if (style.display === "none" || style.visibility === "hidden") copies[index].setAttribute("data-openmd-hidden", "true");
+        });
+        // Retain rendered messages, not hydration payloads or composer values.
+        clone.querySelectorAll("script, style, noscript, input, textarea").forEach((node) => node.remove());
+        html = clone.outerHTML;
+      }
+      return { html, url: location.href, title: document.title || location.href };
+    },
+  });
+  return result;
+}
+
+async function saveSnapshot(tabId, locationId) {
+  return saving(() => saveSnapshotImpl(tabId, locationId));
+}
+
+async function saveSnapshotImpl(tabId, locationId) {
+  const location = await locationFor(locationId);
+  if (!location) {
+    chrome.runtime.openOptionsPage();
+    return fail("先设置一个保存位置", "已打开设置页。");
+  }
+  try {
+    const result = await captureSnapshot(tabId);
+    if (!result?.html || !/^https?:\/\//.test(result.url || "")) {
+      return fail("没法保存当前页", "当前页面不是可保存的 http(s) 页面。");
+    }
+    const { includeThinking } = await getSettings();
+    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path, include_thinking: isLoadedAiChat(result.url) && includeThinking === true, feedback_opt_in: (await getSettings()).allowFeedbackPackage === true });
+    if (!reply.ok) return fail("没能保存当前页", reply.error);
+    await track([{ ...reply.job, tabId }], reply.job.id, location.name);
+    return { ok: true, count: 1, location: location.name };
+  } catch (err) {
+    return fail("读不到这个页面", String(err?.message || err));
+  }
 }
 
 async function highlightedTabs(tab) {
@@ -149,59 +412,67 @@ async function poll() {
       if (reply.ok) {
         for (const id of ids) {
           const job = reply.jobs[id] || { state: "unknown" };
-          if (!["done", "failed", "cancelled", "unknown"].includes(job.state)) continue;
+          if (!["done", "failed", "paused", "cancelled", "unknown"].includes(job.state)) continue;
           const meta = state.jobs[id];
           delete state.jobs[id];
           const batch = state.batches[meta.batch];
-          if (batch && job.state !== "done" && job.state !== "cancelled") batch.failed.push(`${meta.title}：${job.error || "状态未知"}`);
+          if (job.error_code === "login_required" && job.login) {
+            if (batch) batch.loginPaused = true;
+            await notifyLogin(job, { ...meta, location: batch?.location });
+          } else if (batch && job.state !== "done" && job.state !== "cancelled") batch.failed.push(`${meta.title}：${job.error || "状态未知"}`);
+          if (job.state === "failed" || job.state === "partial" || job.result?.status === "partial") await notifyFeedback(job, meta);
           const remaining = Object.values(state.jobs).some((m) => m.batch === meta.batch);
           if (batch && !remaining) {
             delete state.batches[meta.batch];
             if (batch.failed.length) {
               const head = batch.total > 1 ? `${batch.total} 个里有 ${batch.failed.length} 个没保存成功` : "没能保存";
               fail(head, batch.failed.slice(0, 3).join("\n"));
-            } else {
+            } else if (!batch.loginPaused) {
               await flash("✓", "#2c8a5f");
             }
           }
         }
         await chrome.storage.local.set(state);
         await showRunning(state.jobs);
+        if (!Object.keys(state.jobs).length) break;
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
   } finally {
     polling = false;
+    await maybeReloadExtension();
   }
 }
 
 // ---------------------------------------------------------------- entry points
 
-chrome.action.onClicked.addListener(async (tab) => {
+chrome.action.onClicked.addListener((tab) => saving(async () => {
   const tabs = await highlightedTabs(tab);
-  saveMany(tabs.map((t) => ({ url: t.url, title: t.title })));
-});
+  return saveTabs(tabs);
+}));
 
 chrome.runtime.onInstalled.addListener(async () => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: "save-page", title: "用 Openmd 保存此页", contexts: ["page"] });
     chrome.contextMenus.create({ id: "save-link", title: "用 Openmd 保存此链接", contexts: ["link"] });
     chrome.contextMenus.create({ id: "save-selection", title: "用 Openmd 保存选中的链接", contexts: ["selection"] });
-    // Posts with an attached video (X for now): opt in per save, so a plain click stays fast.
-    const posts = ["*://x.com/*", "*://*.x.com/*", "*://twitter.com/*", "*://*.twitter.com/*"];
-    chrome.contextMenus.create({ id: "save-video-text", title: "用 Openmd 保存（含视频文字版）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
-    chrome.contextMenus.create({ id: "save-video-file", title: "用 Openmd 保存（含视频文字版和视频文件）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
+    // Keep the plain action fast; media is opt-in per save on every web page.
+    const posts = ["http://*/*", "https://*/*"];
+    chrome.contextMenus.create({ id: "save-video-text", title: "用 Openmd 保存（含视频/音频文字版）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
+    chrome.contextMenus.create({ id: "save-video-file", title: "用 Openmd 保存（含视频/音频文件）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
   });
   await seedSettings();
   await applyClickMode();
   if (!(await getSettings()).locations.length) chrome.runtime.openOptionsPage();
 });
 
-chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+chrome.contextMenus.onClicked.addListener((info, tab) => saving(async () => {
   if (info.menuItemId === "save-link" && info.linkUrl) return saveMany([{ url: info.linkUrl, title: info.linkUrl }]);
-  if (info.menuItemId === "save-page" && tab?.url) return saveMany([{ url: tab.url, title: tab.title }]);
+  if (info.menuItemId === "save-page" && tab?.url) return saveTabs([tab]);
   if (info.menuItemId === "save-video-text" || info.menuItemId === "save-video-file") {
-    const url = info.linkUrl || info.pageUrl || tab?.url;
+    // A link click targets that link; on a video element the post page owns the
+    // text (the element's srcUrl is usually a blob: stream, not a public URL).
+    const url = (info.linkUrl && /^https?:/.test(info.linkUrl)) ? info.linkUrl : (info.pageUrl || tab?.url);
     const video = info.menuItemId === "save-video-file" ? "file" : "text";
     return saveMany([{ url, title: info.linkUrl ? url : tab?.title }], null, video);
   }
@@ -214,18 +485,24 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
       return fail("读不到这个页面的选中内容", String(err?.message || err));
     }
   }
-});
+}));
 
 chrome.storage.onChanged.addListener((changes) => {
   if (changes.settings) applyClickMode();
 });
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  if (msg?.cmd === "save") { saveMany(msg.items, msg.locationId).then(reply); return true; }
+  if (msg?.cmd === "save") { saveTabs(msg.items, msg.locationId).then(reply); return true; }
+  if (msg?.cmd === "snapshot") { saving(async () => { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return saveSnapshot(tab?.id, msg.locationId); }).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
   return false;
 });
 
-chrome.runtime.onStartup.addListener(async () => { await applyClickMode(); poll(); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === UPDATE_ALARM) return checkExtensionUpdate();
+});
+chrome.runtime.onStartup.addListener(async () => { await applyClickMode(); poll(); await checkExtensionUpdate(); });
+chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 30 });
 applyClickMode();
 poll();
+checkExtensionUpdate();

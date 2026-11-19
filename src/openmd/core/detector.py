@@ -26,6 +26,16 @@ MEDIA_EXTENSIONS: tuple[str, ...] = (
 
 # Keep the legacy `pdf` platform identity for the approved PDF/Office lane.
 DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".docx", ".pptx", ".xlsx")
+LOCAL_DOCUMENT_EXTENSIONS: tuple[str, ...] = (
+    ".html", ".htm", ".epub", ".txt", ".rtf", ".odt", ".odp", ".ods",
+    ".doc", ".xls", ".ppt", ".csv", ".tsv", ".json", ".xml", ".ipynb", ".msg",
+    ".mobi", ".azw3", ".fb2", ".zip",
+)
+DOCUMENT_EXTENSIONS += LOCAL_DOCUMENT_EXTENSIONS
+# `.txt` converts as a single local file and inside the shell-menu folder
+# converter, but a stray note must not turn an image/media folder into a
+# document batch, so legacy `go/ingest <folder>` ignores it.
+FOLDER_BATCH_EXCLUDED_SUFFIXES: tuple[str, ...] = (".txt",)
 
 IMAGE_TEXT_EXTENSIONS: tuple[str, ...] = (
     ".png",
@@ -39,6 +49,22 @@ QQ_EXPORT_EXTENSIONS: tuple[str, ...] = (".json", ".html", ".txt")
 
 _BV_RE = re.compile(r"^BV[0-9A-Za-z]+$")
 _URL_RE = re.compile(r"https?://[^\s，。]+")
+
+_AI_CHAT_HOSTS = {
+    "chatgpt.com": "chatgpt",
+    "chat.openai.com": "chatgpt",
+    "claude.ai": "claude",
+    "chat.deepseek.com": "deepseek",
+    "www.doubao.com": "doubao",
+    "doubao.com": "doubao",
+    "gemini.google.com": "gemini",
+    "qianwen.aliyun.com": "qwen",
+    "www.qianwen.com": "qwen",
+    "tongyi.aliyun.com": "qwen",
+    "yuanbao.tencent.com": "yuanbao",
+    "grok.com": "grok",
+    "x.com": "grok",
+}
 
 
 def extract_first_url(input_value: str) -> str:
@@ -95,7 +121,9 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
         return "douyin"
 
     extension_path = _path_for_extension_check(value)
-    if extension_path.endswith(DOCUMENT_EXTENSIONS):
+    if extension_path.endswith(DOCUMENT_EXTENSIONS) and (
+        not extension_path.endswith(LOCAL_DOCUMENT_EXTENSIONS) or _local_path_for_detection(value) is not None
+    ):
         return "pdf"
     if extension_path.endswith(IMAGE_TEXT_EXTENSIONS):
         return "screenshot"
@@ -103,6 +131,8 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
         return "generic_media"
 
     host, path = _host_and_path(value)
+    if _is_ai_chat_url(host, path):
+        return "ai_chat"
     if _host_endswith(host, ("bilibili.com", "b23.tv")):
         return "bilibili"
     if _host_endswith(host, ("youtube.com", "youtu.be", "youtube-nocookie.com")):
@@ -128,6 +158,35 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
     return "web_article"
 
 
+def _is_ai_chat_url(host: str, path: str) -> bool:
+    site = _AI_CHAT_HOSTS.get(host)
+    if site == "chatgpt":
+        return bool(re.search(r"/(?:c|share)/[^/]+/?$", path))
+    if site == "claude":
+        return bool(re.search(r"/chat/[^/]+/?$", path))
+    if site == "deepseek":
+        return bool(re.search(r"/a/chat/s/[^/]+/?$", path))
+    if site == "doubao":
+        return bool(re.search(r"/(?:chat|conversation)/[^/]+/?$", path))
+    if site == "gemini":
+        return bool(re.search(r"/(?:app|u/\d+/app)/[^/]+", path))
+    if site == "qwen":
+        return bool(re.search(r"/chat/[^/]+/?$", path))
+    if site == "yuanbao":
+        return bool(re.search(r"/chat/[^/]+/[^/]+/?$", path))
+    if site == "grok":
+        return bool(re.search(r"/(?:c|chat)/[^/]+", path))
+    return False
+
+
+def ai_chat_site(value: str) -> str | None:
+    """Return the OpenCLI site id for a supported conversation URL."""
+    host, path = _host_and_path(value)
+    if not _is_ai_chat_url(host, path):
+        return None
+    return _AI_CHAT_HOSTS.get(host)
+
+
 def _local_directory_platform(value: str) -> str | None:
     path = _local_path_for_detection(value)
     if path is None or not path.is_dir():
@@ -142,7 +201,7 @@ def _local_directory_platform(value: str) -> str | None:
             if not candidate.is_file():
                 continue
             suffix = candidate.suffix.lower()
-            seen_pdf = seen_pdf or suffix in DOCUMENT_EXTENSIONS
+            seen_pdf = seen_pdf or (suffix in DOCUMENT_EXTENSIONS and suffix not in FOLDER_BATCH_EXCLUDED_SUFFIXES and not _looks_like_qq_export_path(str(candidate)))
             seen_image = seen_image or suffix in IMAGE_TEXT_EXTENSIONS
             seen_media = seen_media or suffix in MEDIA_EXTENSIONS
             checked += 1

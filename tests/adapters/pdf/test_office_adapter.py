@@ -32,7 +32,8 @@ def test_office_routes_to_existing_local_document_backend(tmp_path, suffix):
         with patch.object(Path, "open", guard_input_open):
             plan = build_plan(value, available_gates={"local_compute"})
         assert plan.execution_ready
-        assert plan.runtime_provider == "pdf.markitdown"
+        from openmd.engines.native import PROMOTED
+        assert plan.runtime_provider == ("document.engines" if suffix.lower().lstrip('.') in PROMOTED else "pdf.markitdown")
 
 
 def test_document_folder_includes_office_files_but_not_extension_named_directory(tmp_path):
@@ -40,8 +41,8 @@ def test_document_folder_includes_office_files_but_not_extension_named_directory
         (tmp_path / f"source{suffix}").write_text(suffix)
     (tmp_path / "not-a-file.docx").mkdir()
     items = PdfDocumentAdapter().resolve_items(str(tmp_path))
-    assert {Path(item.raw_meta["local_path"]).suffix for item in items} == {".pdf", ".docx", ".pptx", ".xlsx"}
-    assert len(items) == 4
+    assert {Path(item.raw_meta["local_path"]).suffix for item in items} == {".pdf", ".docx", ".pptx", ".xlsx", ".doc"}
+    assert len(items) == 5
 
 
 @pytest.mark.parametrize("suffix", [".docx", ".pptx", ".xlsx"])
@@ -52,10 +53,27 @@ def test_remote_office_is_rejected_before_parser_import(suffix):
     assert result.error_code == "document_local_file_required"
 
 
-def test_legacy_doc_is_not_advertised_as_executable(tmp_path):
+def test_legacy_doc_is_not_advertised_as_executable(tmp_path, monkeypatch):
+    monkeypatch.setattr('openmd.engines.native.NativeEngine.available', lambda self: {'ok':False,'reason':'test missing native','version':None})
+    monkeypatch.setattr("openmd.engines.tools.SofficeEngine.available", lambda self: {"ok": False, "reason": "missing", "version": None})
     path = tmp_path / "source.doc"
     path.write_bytes(b"fixture")
-    assert not build_plan(str(path), available_gates={"local_compute"}).execution_ready
+    plan = build_plan(str(path), available_gates={"local_compute"})
+    assert not plan.execution_ready
+    assert plan.blocked_reason == "engine_unavailable:soffice"
+    assert plan.next_action
+
+
+def test_legacy_doc_plan_is_ready_when_soffice_is_available(tmp_path, monkeypatch):
+    path = tmp_path / "source.doc"
+    path.write_bytes(b"fixture")
+    monkeypatch.setattr(
+        "openmd.engines.tools.SofficeEngine.available",
+        lambda self: {"ok": True, "reason": "test", "version": "test"},
+    )
+    plan = build_plan(str(path), available_gates={"local_compute"})
+    assert plan.execution_ready
+    assert plan.blocked_reason is None
 
 
 @pytest.mark.parametrize("suffix", [".docx", ".pptx", ".xlsx"])

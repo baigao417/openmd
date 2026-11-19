@@ -27,6 +27,7 @@ OPENCLI_ADAPTER_PLATFORMS: frozenset[str] = frozenset(
         "xiaohongshu",
         "xiaoe",
         "x",
+        "ai_chat",
     }
 )
 
@@ -95,6 +96,21 @@ class AdapterRegistry:
         primary = chain[0]
         fallbacks = chain[1:] if allow_fallback else ()
         return BackendSelection(platform=platform, primary=primary, fallbacks=fallbacks)
+
+    def select_backend_for_item(
+        self,
+        item,
+        requested: str | None = None,
+        *,
+        allow_fallback: bool = True,
+    ) -> BackendSelection:
+        if item.platform == "ai_chat" and not requested:
+            from openmd.backends.ai_chat import ai_chat_backend_for_site
+
+            backend = ai_chat_backend_for_site(str(item.raw_meta.get("chat_site") or ""))
+            if backend:
+                return BackendSelection(platform=item.platform, primary=backend, fallbacks=())
+        return self.select_backend(item.platform, requested, allow_fallback=allow_fallback)
 
 
 def create_default_registry(

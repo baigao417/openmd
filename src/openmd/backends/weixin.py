@@ -280,7 +280,7 @@ class OpenCliWeixinDownloadProvider:
                 "json",
                 "--window",
                 "background",
-                "--keep-tab",
+                "--site-session", "ephemeral", "--keep-tab",
                 "false",
             ]
             exit_code, stdout, stderr = self._runner(command, self.timeout)

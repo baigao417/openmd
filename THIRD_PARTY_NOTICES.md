@@ -26,13 +26,38 @@ compatibility identifier, not a claim that the upstream pipeline is integrated.
 
 ## Installed at runtime (not redistributed here)
 
+### Document parsing libraries
+
+Openmd's document glue is original code; no MarkItDown or anydoc source is
+copied. These optional libraries are installed by pip and retain their licenses:
+
+| Library | License | Purpose |
+|---|---|---|
+| mammoth (mike.zwobble.org/projects/mammoth/) | BSD-2-Clause | DOCX semantic HTML |
+| python-pptx (github.com/scanny/python-pptx) | MIT | PPTX slides, charts, notes |
+| openpyxl (openpyxl.readthedocs.io) | MIT | XLSX saved values and formulas |
+| xlrd (github.com/python-excel/xlrd) | BSD-3-Clause | XLS saved cell values |
+| olefile (github.com/decalage2/olefile) | BSD-2-Clause | MSG/DOC/PPT local OLE streams |
+| pdfminer.six (github.com/pdfminer/pdfminer.six) | MIT | Native PDF text and page boundaries |
+
+The original legacy Word text reader follows Microsoft's public MS-DOC
+FibBase, FibRgLw97, FibRgFcLcb97, Clx, PlcPcd and Pcd structures
+(learn.microsoft.com/openspecs/office_file_formats/ms-doc/).
+It extracts text and basic table delimiters; it does not certify full layout.
+The original legacy PowerPoint reader follows public MS-PPT RecordHeader,
+TextCharsAtom and TextBytesAtom structures
+(learn.microsoft.com/openspecs/office_file_formats/ms-ppt/). Active-slide
+persistence, drawing geometry and layout are not certified; results are partial.
+
 | Component | License | How it arrives |
 |---|---|---|
 | opencli (`@jackwener/opencli` 2.0.3) | Apache-2.0 | Downloaded from npm on first need into `~/.openmd/tools/opencli` |
 | Node.js via `nodejs-wheel-binaries` | MIT | `pip` dependency |
 | trafilatura | Apache-2.0 | `pip` dependency |
 | youtube-transcript-api, beautifulsoup4, markdownify | MIT | `pip` dependencies |
-| faster-whisper, MarkItDown, RapidOCR, Pillow, PyMuPDF … | see each project | optional extras (`openmd-cli[asr]`, `openmd-cli[document]` …) |
+| faster-whisper, RapidOCR, Pillow, PyMuPDF … | see each project | optional ASR/OCR extras or parser dependencies |
+| MarkItDown | MIT | optional `[pdf]` compatibility fallback; excluded from `[document]` |
+| pypandoc-binary / Pandoc | see wrapper and bundled executable licenses | optional `[pandoc]` structure fallback; no bundled copy in this repository |
 
 FFmpeg, yt-dlp and other command-line tools are used only if you install them; their own licenses
 apply.

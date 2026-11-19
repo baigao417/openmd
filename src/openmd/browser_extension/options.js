@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let settings = { locations: [], defaultId: null, clickMode: "auto", videoMode: "note" };
+let settings = { locations: [], defaultId: null, clickMode: "auto", videoMode: "note", includeThinking: false, allowFeedbackPackage: false };
 
 function native(message) {
   return chrome.runtime.sendMessage({ cmd: "native", message });
@@ -81,11 +81,13 @@ function render() {
   for (const loc of settings.locations) rows.append(row(loc));
   document.querySelectorAll('input[name="mode"]').forEach((r) => { r.checked = r.value === settings.clickMode; });
   document.querySelectorAll('input[name="video"]').forEach((r) => { r.checked = r.value === (settings.videoMode || "note"); });
+  $("include-thinking").checked = settings.includeThinking === true;
+  $("allow-feedback").checked = settings.allowFeedbackPackage === true;
 }
 
 async function init() {
   const stored = (await chrome.storage.local.get("settings")).settings;
-  if (stored) settings = { videoMode: "note", ...stored };
+  if (stored) settings = { videoMode: "note", includeThinking: false, allowFeedbackPackage: false, ...stored };
   const ping = await native({ type: "ping" });
   const host = $("host");
   host.textContent = ping?.ok ? "本机 openmd 已连接" : (ping?.error || "未连接本机 openmd");
@@ -108,6 +110,16 @@ $("add").addEventListener("click", () => {
 
 document.querySelectorAll('input[name="mode"]').forEach((r) => {
   r.addEventListener("change", () => { settings.clickMode = r.value; persist(); });
+});
+
+$("include-thinking").addEventListener("change", () => {
+  settings.includeThinking = $("include-thinking").checked;
+  persist();
+});
+
+$("allow-feedback").addEventListener("change", () => {
+  settings.allowFeedbackPackage = $("allow-feedback").checked;
+  persist();
 });
 
 init();

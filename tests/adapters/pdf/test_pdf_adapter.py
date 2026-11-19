@@ -37,7 +37,7 @@ class PdfDocumentAdapterTests(unittest.TestCase):
             self.assertEqual(adapter.id, "pdf")
             self.assertEqual(
                 registry.backend_chain("pdf"),
-                ("pdf.markitdown", "pdf.textlayer", "ocr.chain"),
+                ("pdf.markitdown", "pdf.textlayer", "ocr.chain", "document.engines"),
             )
 
     def test_resolves_local_pdf_file_without_copying_raw_document(self) -> None:
@@ -164,18 +164,27 @@ class PdfDocumentAdapterTests(unittest.TestCase):
             _write_fake_pdf(pdf_path)
             fake_module = types.ModuleType("markitdown")
             fake_module.__spec__ = importlib.machinery.ModuleSpec("markitdown", loader=None)
+            fake_converters = types.ModuleType("markitdown.converters")
+            fake_converters.PdfConverter = type("FakePdfConverter", (), {})
 
             class FakeConverted:
                 text_content = "Openmd PDF text\n开放文档 PDF 文本"
 
             class FakeMarkItDown:
+                def __init__(self, **kwargs):
+                    assert kwargs.get("enable_plugins") is False
+                    assert kwargs.get("enable_builtins") is False
+
+                def register_converter(self, converter):
+                    self.converter = converter
+
                 def convert(self, source: str) -> FakeConverted:
                     self.source = source
                     return FakeConverted()
 
             fake_module.MarkItDown = FakeMarkItDown
 
-            with patch.dict(sys.modules, {"markitdown": fake_module}):
+            with patch.dict(sys.modules, {"markitdown": fake_module, "markitdown.converters": fake_converters}):
                 result = MarkItDownPDFParser().parse(str(pdf_path), title="Sample PDF")
 
         self.assertTrue(result.has_usable_text)

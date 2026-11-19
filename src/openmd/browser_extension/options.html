@@ -22,10 +22,22 @@
     </section>
 
     <section>
-      <h2>帖子里带视频时（目前 X）</h2>
+      <h2>帖子里带视频或音频时</h2>
       <label class="choice"><input type="radio" name="video" value="note"> 只注明有视频（最快）</label>
       <label class="choice"><input type="radio" name="video" value="text"> 附上视频逐字稿（本机转写，较慢）</label>
-      <p class="hint">不论选哪个，在 X 页面右键都可以单独选“含视频文字版”或“含视频文字版和视频文件”。</p>
+      <p class="hint">任意 http(s) 页面右键都可以单独选择文字版或视频/音频文件；已有平台逐字稿路线不会重复转写。</p>
+    </section>
+
+    <section>
+      <h2>AI 对话</h2>
+      <label class="choice"><input type="checkbox" id="include-thinking"> 保留思考过程</label>
+      <p class="hint">默认只保存最终回答；勾选后，页面中可识别的思考过程会放在对应回答前。</p>
+    </section>
+
+    <section>
+      <h2>问题反馈</h2>
+      <label class="choice"><input type="checkbox" id="allow-feedback"> 保存出问题时，允许生成脱敏问题包</label>
+      <p class="hint">默认关闭。启用后，失败或部分结果的通知会提供“生成问题报告”；生成前仍请检查包内文件。</p>
     </section>
 
     <section>

@@ -44,3 +44,73 @@ openmd routes restore defuddle.web.content --source web_article
 `routes bench` 每次只跑一个固定样本；可以用 `--sample` 选择。质量/速度权重为 80%/20%，只比较同一来源、能力、样本和参考。当前样本注册表是种子集，多数格没有独立参考，不代表已经建好每格 2–3 个金标准样本。两次同版本、同样本的可复核工具失败才允许本地降级；缺依赖、缺权限与缺模型不算工具失效。覆盖层写 append-only 事件，运行回执保留 `route_trace`；恢复追加事件，不改打包路由。当前需要显式执行降级，不自动调整；建议首选每周、备用每月复测，本轮未创建任何调度任务。
 
 已真实验证四个工具的原生调用及普通 CLI 中英文 ASR；另由日常 `openmd go` 完成一个 291 秒 B 站视频的匿名 yutto 下载→本地 ASR→包/回执保存。xyz 长节目仍只验证下载，未做整集转录。单样本执行成功不证明独立准确率或所有节目覆盖；平台广度、长音频质量和登录内容仍需分别验收。
+
+
+## Managed OpenCLI configuration and lifecycle
+
+Openmd always runs its pinned OpenCLI. Other PATH installations are ignored.
+The optional `tools.opencli` location has a required `root` and optional
+`config_dir` (nonempty strings). Without `config_dir`, configuration lives in
+`<Openmd data>/opencli`. `openmd doctor --json` reports the executable, installed
+version, selected config directory, plugin names and an ignored PATH install.
+
+`openmd opencli migrate` lists only relative filenames and sizes from the legacy
+`.opencli` directory. `--apply --to <directory>` copies files with timestamps,
+retains source files, preserves existing destination files as reported conflicts,
+and writes `openmd-migration-receipt.json`. No credential contents are printed.
+Xiaoyuzhou checks the selected directory first, then the read-only legacy file.
+
+OpenCLI 2.0.3 uses `OPENCLI_CONFIG_DIR` for profiles but uses the home directory
+for plugin discovery and `plugins.lock.json`. Openmd gives only its child
+process a private home whose `.opencli` link resolves to `config_dir`.
+The controller's home and global PATH are unchanged. Packaged read adapters are
+installed under `openmd-owned/xiaoe` and `plugins/openmd-*`; Node's built-in TypeScript
+stripper produces the JavaScript needed by 2.0.3 plugin discovery. Existing
+modified adapter files are rejected rather than overwritten.
+
+`openmd opencli list` and `openmd opencli <site> <command> [args]` preserve stdout,
+stderr and exit status. Registry metadata must say `access: read`; writes and
+unknown commands require an explicit `--allow-write` (before or after the site).
+A foreign daemon on port 19825 fails with `opencli_daemon_foreign`; Openmd never
+stops it. Unknown daemon identity also fails closed.
+
+Browser options in local configuration:
+
+```json
+{"browser": {"idle_timeout_seconds": 120, "window_strategy": "offscreen-reuse"}}
+```
+
+`window_strategy` accepts `offscreen-reuse` (offscreen creation plus container
+reuse), `reuse` (ordinary background creation plus reuse), and `existing-window`
+(inactive owned tabs in a collapsed group within an existing ordinary window).
+Override with `OPENMD_BROWSER_WINDOW_STRATEGY` and `OPENMD_BROWSER_IDLE_SECONDS`.
+Owned pages start blank, are muted, and then navigate. `OPENMD_BROWSER_SOUND=1`
+enables sound for newly created owned tabs; `OPENMD_SHOW_BROWSER=1` enables the
+visible debug window. Borrowed user tabs retain their mute and ownership state.
+`OPENCLI_CLOSE_OWNED_TAB` defaults to `1` and remains explicitly overridable.
+Browser adapters identified by the pinned command manifest default to ephemeral
+sessions; API commands retain their arguments and do not prepare a browser daemon.
+Unknown third-party command metadata does not receive guessed browser options.
+Multi-step jobs close in `finally`.
+Only owned, inactive leases in the `openmd` profile are eligible for orphan
+cleanup. Cleanup receipts go to `<Openmd data>/browser-cleanup.jsonl`, separately
+from item runlogs; `joint_reload_required` means the currently loaded bridge does
+not implement the new protocol, not successful cleanup.
+
+Bridge changes require extension reload. Generate with
+`python scripts/vendor_opencli_bridge.py` and verify with `--check`; never edit
+the vendor JavaScript. Windows diagnostics are available via
+`scripts/diag_window_events.py --output evidence.json -- <command>`.
+No window/sound availability claim is made until real extension acceptance.
+
+## Agent receipt contract
+
+For non-interactive use, prefer:
+
+```bash
+openmd "<url-or-path>" -o <directory> --json
+```
+
+Read the saved artifact together with the top-level `status`, `source_level`, `completeness`, `sync`, `login`, `next_action`, and `error_code` fields. A successful process exit only says that the command ended; it does not certify the body. `status=partial` must remain partial when a source or member is missing.
+
+`openmd opencli list` and `openmd opencli <site> <command> [args]` are read-only pass-throughs to the pinned managed OpenCLI. The controller permits built-in read-only commands and rejects writes, unknown commands, and unknown-site help unless the caller explicitly supplies `--allow-write`. The exact write gate and privacy boundary are documented in [SKILL.md](../src/openmd/SKILL.md).

@@ -1,4 +1,4 @@
-"""Pure V1 planning projection. This module must never construct a provider."""
+"""Read-only planning; required document executables may be checked locally."""
 
 from __future__ import annotations
 
@@ -66,6 +66,8 @@ class PlanResult:
     discovery_provider: str | None = None
     required_backend: str | None = None
     required_discovery_backend: str | None = None
+    next_action: str | None = None
+    checked_engine: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -88,8 +90,10 @@ class PlanResult:
             "discovery_provider": self.discovery_provider,
             "required_backend": self.required_backend,
             "required_discovery_backend": self.required_discovery_backend,
-            "readiness_scope": "static_contract_only",
-            "runtime_checks": "dependencies, models, credentials and source access are not probed",
+            "next_action": self.next_action,
+            "checked_engine": self.checked_engine,
+            "readiness_scope": "local_document_dependency_checked" if self.checked_engine else "static_contract_only",
+            "runtime_checks": "required local document executable checked; input content, models, credentials and source access are not probed" if self.checked_engine else "dependencies, models, credentials and source access are not probed",
         }
 
 
@@ -240,6 +244,34 @@ def build_plan(
     except ValueError:
         return _blocked(source_id, selected_kind, request_all, code="source_unsupported", reason="input source is not approved")
 
+    if source_id == "ai_chat":
+        from openmd.core.detector import ai_chat_site
+        from openmd.backends.ai_chat import ai_chat_backend_for_site, IMPLEMENTED_AI_CHAT_SITES, EXPERIMENTAL_AI_CHAT_SITES
+
+        site = ai_chat_site(value)
+        site_backend = ai_chat_backend_for_site(site or "")
+        if site_backend and site not in IMPLEMENTED_AI_CHAT_SITES:
+            return PlanResult(
+                ok=True,
+                detected_source=source_id,
+                input_kind=selected_kind,
+                capability_tier=record.tier,
+                implementation_state="unimplemented",
+                source_exhausted_requested=request_all,
+                source_exhausted_approved=False,
+                planned_provider=site_backend,
+                runtime_provider=None,
+                binding_state="unimplemented",
+                execution_ready=False,
+                required_gates=("browser", "account"),
+                cost_class="unknown",
+                side_effects=READ_ONLY_SIDE_EFFECTS,
+                blocked_reason=f"AI chat site is not implemented: {site}",
+                error_code="ai_chat_site_not_implemented",
+                required_backend=site_backend,
+                next_action=f"AI chat site not implemented: {site}.",
+            )
+
     if local_path is not None and selected_kind != inferred_kind:
         return _blocked(source_id, selected_kind, request_all, code="input_shape_unsupported", reason="input kind does not match local input", record=record)
     if inferred_kind == "collection" and selected_kind == "single":
@@ -254,6 +286,15 @@ def build_plan(
     gates = available_gates or set()
     required = list(record.required_gates)
     runtime_provider = record.runtime_provider
+    if source_id == "ai_chat":
+        runtime_provider = site_backend or runtime_provider
+    if local_path is not None and source_id == "pdf_office":
+        from openmd.core.detector import LOCAL_DOCUMENT_EXTENSIONS
+        from openmd.engines.native import PROMOTED
+        if local_path.suffix.lower() in LOCAL_DOCUMENT_EXTENSIONS or local_path.suffix.lower().lstrip('.') in PROMOTED:
+            from openmd.routing.loader import load_catalog
+            runtime_provider = "document.engines"
+            required = list(load_catalog().capabilities[runtime_provider].get("gates", []))
     if not set(required) <= gates and source_id in {"youtube", "bilibili", "weixin", "web_article"}:
         # Project an allowed fallback from the same declarations as execution.
         # Planning stays static: do not construct or probe a provider.
@@ -309,9 +350,26 @@ def build_plan(
         operation_block = "source exhaustion is not implemented for this operation"
     if local_path is None and source_id in {"pdf_office", "screenshot"}:
         operation_block = "this provider requires a local file"
+    dependency_block = None
+    dependency_next_action = None
+    required_engine = None
+    if local_path is not None and source_id == "pdf_office":
+        suffix = local_path.suffix.lower().lstrip(".")
+        required_engine = "soffice" if suffix in {"doc", "xls", "ppt", "odp", "ods"} else "calibre" if suffix in {"mobi", "azw3", "fb2"} else None
+        from openmd.engines.native import NativeEngine, PROMOTED, FALLBACK_FORMATS
+        if required_engine and suffix in PROMOTED | FALLBACK_FORMATS and NativeEngine(suffix).available()['ok']:
+            required_engine = None
+        if required_engine:
+            from openmd.engines.tools import CalibreEngine, SofficeEngine
+            engine = SofficeEngine() if required_engine == "soffice" else CalibreEngine()
+            if not engine.available()["ok"]:
+                dependency_block = f"engine_unavailable:{required_engine}"
+                dependency_next_action = engine.install_hint
     missing_gates = tuple(dict.fromkeys(gate for gate in required if gate not in gates))
-    execution_ready = record.binding_state == "implemented" and not missing_gates and record.state not in {"blocked", "paused"} and operation_block is None
-    if operation_block:
+    execution_ready = record.binding_state == "implemented" and not missing_gates and record.state not in {"blocked", "paused"} and operation_block is None and dependency_block is None
+    if dependency_block:
+        blocked_reason = dependency_block
+    elif operation_block:
         blocked_reason = operation_block
     elif record.binding_state == "unimplemented":
         blocked_reason = "runtime provider is not implemented"
@@ -331,10 +389,10 @@ def build_plan(
         detected_source=source_id,
         input_kind=selected_kind,
         capability_tier=record.tier,
-        implementation_state=record.state,
+        implementation_state="experimental" if source_id == "ai_chat" and site in EXPERIMENTAL_AI_CHAT_SITES else record.state,
         source_exhausted_requested=request_all,
         source_exhausted_approved=request_all and selected_kind in record.source_exhausted_kinds,
-        planned_provider=record.planned_provider,
+        planned_provider=runtime_provider if source_id == "ai_chat" else record.planned_provider,
         runtime_provider=runtime_provider,
         binding_state=record.binding_state,
         execution_ready=execution_ready,
@@ -342,7 +400,9 @@ def build_plan(
         cost_class=record.cost_class,
         side_effects=READ_ONLY_SIDE_EFFECTS,
         blocked_reason=blocked_reason,
-        error_code=None,
+        error_code="engine_unavailable" if dependency_block else None,
+        next_action=dependency_next_action,
+        checked_engine=required_engine,
         discovery_provider=discovery_provider,
         required_backend=required_backend,
         required_discovery_backend=required_discovery_backend,

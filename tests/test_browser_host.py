@@ -96,6 +96,44 @@ def test_status_rejects_path_like_ids():
     assert not browser_host.handle({"type": "reveal", "id": "0" * 32})["ok"]
 
 
+def test_feedback_report_reads_only_sanitized_snapshot(tmp_path):
+    job = browser_host.start_snapshot_job("<p>private-sentinel</p>", "https://example.org/page", save_to=str(tmp_path), spawn=lambda *a, **k: None)
+    job_dir = browser_host.jobs_root() / job["id"]
+    # Simulate the queue's safe handoff after the raw snapshot was removed.
+    safe = job_dir / "sanitized-structure.html"
+    safe.write_text("<p>synthetic</p>", encoding="utf-8")
+    status = browser_host.read_status(job["id"])
+    status["state"] = "failed"
+    status["sanitized_snapshot_path"] = str(safe)
+    (job_dir / "status.json").write_text(json.dumps(status), encoding="utf-8")
+    reply = browser_host.handle({"type": "feedback_report", "id": job["id"], "save_to": str(tmp_path)})
+    assert reply["ok"] and Path(reply["report"]["output"]).is_dir()
+    assert "private-sentinel" not in (Path(reply["report"]["output"]) / "structure.html").read_text(encoding="utf-8")
+
+
+def test_snapshot_feedback_sample_requires_opt_in_and_nonverified_result(tmp_path):
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, json.dumps({"ok": True, "status": "verified"}), "")
+    job = browser_host.start_snapshot_job("<p>private</p>", "https://example.org/page", save_to=str(tmp_path), spawn=lambda *a, **k: None)
+    done = browser_host.run_job(browser_host.jobs_root() / job["id"], runner=runner)
+    assert done["state"] == "done"
+    assert "sanitized_snapshot_path" not in done
+
+    job = browser_host.start_snapshot_job("<p>private</p>", "https://example.org/page", save_to=str(tmp_path), feedback_opt_in=True, spawn=lambda *a, **k: None)
+    def partial(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, json.dumps({"ok": True, "status": "partial", "error_code": "incomplete"}), "")
+    done = browser_host.run_job(browser_host.jobs_root() / job["id"], runner=partial)
+    assert Path(done["sanitized_snapshot_path"]).is_file()
+
+
+def test_feedback_report_without_opt_in_sample_has_resume_action(tmp_path):
+    job = browser_host.start_snapshot_job("<p>x</p>", "https://example.org/page", save_to=str(tmp_path), spawn=lambda *a, **k: None)
+    reply = browser_host.handle({"type": "feedback_report", "id": job["id"], "save_to": str(tmp_path)})
+    assert reply["ok"] is False
+    assert reply["error_code"] == "feedback_not_available"
+    assert "重新保存" in reply["next_action"]
+
+
 def test_host_manifest_allows_only_this_extension(tmp_path):
     manifest_path = write_host_files(tmp_path, python=r"C:\Python\python.exe")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

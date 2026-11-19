@@ -33,12 +33,15 @@ Issues = "https://github.com/baigao417/openmd/issues"
 Changelog = "https://github.com/baigao417/openmd/commits/main"
 
 [project.optional-dependencies]
+mcp = ["mcp==1.26.0"]
 asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7", "psutil>=5.9"]
+media = ["yt-dlp[default]>=2026.10.26"]  # [default] brings yt-dlp-ejs for YouTube JS challenges
 web = []  # kept for compatibility; trafilatura is now a core dependency
+pandoc = ["pypandoc-binary>=1.14,<2"]  # optional local structure enhancement
 pdf = ["markitdown[pdf]>=0.1.6"]
 ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
 ocr-router = ["Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]
-document = ["markitdown[pdf,docx,pptx,xlsx]>=0.1.6", "rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
+document = ["mammoth>=1.8,<2", "python-pptx>=1.0,<2", "openpyxl>=3.1,<4", "xlrd>=2,<3", "olefile>=0.47,<1", "pdfminer.six>=20231228"]
 # Contributors: pip install -e ".[dev]" then python -m pytest
 dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also need ffmpeg on PATH
 
@@ -52,10 +55,12 @@ version = { attr = "openmd.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
+"openmd.contracts" = ["shared_surfaces.json"]
 "openmd.routing" = ["routes.json", "declarations.json", "cards/*.json"]
-"openmd" = ["browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
+"openmd" = ["SKILL.md", "browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
 "openmd.ocr" = ["settings.json", "ovis-prompt.txt"]
-"openmd.runtime" = ["tingwu_bridge.mjs"]
+"openmd.runtime" = ["tingwu_bridge.mjs", "recommendations.json"]
+"openmd.engines" = ["local_html.cjs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -63,3 +68,6 @@ pythonpath = ["src"]
 
 [tool.setuptools.data-files]
 "share/openmd/opencli/xiaoe" = ["integrations/opencli/xiaoe/play-url.js", "integrations/opencli/xiaoe/catalog.js", "integrations/opencli/xiaoe/content.js", "integrations/opencli/xiaoe/dispatch.js"]
+
+"share/openmd/opencli/openmd-douyin" = ["integrations/opencli/openmd-douyin/package.json", "integrations/opencli/openmd-douyin/opencli-plugin.json", "integrations/opencli/openmd-douyin/creator-videos.ts"]
+"share/openmd/opencli/openmd-xiaohongshu" = ["integrations/opencli/openmd-xiaohongshu/package.json", "integrations/opencli/openmd-xiaohongshu/opencli-plugin.json", "integrations/opencli/openmd-xiaohongshu/creator-notes.ts", "integrations/opencli/openmd-xiaohongshu/note-assets.ts"]

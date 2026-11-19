@@ -59,9 +59,13 @@ def _preview(args: argparse.Namespace, url: str) -> None:
 
 
 def _authorize(args: argparse.Namespace, url: str, *, tty: bool) -> bool:
+    if getattr(args, "_explicit_permissions", False):
+        return True
     # Open-source ease of use (user decision 2026-11-15): a non-interactive run
     # that names a destination gets the same daily gates as the terminal flow.
     # Explicit capability flags stay a narrow grant; cloud is never implied.
+    if getattr(args, "as_snapshot", False):
+        return True
     _preview(args, url)
     explicit = [gate for gate, option in _GATE_OPTIONS.items() if getattr(args, option, False)]
     if getattr(args, "enable_cloud_backends", False):
@@ -180,7 +184,7 @@ def _daily_filename(title: str) -> str:
     return value
 
 
-def _save(stage: Path, destination: Path, *, title: str, package: bool = False, source: Path | None = None) -> Path:
+def _save(stage: Path, destination: Path, *, title: str, package: bool = False, source: Path | None = None, sync_receipt: dict | None = None) -> Path:
     destination = destination.expanduser().resolve()
     if destination.exists() and not destination.is_dir():
         raise ValueError("save_directory_required: 请输入保存文件夹")
@@ -206,6 +210,24 @@ def _save(stage: Path, destination: Path, *, title: str, package: bool = False, 
     if source.suffix != ".md" or not source.resolve().is_relative_to(stage.resolve()):
         raise ValueError("go_single_markdown_required: 未找到本次提取的 Markdown")
     base = _daily_filename(title)
+    staged_manifest = stage / ".openmd/manifest.json"
+    if staged_manifest.is_file():
+        from openmd.core.sync_manifest import SyncManifest
+
+        entries = json.loads(staged_manifest.read_text(encoding="utf-8")).get("entries", {})
+        relative = source.resolve().relative_to(stage.resolve()).as_posix()
+        matches = [entry for entry in entries.values() if entry.get("path") == relative]
+        if len(matches) != 1:
+            raise ValueError("go_sync_source_identity_missing")
+        entry = matches[0]
+        synced = SyncManifest(destination).write(entry["source_id"], f"{base}.md", source.read_text(encoding="utf-8"),
+                                                 content_identity=entry.get("content_identity"))
+        if sync_receipt is not None:
+            sync_receipt["operation"] = synced.operation
+            sync_receipt.pop("renamed_from", None)
+            if synced.renamed_from is not None:
+                sync_receipt["renamed_from"] = synced.renamed_from
+        return synced.path
     for attempt in range(100):
         target = destination / f"{base}{'-' + uuid4().hex[:6] if attempt else ''}.md"
         try:
@@ -244,6 +266,12 @@ def _source_summary(stage: Path, result) -> tuple[str, list[dict[str, object]]]:
 
 
 def _failure_hint(rows: list[dict[str, object]]) -> str:
+    from openmd.core.login import login_for_url, login_hint, is_login_code
+
+    for row in reversed(rows):
+        if is_login_code(row.get("error_code")):
+            login = row.get("login") or login_for_url(str(row.get("input_url") or ""), str(row.get("platform") or ""))
+            return login_hint(login)
     codes = " ".join(str(row.get("error_code") or "") for row in rows).lower()
     if "browser_challenge_page" in codes:
         return "被站点验证页拦截，未取得目标正文；请在浏览器中确认原链接可访问后重试。"
@@ -251,6 +279,11 @@ def _failure_hint(rows: list[dict[str, object]]) -> str:
         return "公众号返回了错误页（链接失效、已删除或已过期），没有正文；请在微信或浏览器中打开确认。"
     if "content_navigation_shell" in codes:
         return "页面只有导航或图片，没有正文；链接可能不存在（软 404）或需要登录，请在浏览器中打开确认。"
+    if "engine_unavailable" in codes:
+        for row in reversed(rows):
+            if row.get("error_code") == "engine_unavailable" and row.get("error_summary"):
+                return str(row["error_summary"])
+        return "所需文档引擎未安装；请按 next_action 安装对应引擎后重试。"
     attempts = [a for row in rows if isinstance(row.get("route_trace"), dict) for a in row["route_trace"].get("fallback_attempts") or []]
     opencli_missing = any(str(a.get("backend", "")).startswith("opencli.") and a.get("error_code") in {"backend_exit_127", "backend_not_found"} for a in attempts)
     content_verdict = any(word in codes for word in ("weixin_error_page", "not_found", "404"))
@@ -295,23 +328,69 @@ def issue_context(url: str, rows: list[dict[str, object]]) -> str:
 
 def _emit_saved(args: argparse.Namespace, *, target: Path, outputs: list[str], records: Path | None) -> None:
     if getattr(args, "json", False):
-        print(json.dumps({"ok": True, "command": "go", "saved_to": str(target), "outputs": outputs, "records": str(records) if records else None}, ensure_ascii=True))
+        result = getattr(args, "_go_result", None)
+        print(json.dumps({"ok": True, "command": "go", "saved_to": str(target), "outputs": outputs, "records": str(records) if records else None, **_go_receipt_fields(result, None, ok=True)}, ensure_ascii=True))
     else:
         print(f"已保存：{target}")
         if getattr(args, "verbose", False) and records:
             print(f"运行记录：{records}")
 
 
-def _attach_video(args: argparse.Namespace, url: str, markdown: Path) -> None:
-    from openmd.post_video import append_video_section, applies_to
+def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool) -> dict[str, object]:
+    row = next((r for r in reversed(rows or []) if r.get("event_type") == "item"), {})
+    return {
+        "status": row.get("status") or getattr(result, "status", None) or ("verified" if ok else "failed"),
+        "source_level": row.get("source_level") or getattr(result, "source_level", None),
+        "completeness": row.get("completeness") or getattr(result, "completeness", {}) or {},
+        "sync": row.get("sync") or getattr(result, "sync", {}) or {},
+        "login": row.get("login") or getattr(result, "login", None),
+        "next_action": getattr(result, "next_action", None),
+        "error_code": row.get("error_code") or getattr(result, "error_code", None),
+    }
+
+
+def _attach_video(args: argparse.Namespace, url: str, markdown: Path, *, stage: Path | None = None) -> None:
+    from openmd.post_video import (
+        append_media_retention_note,
+        append_retained_media_section,
+        append_video_section,
+        download_native_media_only,
+        native_media_source,
+        native_transcript_source,
+        should_process,
+    )
 
     mode = getattr(args, "video", "note") or "note"
-    if not applies_to(url) or not getattr(args, "enable_network_backends", False):
+    native_source = native_transcript_source(url)
+    if not getattr(args, "enable_network_backends", False):
+        return
+    if mode == "file" and native_source == "xiaoe":
+        append_media_retention_note(markdown, "本站点转写路线未提供可安全保留的公开解码媒体；受加密或访问控制的流仅用于转写")
+        return
+    media_source = native_media_source(url) if mode == "file" else None
+    media_kind = "audio" if media_source == "xiaoyuzhou" else "video" if media_source == "bilibili" else "video/音频"
+    if mode == "file" and native_source is not None:
+        if stage is not None and append_retained_media_section(markdown, stage / "raw-media", media_kind=media_kind):
+            return
+        if media_source is not None:
+            if not getattr(args, "enable_media_download", False) or stage is None:
+                append_media_retention_note(markdown, "未开启媒体下载；在命令行加 --enable-media-download，或从扩展右键菜单选择保存文件")
+                return
+            media_dir = stage / "raw-media"
+            media_path = download_native_media_only(url, media_dir, media_kind=media_kind)
+            if media_path is not None and append_retained_media_section(markdown, media_dir, media_kind=media_kind):
+                return
+        # No native route artifact was retained (for example YouTube subtitles
+        # do not download media). If a native media tool failed, fall back to
+        # post_video's bounded downloader without transcribing a second time.
+        append_video_section(markdown, url, mode, transcribe_media=False, media_kind=media_kind)
+        return
+    if not should_process(url, mode):
         return
     if mode in {"text", "file"} and not (getattr(args, "enable_media_download", False) and getattr(args, "enable_asr", False)):
         mode = "note"  # video text needs explicit media download plus local ASR
     if mode != "note":
-        _say(args, "正在处理帖子里的视频（下载音频并在本机转文字）…")
+        _say(args, "正在处理帖子里的视频/音频（下载并在本机转文字）…")
     try:
         append_video_section(markdown, url, mode)
     except OSError as exc:
@@ -319,6 +398,13 @@ def _attach_video(args: argparse.Namespace, url: str, markdown: Path) -> None:
 
 
 def cmd_go(args: argparse.Namespace) -> int:
+    """Save one input; only a human terminal save remembers its destination.
+
+    Both stdin and stdout must be TTYs, and neither --json (machine receipt)
+    nor --yes (unattended caller) may be set. A PTY attached to automation does
+    not make these explicit machine calls interactive. Batch has no preference
+    write; the extension keeps its human-selected destination in browser state.
+    """
     from openmd.cli import _emit_result, _process_input, _start_compact_receipt
     tty = is_interactive()
     if any(getattr(args, option, False) for option in ("all", "overwrite", "update", "new_version")) or args.package_root:
@@ -334,6 +420,24 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not url:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
+        from openmd.importers.chatgpt import cmd_import, is_chatgpt_export
+        from openmd.importers.claude import cmd_import as import_claude, is_claude_export
+
+        if getattr(args, "chatgpt_export", False) and getattr(args, "claude_export", False):
+            raise ValueError("official_export_format_flags_conflict")
+        if getattr(args, "claude_export", False):
+            return import_claude(args, url, tty=tty)
+        if getattr(args, "chatgpt_export", False):
+            return cmd_import(args, url, tty=tty)
+        if is_claude_export(url):
+            return import_claude(args, url, tty=tty)
+        if is_chatgpt_export(url):
+            return cmd_import(args, url, tty=tty)
+        if getattr(args, "as_snapshot", False):
+            source_url = str(getattr(args, "snapshot_url", "") or "").strip()
+            if not re.match(r"^https?://[^\s]+$", source_url):
+                print("openmd go: --as-snapshot 需要 --url <原始 http(s) URL>", file=sys.stderr)
+                return 2
         from openmd.core.input_validation import INPUT_HINT, network_preflight, valid_daily_input
 
         if not valid_daily_input(url):
@@ -347,11 +451,31 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not _authorize(args, url, tty=tty):
             _say(args, "已取消。")
             return 0
-        if args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
+        if not getattr(args, "as_snapshot", False) and args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
             failure = network_preflight(url)
             if failure:
                 print(failure, file=sys.stderr)
                 return 1
+        # Incremental export needs the persistent output manifest before extraction.
+        from openmd.adapters.registry import create_default_registry
+
+        adapter = None if getattr(args, "as_snapshot", False) else create_default_registry().adapter_for(url)
+        if getattr(adapter, "sync_cursor_enabled", False):
+            destination = args.save_to or args.out
+            if destination is None and tty:
+                destination = _prompt(args, "同步保存目录：")
+            if not destination:
+                raise ValueError("sync_output_directory_required")
+            run_args = argparse.Namespace(**vars(args))
+            run_args.out = str(Path(destination).expanduser().resolve())
+            run_args.url = url
+            if error := _start_compact_receipt(run_args, "go"):
+                raise ValueError(error)
+            try:
+                return _emit_result(run_args, _process_input(url, run_args, command="go"))
+            finally:
+                if lock := getattr(run_args, "_compact_output_lock", None):
+                    lock.release()
         workspace = _StagingWorkspace()
         with workspace as temporary:
             stage = Path(temporary)
@@ -362,11 +486,15 @@ def cmd_go(args: argparse.Namespace) -> int:
             run_args.package_root = None
             run_args.runlog = None
             run_args.command = "go"
+            if getattr(args, "video", "note") == "file":
+                run_args.keep_media = True
             start_error = _start_compact_receipt(run_args, "go")
             if start_error:
                 raise ValueError(start_error)
             try:
                 result = _process_input(url, run_args, command="go")
+                run_args._go_result = result
+                args._go_result = result
                 if run_args.receipt:
                     with contextlib.redirect_stdout(io.StringIO()):
                         receipt_code = _emit_result(run_args, result)
@@ -383,7 +511,8 @@ def cmd_go(args: argparse.Namespace) -> int:
                     if retained:
                         print(f"错误记录：{retained}", file=sys.stderr)
                     if getattr(args, "json", False):
-                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None}, ensure_ascii=True))
+                        print(json.dumps({"ok": False, "command": "go", "error": sanitize_error_summary(result.message) or "extraction_failed", "records": str(retained) if retained else None,
+                                          **_go_receipt_fields(result, rows, ok=False)}, ensure_ascii=True))
                     return 1
                 for output in result.outputs:
                     if Path(output).is_dir():
@@ -397,7 +526,9 @@ def cmd_go(args: argparse.Namespace) -> int:
                     meta = json.loads((first / "metadata.json").read_text(encoding="utf-8"))
                     title = str(meta.get("title") or title)
                 if not args.package and first.suffix == ".md":
-                    _attach_video(args, url, first)
+                    _attach_video(args, url, first, stage=stage)
+                elif args.package and first.is_dir() and (first / "index.md").is_file():
+                    _attach_video(args, url, first / "index.md", stage=stage)
                 label = "已取得部分正文" if any(row.get("status") == "partial" for row in rows) else "已取得正文"
                 _say(args, f"{label}：{title}" + (f"；来源：{source_label}" if source_label else ""))
                 if getattr(args, "verbose", False):
@@ -414,7 +545,12 @@ def cmd_go(args: argparse.Namespace) -> int:
                         return 0
                     try:
                         destination = Path(destination_text.strip().strip('"')).expanduser().resolve()
-                        target = _save(stage, destination, title=title, package=args.package, source=None if args.package else first)
+                        published_sync = {}
+                        target = _save(stage, destination, title=title, package=args.package, source=None if args.package else first, sync_receipt=published_sync)
+                        if published_sync:
+                            from dataclasses import replace
+
+                            args._go_result = replace(result, sync=published_sync)
                         break
                     except (OSError, ValueError) as exc:
                         if not tty or requested_destination:
@@ -431,7 +567,8 @@ def cmd_go(args: argparse.Namespace) -> int:
                 except (OSError, ValueError) as exc:
                     workspace.keep = True
                     print(f"正文已保存；运行记录暂留：{stage}（{sanitize_error_summary(exc)}）", file=sys.stderr)
-                if tty:
+                if (tty and not getattr(args, "json", False) and not getattr(args, "yes", False)
+                        and not getattr(args, "_explicit_permissions", False)):
                     try:
                         save_preferences(last_save_directory=destination)
                     except OSError as exc:

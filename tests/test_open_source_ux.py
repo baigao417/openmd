@@ -205,13 +205,13 @@ def test_managed_opencli_respects_opt_out_and_failed_install(tmp_path, monkeypat
     assert not managed_tools.managed_root().exists()
 
 
-def test_user_opencli_always_wins(tmp_path, monkeypatch) -> None:
+def test_user_opencli_is_ignored_when_managed_missing(tmp_path, monkeypatch) -> None:
     from openmd.runtime import managed_tools
 
     monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(managed_tools.shutil, "which", lambda name, path=None: str(tmp_path / "global" / "opencli"))
     monkeypatch.setattr(managed_tools, "run_interruptibly", lambda *a, **k: pytest.fail("must not install"))
-    assert managed_tools.ensure_opencli(lambda _m: None) == "user"
+    assert managed_tools.activate() == "missing"
 
 
 def test_managed_opencli_prepares_bundled_node_host_package(tmp_path, monkeypatch) -> None:

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
 
-from .models import ContentItem, MarkdownDocument, TranscriptResult
+from .models import ContentItem, MarkdownDocument, TranscriptResult, block_as_dict
 from .readable import format_transcript, markdown_label
 from .secrets import sanitize_error_summary, sanitize_url_text
 
@@ -19,6 +19,10 @@ FRONTMATTER_FIELDS: tuple[str, ...] = (
     "url",
     "published",
     "platform",
+    "format",
+    "completeness",
+    "captured_from",
+    "coverage",
 )
 
 _SOURCE_LABELS = {
@@ -37,6 +41,75 @@ _SOURCE_LABELS = {
 }
 
 
+def _demote_turn_headings(text: str) -> str:
+    """Keep turn headings above Markdown headings in the original turn body."""
+    lines = text.splitlines(keepends=True)
+    min_level: int | None = None
+    fence: str | None = None
+    for line in lines:
+        stripped = line.lstrip(" ")
+        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence is not None:
+            if fence_match and fence_match.group(1)[0] == fence[0] and len(fence_match.group(1)) >= len(fence):
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            continue
+        if stripped.rstrip("\r\n") in {"#### 思考过程", "#### 最终回答"}:
+            continue
+        match = re.match(r"^ {0,3}(#{1,6})(?:[ \t]+.*|[ \t]*)$", line.rstrip("\r\n"))
+        if match:
+            level = len(match.group(1))
+            min_level = level if min_level is None else min(min_level, level)
+
+    offset = max(0, 4 - min_level) if min_level is not None else 0
+    output: list[str] = []
+    fence: str | None = None
+    for line in lines:
+        stripped = line.lstrip(" ")
+        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence is not None:
+            output.append(line)
+            if fence_match and fence_match.group(1)[0] == fence[0] and len(fence_match.group(1)) >= len(fence):
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            output.append(line)
+            continue
+        if stripped.rstrip("\r\n") in {"#### 思考过程", "#### 最终回答"}:
+            output.append(line)
+            continue
+        match = re.match(r"^( {0,3})(#{1,6})([ \t]+.*|[ \t]*)$", line.rstrip("\r\n"))
+        if match:
+            level = min(6, len(match.group(2)) + offset)
+            ending = line[len(line.rstrip("\r\n")):]
+            output.append(match.group(1) + ("#" * level) + match.group(3) + ending)
+        else:
+            output.append(line)
+    return "".join(output)
+
+_COVERAGE_LABELS = {
+    "provider_declared_complete": "提供方声明完整",
+    "visible_branch": "当前可见分支",
+    "visible_only": "当前可见页面",
+}
+_LEGACY_COVERAGE_VALUES = {
+    "当前可见分支": "visible_branch",
+    "提供方声明完整": "provider_declared_complete",
+}
+
+
+def coverage_machine_value(value: object) -> str:
+    machine = str(value or "visible_branch")
+    return _LEGACY_COVERAGE_VALUES.get(machine, machine)
+
+
+def coverage_label(value: object) -> str:
+    return _COVERAGE_LABELS.get(coverage_machine_value(value), str(value or "visible_branch"))
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -50,6 +123,51 @@ def _frontmatter_value(value: Any) -> str:
     # JSON strings are valid YAML scalars and avoid implicit YAML booleans,
     # numbers, dates and special punctuation in external titles/authors.
     return json.dumps(text, ensure_ascii=False)
+
+
+def _format_completeness_seconds(value: Any) -> str | None:
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    if seconds < 0:
+        return None
+    whole = int(round(seconds))
+    hours, remainder = divmod(whole, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _completeness_frontmatter(result: TranscriptResult) -> str | None:
+    """Render only proven gaps as a short human-facing front matter scalar."""
+    completeness = result.metadata.get("completeness")
+    if not isinstance(completeness, dict) or completeness.get("status") != "downgrade":
+        return None
+    checks = completeness.get("checks")
+    if not isinstance(checks, list):
+        return "partial — 独立完整度核对发现缺口"
+    for check in checks:
+        if not isinstance(check, dict) or check.get("status") != "downgrade":
+            continue
+        gap = check.get("gap")
+        if check.get("signal") == "media_duration" and isinstance(gap, dict):
+            start = _format_completeness_seconds(gap.get("start_seconds"))
+            end = _format_completeness_seconds(gap.get("end_seconds"))
+            if start and end:
+                return f"partial — 逐字稿止于 {start}，媒体时长 {end}"
+        if check.get("signal") == "pdf_pages" and isinstance(gap, dict):
+            missing = gap.get("missing_pages")
+            if isinstance(missing, list) and missing:
+                numbers = [page for page in missing if isinstance(page, int) and page > 0]
+                if numbers:
+                    total = gap.get("total_pages")
+                    total = total if isinstance(total, int) and total > 0 else max(numbers)
+                    output = gap.get("output_pages")
+                    output = output if isinstance(output, int) and output >= 0 else max(0, total - len(numbers))
+                    return f"partial — 输出 {output}/{total} 页"
+        reason = str(check.get("reason") or "独立完整度核对发现缺口").strip()
+        return f"partial — {reason}"
+    return "partial — 独立完整度核对发现缺口"
 
 
 def source_level_label(value: object) -> str:
@@ -112,13 +230,99 @@ def render_markdown_document(
         "status": result.status,
         "source_level": result.source_level,
         "backend": result.backend,
+        "format": document_source_format(item, result),
     }
+    completeness = _completeness_frontmatter(result)
+    if completeness is not None:
+        frontmatter["completeness"] = completeness
+    if item.platform == "page_snapshot" or result.metadata.get("captured_from") == "browser_snapshot":
+        frontmatter.update({
+            "captured_from": "browser_snapshot",
+            "coverage": "visible_only",
+        })
+    if item.source_type == "conversation" or result.blocks:
+        frontmatter.update({
+            "coverage": coverage_machine_value(result.metadata.get("coverage")),
+        })
+        if result.blocks:
+            content = render_conversation_blocks(
+                result.blocks,
+                source_url=item.url,
+                platform=item.platform,
+                exported_at=captured_at or utc_now_iso(),
+                coverage=coverage_machine_value(result.metadata.get("coverage")),
+                title=str(title),
+                source_notes=[note for note in result.source_notes if note.startswith(("已省略思考过程：", "已保留思考过程：", "已省略内嵌图片：", "已删除内嵌小图标：", "公式可能失真："))],
+            )
+        else:
+            content = result.text
+    else:
+        content = result.text
     return MarkdownDocument(
         frontmatter=frontmatter,
         title=title,
-        content=result.text,
+        content=content,
         source_notes=build_source_notes(result),
     )
+
+
+def document_source_format(item: ContentItem, result: TranscriptResult) -> str | None:
+    if item.platform != "pdf" or item.source_type != "document":
+        return None
+    from pathlib import Path
+    from urllib.parse import unquote, urlparse
+
+    raw = item.raw_meta.get("local_path") or unquote(urlparse(item.url).path)
+    suffix = Path(str(raw)).suffix.lstrip(".").lower()
+    value = suffix or str(result.metadata.get("source_format") or "").lower()
+    return value if re.fullmatch(r"[a-z0-9]{1,12}", value) else None
+def render_conversation_blocks(
+    blocks: list[Any],
+    *,
+    source_url: str,
+    platform: str,
+    exported_at: str,
+    coverage: str = "visible_branch",
+    title: str = "对话",
+    source_notes: list[str] | None = None,
+) -> str:
+    """Render each conversation turn without merging or summarizing it."""
+    lines: list[str] = []
+    turn_count = 0
+    for block in blocks:
+        value = block_as_dict(block)
+        kind = value.get("type")
+        if kind == "turn":
+            turn_count += 1
+            role = str(value.get("role") or "unknown")
+            timestamp = value.get("time")
+            heading = f"### {role}" + (f" · {timestamp}" if timestamp else "")
+            lines.extend([heading, "", _demote_turn_headings(str(value.get("text") or "")), ""])
+        elif kind == "cue":
+            lines.extend([f"[{value.get('start')}–{value.get('end')}]", "", str(value.get("text") or ""), ""])
+        elif kind == "table":
+            rows = value.get("rows") or []
+            valid_rows = [row for row in rows if isinstance(row, list)]
+            if valid_rows:
+                width = max(len(row) for row in valid_rows)
+                lines.extend(["| " + " | ".join(str(cell) for cell in valid_rows[0]) + " |", "| " + " | ".join("---" for _ in range(width)) + " |"])
+                lines.extend("| " + " | ".join(str(cell) for cell in row) + " |" for row in valid_rows[1:])
+                if value.get("merged_cells"):
+                    lines.extend(["", "> 表格合并单元格已降级为原始行列标注。"])
+                lines.append("")
+    lines.extend([
+        "---",
+        "",
+        "来源说明：",
+        f"- 平台：{platform}",
+        f"- 会话 URL：{sanitize_url_text(source_url)}",
+        f"- 导出时刻：{exported_at}",
+        f"- 范围：{coverage_label(coverage)}",
+        f"- 轮次数：{turn_count}",
+        *[f"- {note}" for note in source_notes or []],
+        "",
+    ])
+    return "\n".join(lines)
 
 
 def _source_footer(document: MarkdownDocument) -> str:
@@ -166,7 +370,8 @@ def render_document(document: MarkdownDocument, *, raw: bool = False) -> str:
             value = published_date(value or document.frontmatter.get("published_at"))
         if value is None or (isinstance(value, str) and not value.strip()):
             continue
-        lines.append(f"{field}: {_frontmatter_value(value)}")
+        rendered = str(value) if field == "format" and re.fullmatch(r"[a-z0-9]{1,12}", str(value)) else _frontmatter_value(value)
+        lines.append(f"{field}: {rendered}")
     content = document.content if raw or document.frontmatter.get("image_post_author_text") else format_transcript(
         document.content,
         source_type=document.frontmatter.get("source_type"),
@@ -182,4 +387,6 @@ def render_document(document: MarkdownDocument, *, raw: bool = False) -> str:
             content = rest.lstrip("\r\n") if separator else ""
     prefix = "\n".join([*lines, "---", "", heading, "", ""])
     # Do not rstrip raw content: trailing spaces/newlines can be meaningful.
-    return prefix + content + ("" if content.endswith("\n") else "\n") + "\n" + _source_footer(document) + "\n"
+    source_format = document.frontmatter.get("format")
+    source_section = f"\n## Source\n\n- Format: {source_format}\n" if source_format else ""
+    return prefix + content + ("" if content.endswith("\n") else "\n") + source_section + "\n" + _source_footer(document) + "\n"

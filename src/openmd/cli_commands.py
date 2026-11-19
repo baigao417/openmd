@@ -1,6 +1,41 @@
 """CLI commands responsibility; compatibility imports resolve at call time."""
 from __future__ import annotations
 
+
+def cmd_opencli(args) -> int:
+    import argparse
+    import json
+    import sys
+    from pathlib import Path
+    from openmd.runtime import managed_tools
+
+    argv = list(args.opencli_args)
+    if argv[:1] == ["migrate"]:
+        parser = argparse.ArgumentParser(prog="openmd opencli migrate")
+        parser.add_argument("--apply", action="store_true")
+        parser.add_argument("--dry-run", action="store_true")
+        parser.add_argument("--to", type=Path)
+        options = parser.parse_args(argv[1:])
+        if options.apply and options.dry_run:
+            parser.error("--apply and --dry-run are mutually exclusive")
+        print(json.dumps(managed_tools.migrate_config(destination=options.to, apply=options.apply), ensure_ascii=True))
+        return 0
+    allow_write = getattr(args, "allow_write", False) or "--allow-write" in argv
+    argv = [a for a in argv if a != "--allow-write"]
+    if not argv:
+        argv = ["list"]
+    if managed_tools.ensure_opencli() != "managed":
+        print("managed_opencli_missing", file=sys.stderr)
+        return 127
+    from openmd.runtime.opencli_adapters import prepare_bundled_plugins
+    prepare_bundled_plugins()
+    access = managed_tools.command_access(argv)
+    if access != "read" and not allow_write:
+        print("opencli_write_not_allowed: command access is write or unknown; use --allow-write", file=sys.stderr)
+        return 2
+    return managed_tools.passthrough(argv)
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     from .cli import Path, argparse, build_doctor_report, json, sanitize_error_summary, shutil, sys
 
@@ -180,6 +215,17 @@ def cmd_report_weixin_author_batch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report_feedback(args: argparse.Namespace) -> int:
+    from .cli import CliResult, _print_result, argparse
+    from pathlib import Path
+    from openmd.diagnostics.feedback import build_feedback_package
+
+    result = build_feedback_package(args.input, url=args.url, output=args.out)
+    print("请检查后再附加到 GitHub issue。包内文件：" + ", ".join(result["files"]))
+    _print_result(CliResult(ok=True, command="report", outputs=[str(Path(args.out))], message="feedback package written"))
+    return 0
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     from .cli import CliResult, _emit_result, _process_input, _read_single_input, _start_compact_receipt, argparse, sanitize_error_summary, sys
 
@@ -241,6 +287,11 @@ def cmd_batch(args: argparse.Namespace) -> int:
         aggregate.item_count += result.item_count
         aggregate.success_count += result.success_count
         aggregate.failed_count += result.failed_count
+        aggregate.paused_count += result.paused_count
+        if result.next_action and aggregate.next_action is None:
+            aggregate.next_action = result.next_action
+            aggregate.login = result.login
+            aggregate.error_code = result.error_code
         aggregate.outputs.extend(result.outputs)
         for signal in result.guardrail_signals:
             if signal not in aggregate.guardrail_signals:
@@ -248,7 +299,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
         if not result.ok:
             aggregate.ok = False
             aggregate.message = "completed with failures"
-            consecutive_failures += 1
+            if not result.paused_count:
+                consecutive_failures += 1
         else:
             consecutive_failures = 0
         if _guardrail_failure_streak_reached(args, consecutive_failures):

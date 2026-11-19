@@ -1,6 +1,14 @@
 {
   "schema": "openmd.routes/v1",
   "version": "2026-11-10.1",
+  "source_traits": {
+    "ai_chat": {
+      "syncable": true
+    },
+    "collection_incremental": {
+      "syncable": true
+    }
+  },
   "routes": [
     {
       "source": "bilibili",
@@ -10,14 +18,16 @@
         "bilibili-harvest.core",
         "yt-dlp.bilibili",
         "asr.fallback"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "bilibili",
       "capability": "media",
       "chain": [
         "yutto.bilibili.media-asr"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "youtube",
@@ -27,7 +37,8 @@
         "youtube-transcript-api",
         "yt-dlp.youtube",
         "asr.fallback"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "weixin",
@@ -37,49 +48,56 @@
         "defuddle.web.content",
         "weixin.article.local",
         "opencli.web.read"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "qq_group",
       "capability": "content",
       "chain": [
         "qq_group.export"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "xiaoyuzhou",
       "capability": "transcript",
       "chain": [
         "opencli.xiaoyuzhou.transcript"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "xiaoyuzhou",
       "capability": "media",
       "chain": [
         "xyz-dl.xiaoyuzhou.media-asr"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "douyin",
       "capability": "content",
       "chain": [
         "douyin.transcript"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "tiktok",
       "capability": "content",
       "chain": [
         "opencli.tiktok.user"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "xiaohongshu",
       "capability": "content",
       "chain": [
         "xiaohongshu.composite"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "xiaoe",
@@ -87,7 +105,8 @@
       "chain": [
         "opencli.xiaoe.transcript",
         "opencli.xiaoe.content"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "x",
@@ -95,7 +114,8 @@
       "chain": [
         "x-tweet-fetcher.x.content",
         "opencli.twitter.thread"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "web_article",
@@ -105,7 +125,8 @@
         "defuddle.web.content",
         "web_article.trafilatura",
         "opencli.web.read"
-      ]
+      ],
+      "last_verified": "2026-11-18"
     },
     {
       "source": "feishu",
@@ -115,14 +136,16 @@
         "lark-cli.drive.export-markdown",
         "lark-cli.markdown.fetch",
         "manual.markdown-export"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "generic_media",
       "capability": "transcript",
       "chain": [
         "asr.fallback"
-      ]
+      ],
+      "last_verified": null
     },
     {
       "source": "pdf",
@@ -130,8 +153,10 @@
       "chain": [
         "pdf.markitdown",
         "pdf.textlayer",
-        "ocr.chain"
-      ]
+        "ocr.chain",
+        "document.engines"
+      ],
+      "last_verified": null
     },
     {
       "source": "screenshot",
@@ -140,7 +165,31 @@
         "ocr.chain",
         "ocr.rapidocr",
         "ocr.tesseract"
-      ]
+      ],
+      "last_verified": null
+    },
+    {
+      "source": "page_snapshot",
+      "capability": "content",
+      "chain": [
+        "page_snapshot.defuddle"
+      ],
+      "last_verified": null
+    },
+    {
+      "source": "ai_chat",
+      "capability": "content",
+      "chain": [
+        "opencli.chatgpt.detail",
+        "opencli.deepseek.detail",
+        "opencli.claude.detail",
+        "opencli.doubao.detail",
+        "opencli.gemini.detail",
+        "opencli.qwen.detail",
+        "opencli.yuanbao.detail",
+        "opencli.grok.detail"
+      ],
+      "last_verified": null
     }
   ],
   "capabilities": [
@@ -159,7 +208,13 @@
         "media"
       ],
       "route_source": "bilibili",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "哔哩哔哩",
+      "login_url": "https://www.bilibili.com",
+      "login_hosts": [
+        "bilibili.com",
+        "b23.tv"
+      ]
     },
     {
       "source_id": "youtube",
@@ -193,7 +248,10 @@
         "article"
       ],
       "route_source": "weixin",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "微信公众号",
+      "login_url": "https://mp.weixin.qq.com",
+      "login_hosts": []
     },
     {
       "source_id": "xiaoyuzhou",
@@ -227,7 +285,12 @@
         "media"
       ],
       "route_source": "douyin",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "抖音",
+      "login_url": "https://www.douyin.com",
+      "login_hosts": [
+        "douyin.com"
+      ]
     },
     {
       "source_id": "tiktok",
@@ -259,7 +322,13 @@
         "media"
       ],
       "route_source": "xiaohongshu",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "小红书",
+      "login_url": "https://www.xiaohongshu.com",
+      "login_hosts": [
+        "xiaohongshu.com",
+        "xhslink.com"
+      ]
     },
     {
       "source_id": "xiaohongshu_creator",
@@ -291,7 +360,16 @@
         "media"
       ],
       "route_source": "xiaoe",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "小鹅通",
+      "login_strategy": "origin",
+      "login_url": "https://xiaoe-tech.com",
+      "login_hosts": [
+        "xiaoe-tech.com",
+        "xiaoeknow.com",
+        "xet.citv.cn",
+        "xet.pomoho.com"
+      ]
     },
     {
       "source_id": "x",
@@ -306,7 +384,12 @@
         "article"
       ],
       "route_source": "x",
-      "runtime_binding": "route"
+      "runtime_binding": "route",
+      "display_name": "X",
+      "login_url": "https://x.com",
+      "login_hosts": [
+        "twitter.com"
+      ]
     },
     {
       "source_id": "web_article",
@@ -453,6 +536,76 @@
       ],
       "route_source": "qq_group",
       "runtime_binding": null
+    },
+    {
+      "source_id": "page_snapshot",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article"
+      ],
+      "route_source": "page_snapshot",
+      "runtime_binding": "route"
+    },
+    {
+      "source_id": "ai_chat",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "conversation"
+      ],
+      "route_source": "ai_chat",
+      "runtime_binding": "route",
+      "login_sites": {
+        "chatgpt": {
+          "display_name": "ChatGPT",
+          "login_url": "https://chatgpt.com"
+        },
+        "claude": {
+          "display_name": "Claude",
+          "login_url": "https://claude.ai"
+        },
+        "deepseek": {
+          "display_name": "DeepSeek",
+          "login_url": "https://chat.deepseek.com"
+        },
+        "doubao": {
+          "display_name": "豆包",
+          "login_url": "https://www.doubao.com",
+          "login_hosts": [
+            "doubao.com"
+          ]
+        },
+        "gemini": {
+          "display_name": "Gemini",
+          "login_url": "https://gemini.google.com"
+        },
+        "qwen": {
+          "display_name": "千问",
+          "login_url": "https://chat.qwen.ai",
+          "login_hosts": [
+            "qianwen.aliyun.com",
+            "www.qianwen.com",
+            "tongyi.aliyun.com"
+          ]
+        },
+        "yuanbao": {
+          "display_name": "元宝",
+          "login_url": "https://yuanbao.tencent.com"
+        },
+        "grok": {
+          "display_name": "Grok",
+          "login_url": "https://grok.com"
+        }
+      }
     }
   ]
 }

@@ -39,6 +39,23 @@ jobs:
       - name: Test
         # Offline regression only; real-sample evidence lives in the PR description.
         run: python -m pytest -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install integration dependencies for generated checks
+        shell: bash
+        run: |
+          for directory in integrations/opencli/*/; do
+            if [ -f "$directory/package.json" ]; then
+              # Run inside the directory: on Windows, npm ignores a --prefix with a
+              # trailing slash and reads the repository root package.json instead.
+              if [ -f "$directory/package-lock.json" ]; then
+                (cd "$directory" && npm ci --ignore-scripts --no-audit --no-fund)
+              else
+                (cd "$directory" && npm install --ignore-scripts --no-audit --no-fund)
+              fi
+            fi
+          done
       - name: Check generated declarations
         run: python -m openmd.routing.generate --check
       - name: Build and consume wheel outside checkout

@@ -98,6 +98,10 @@ def build_runlog_entry(
     document_metadata: dict[str, Any] | None = None,
     asr_execution: dict[str, Any] | None = None,
     source_scope: dict[str, Any] | None = None,
+    completeness: dict[str, Any] | None = None,
+    sync: dict[str, Any] | None = None,
+    login: dict[str, str] | None = None,
+    original_error_code: str | None = None,
 ) -> dict[str, Any]:
     success = success_count if success_count is not None else int(status in {"verified", "partial"})
     failed = failed_count if failed_count is not None else int(status == "failed")
@@ -130,6 +134,9 @@ def build_runlog_entry(
         "document_metadata": document_metadata or {},
         "asr_execution": asr_execution or {},
         "source_scope": sanitize_source_scope(source_scope),
+        "completeness": completeness or {},
+        "sync": sync or {},
+        **({"login": login, "original_error_code": original_error_code} if login else {}),
     }
 
 
@@ -155,8 +162,12 @@ def build_item_runlog_entry(
         status=result.status,
         source_type=item.source_type,
         source_level=result.source_level,
+        completeness=result.metadata.get("completeness"),
+        sync={"operation": package_operation} if package_operation in {"created", "updated", "unchanged", "conflict_kept_user_edit", "restored_missing"} and package_id is None else {},
         asr_execution=asr_execution_metrics(result.metadata),
         source_scope=result.metadata,
+        login=result.metadata.get("login"),
+        original_error_code=result.metadata.get("original_error_code"),
         route_trace={key: result.metadata[key] for key in ("card_id", "route_version", "overlay_applied", "fallback_attempts") if key in result.metadata},
         document_metadata={key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata} if item.platform in {"screenshot", "pdf"} else {},
         output_path=output_path,

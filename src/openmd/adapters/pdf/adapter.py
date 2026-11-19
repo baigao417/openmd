@@ -13,7 +13,7 @@ import hashlib
 
 from openmd.adapters.base import PlatformAdapter
 from openmd.adapters.local_audio.adapter import local_path_from_input
-from openmd.core.detector import DOCUMENT_EXTENSIONS, extract_first_url
+from openmd.core.detector import DOCUMENT_EXTENSIONS, FOLDER_BATCH_EXCLUDED_SUFFIXES, detect_platform, extract_first_url
 from openmd.core.models import ContentItem, TranscriptResult
 
 from .backends.markitdown import MarkItDownPDFParser
@@ -39,7 +39,10 @@ class PdfDocumentAdapter(PlatformAdapter):
     ) -> list[ContentItem]:
         path = local_path_from_input(input_value)
         if path is not None and path.is_dir():
-            files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file() and _is_pdf_path(candidate))
+            # Keep the legacy `go/ingest <folder>` PDF/Office scope stable.
+            # The dedicated shell-menu folder converter owns the broader local
+            # format set (including TXT) without changing this batch contract.
+            files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file() and candidate.suffix.lower() not in FOLDER_BATCH_EXCLUDED_SUFFIXES and _is_pdf_path(candidate))
             if limit is not None and not all:
                 files = files[: max(0, limit)]
             return [_content_item_for_path(candidate, platform=self.id) for candidate in files]
@@ -65,6 +68,14 @@ class PdfDocumentAdapter(PlatformAdapter):
             return MockPDFParser().parse(source_ref, title=title)
         if selected == "pdf.markitdown":
             return MarkItDownPDFParser().parse(source_ref, title=title)
+        if selected == "document.engines":
+            from openmd.engines.base import failure
+            from openmd.engines.registry import convert_document
+
+            path = local_path_from_input(source_ref)
+            if path is None:
+                return failure(selected, Path("document"), "document_local_file_required")
+            return convert_document(path)
         return MissingPDFParser(selected).parse(source_ref, title=title)
 
 
@@ -116,7 +127,7 @@ def _is_pdf_input(input_value: str) -> bool:
 
 
 def _is_pdf_path(path: Path) -> bool:
-    return path.suffix.lower() in DOCUMENT_EXTENSIONS
+    return path.suffix.lower() in DOCUMENT_EXTENSIONS and detect_platform(str(path)) == "pdf"
 
 
 def _directory_contains_pdf(path: Path) -> bool:

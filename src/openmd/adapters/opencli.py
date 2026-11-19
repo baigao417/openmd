@@ -1,6 +1,6 @@
 """Input resolution only. Extraction belongs to runtime providers."""
 from __future__ import annotations
-from openmd.core.detector import extract_first_url
+from openmd.core.detector import ai_chat_site, extract_first_url
 from openmd.core.models import ContentItem
 from .base import StubPlatformAdapter
 
@@ -13,6 +13,8 @@ def _source_type_for(platform: str) -> str:
         return "document"
     if platform == "xiaohongshu":
         return "mixed"
+    if platform == "ai_chat":
+        return "conversation"
     return "article"
 
 
@@ -39,6 +41,6 @@ class OpenCliPlatformAdapter(StubPlatformAdapter):
                 input_type=input_type,
                 url=extract_first_url(input_value),
                 source_type=_source_type_for(self.id),  # type: ignore[arg-type]
-                raw_meta={"limit": limit},
+                raw_meta={"limit": limit, **({"chat_site": ai_chat_site(input_value)} if self.id == "ai_chat" else {})},
             )
         ]

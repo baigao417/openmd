@@ -1,6 +1,8 @@
 """CLI items responsibility; compatibility imports resolve at call time."""
 from __future__ import annotations
 
+from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields, source_next_action
+
 def _process_items(
     items: list[ContentItem],
     args: argparse.Namespace,
@@ -20,11 +22,15 @@ def _process_items(
     source_level_counts: dict[str, int] = {}
     failure_code_counts: dict[str, int] = {}
     coverage = CollectionCoverage()
+    paused_count = 0
 
     for index, item in enumerate(items, start=1):
         processed_count += 1
-        selection = registry.select_backend(
-            item.platform,
+        if paused_login(args, item.url):
+            paused_count += 1
+            continue
+        selection = registry.select_backend_for_item(
+            item,
             _requested_backend(item.platform, args),
             allow_fallback=args.fallback,
         )
@@ -97,13 +103,20 @@ def _process_items(
             continue
 
         _pace_douyin_extraction(item, args)
-        result = executor.extract(
-            item,
-            selection.chain,
-            allow_fallback=args.fallback,
+        from .core.sync_manifest import prepare_sync_item
+        item = prepare_sync_item(item, args.out)
+        item_selector = getattr(registry, "select_backend_for_item", None)
+        item_selection = (
+            item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
+            if item_selector is not None
+            else selection
         )
+        result = extract_with_login(executor, item, item_selection.chain, args)
+        from .core.completeness import check_completeness
+
+        result = check_completeness(item, result)
         output: OutputWriteResult | None = None
-        if result.has_usable_text:
+        if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
                 output = _write_extraction_output(item, result, args, execution_fingerprint=fingerprint)
             except PackageValidationError as exc:
@@ -159,7 +172,11 @@ def _process_items(
             _append_guardrail_stop_entry(args, command=command, index=index, total=len(items))
             break
 
-    ok = failed_count == 0 and bool(items)
+    ok = failed_count == 0 and paused_count == 0 and bool(items)
+    last_error = next(iter(reversed(failure_code_counts)), None)
+    recovery = recovery_fields(args)
+    if "next_action" not in recovery:
+        recovery["next_action"] = source_next_action(last_error)
     return CliResult(
         ok=ok,
         command=command,
@@ -172,43 +189,68 @@ def _process_items(
         source_level_counts=source_level_counts,
         failure_code_counts=failure_code_counts,
         coverage=coverage.as_dict(),
+        paused_count=paused_count,
+        **recovery,
         message="completed" if ok else ("guardrail stopped" if processed_count < len(items) else "completed with failures"),
     )
 
 
 def _process_input(input_url: str, args: argparse.Namespace, *, command: str) -> CliResult:
-    from .cli import CliResult, OutputWriteResult, PackageValidationError, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
+    from .cli import CliResult, OutputWriteResult, PackageValidationError, Path, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
 
     if getattr(args, "all", False):
         return _log_all_guard(input_url, args, command=command)
 
+    if login := paused_login(args, getattr(args, "snapshot_url", None) or input_url):
+        return paused_result(args, command, login)
+
     registry = create_default_registry()
-    adapter = registry.adapter_for(input_url)
-    selection = registry.select_backend(
-        adapter.id,
-        _requested_backend(adapter.id, args),
-        allow_fallback=args.fallback,
-    )
+    if getattr(args, "as_snapshot", False):
+        from openmd.backends.loaded_chat import snapshot_item
+
+        snapshot_path = Path(input_url).expanduser().resolve()
+        original_url = str(getattr(args, "snapshot_url", None) or "https://snapshot.invalid/local")
+        item = snapshot_item(snapshot_path, original_url)
+        adapter = None
+        selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)
+        items = [item]
+    else:
+        adapter = registry.adapter_for(input_url)
+        selection = registry.select_backend(
+            adapter.id,
+            _requested_backend(adapter.id, args),
+            allow_fallback=args.fallback,
+        )
+        items = [
+            apply_platform_extraction_contract(item)
+            for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
+        ]
+    if getattr(args, "include_thinking", False):
+        from dataclasses import replace
+
+        items = [replace(item, raw_meta={**item.raw_meta, "include_thinking": True}) for item in items]
     if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
         from openmd.runtime.managed_tools import ensure_opencli
 
         # One `pip install openmd-cli` is enough: fetch the pinned opencli on first need.
         ensure_opencli()
-    items = [
-        apply_platform_extraction_contract(item)
-        for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
-    ]
     if command == "ingest":
         items = _prepare_compact_collection(args, items)
     elif command == "batch":
         _register_resolved_batch_items(args, input_url, items)
-    executor = _build_backend_executor(args, platform=adapter.id)
+    executor = _build_backend_executor(args, platform="page_snapshot" if getattr(args, "as_snapshot", False) else adapter.id)
     outputs: list[str] = []
     success_count = 0
     failed_count = 0
     skipped_count = 0
 
+    paused_count = 0
+    last_result = None
+    last_output = None
     for item in items:
+        if paused_login(args, item.url):
+            paused_count += 1
+            continue
         identity = executor.resolve_item_identity(item, selection.chain)
         if not identity.ok:
             failed_count += 1
@@ -239,13 +281,21 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             continue
 
         _pace_douyin_extraction(item, args)
-        result = executor.extract(
-            item,
-            selection.chain,
-            allow_fallback=args.fallback,
+        from .core.sync_manifest import prepare_sync_item
+        item = prepare_sync_item(item, args.out)
+        item_selector = getattr(registry, "select_backend_for_item", None)
+        item_selection = (
+            item_selector(item, _requested_backend(item.platform, args), allow_fallback=args.fallback)
+            if item_selector is not None and not getattr(args, "as_snapshot", False)
+            else selection
         )
+        result = extract_with_login(executor, item, item_selection.chain, args)
+        from .core.completeness import check_completeness
+
+        result = check_completeness(item, result)
+        last_result = result
         output: OutputWriteResult | None = None
-        if result.has_usable_text:
+        if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
                 output = _write_extraction_output(item, result, args, execution_fingerprint=fingerprint)
             except PackageValidationError as exc:
@@ -256,6 +306,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             else:
                 outputs.append(str(output.path))
                 success_count += 1
+                last_output = output
         else:
             failed_count += 1
 
@@ -268,7 +319,15 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         )
         _append_execution_entry(args, entry)
 
-    ok = failed_count == 0 and bool(items)
+    ok = failed_count == 0 and paused_count == 0 and bool(items)
+    recovery = recovery_fields(args)
+    recovery.setdefault("error_code", last_result.error_code if last_result is not None else None)
+    if "next_action" not in recovery and last_result is not None:
+        recovery["next_action"] = source_next_action(last_result.error_code) or (
+            last_result.error_summary
+            if last_result.error_code in {"engine_unavailable", "ai_chat_site_not_implemented"}
+            else None
+        )
     return CliResult(
         ok=ok,
         command=command,
@@ -277,6 +336,13 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         failed_count=failed_count,
         skipped_count=skipped_count,
         outputs=outputs,
+        paused_count=paused_count,
+        **recovery,
+        status=last_result.status if last_result is not None else ("verified" if ok else "failed"),
+        source_level=last_result.source_level if last_result is not None else None,
+        completeness=(last_result.metadata.get("completeness") or {}) if last_result is not None else {},
+        sync={"operation": last_output.package_operation,
+              **({"renamed_from": last_output.renamed_from} if last_output.renamed_from is not None else {})} if last_output and last_output.package_operation else {},
         message="completed" if ok else "completed with failures",
     )
 
@@ -291,6 +357,10 @@ def _maybe_skip_existing_package(
 
     if not getattr(args, "package", False):
         return None
+    from .core.sync_manifest import is_syncable
+
+    if is_syncable(item):
+        raise PackageValidationError("sync_requires_markdown_output")
     if (
         getattr(args, "update", False)
         or getattr(args, "overwrite", False)
@@ -362,16 +432,18 @@ def _write_extraction_output(
             package_operation=package_result.operation,
         )
 
-    return OutputWriteResult(
-        path=write_item_result(
-            item,
-            result,
-            args.out,
-            overwrite=getattr(args, "overwrite", False),
-            download_assets=getattr(args, "download_assets", False),
-            raw=getattr(args, "raw", False),
-        )
+    sync_receipt: dict = {}
+    path = write_item_result(
+        item,
+        result,
+        args.out,
+        overwrite=getattr(args, "overwrite", False),
+        download_assets=getattr(args, "download_assets", False),
+        raw=getattr(args, "raw", False),
+        sync_receipt=sync_receipt,
     )
+    return OutputWriteResult(path=path, package_operation=sync_receipt.get("operation"),
+                             renamed_from=sync_receipt.get("renamed_from"))
 
 
 def _build_package_validation_failure_entry(
@@ -416,7 +488,7 @@ def _build_package_validation_failure_entry_for_item(
     from .cli import ContentItem, PackageValidationError, build_runlog_entry
 
     error_code = str(exc)
-    if error_code not in {"execution_fingerprint_missing", "execution_fingerprint_mismatch"}:
+    if error_code not in {"execution_fingerprint_missing", "execution_fingerprint_mismatch", "sync_requires_markdown_output"}:
         error_code = "package_validation_failed"
     return build_runlog_entry(
         input_url=item.url,

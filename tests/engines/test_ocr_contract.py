@@ -137,6 +137,7 @@ def test_docx_keeps_literal_image_marker(tmp_path, monkeypatch, in_table):
 
 
 def test_xlsx_images_resolve_workbook_relationships(tmp_path, monkeypatch):
+    pytest.importorskip('openpyxl')
     from zipfile import ZipFile
     from openpyxl import Workbook
     from openpyxl.drawing.image import Image as ExcelImage
@@ -201,6 +202,7 @@ def test_hardware_recommendation_marks_only_the_measured_machine():
 
 @pytest.mark.parametrize('allowed', [True, False])
 def test_legacy_office_route_uses_positioned_image_engine(tmp_path, monkeypatch, allowed):
+    pytest.importorskip('mammoth')
     from zipfile import ZipFile
     from openmd.adapters.pdf.backends.markitdown import MarkItDownPDFParser
     from openmd.backends.pdf import PDFParserProvider

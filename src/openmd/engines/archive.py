@@ -64,7 +64,8 @@ class ZipEngine(DocumentEngine):
             receipts, bodies, components = [], [], []
             output_bytes = 0
             with owned_temporary_directory(prefix='openmd-zip-') as owned_root, ZipFile(path) as archive:
-                root = Path(owned_root)
+                # Resolved like safe_member's targets: on macOS /var is a symlink to /private/var.
+                root = Path(owned_root).resolve()
                 infos = archive.infolist()
                 if not infos:
                     raise EngineError('archive_empty')

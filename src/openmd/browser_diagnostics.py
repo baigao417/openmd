@@ -113,4 +113,4 @@ def browser_host_diagnostics() -> dict:
     ready = bool(hosts) and all(host["ready"] for host in hosts)
     return {"supported": os.name == "nt", "registered": bool(hosts), "ready": ready,
             "hosts": hosts, "read_only": True,
-            "next_action": "" if ready or os.name != "nt" else REPAIR_ACTION}
+            "next_action": "" if ready or (os.name != "nt" and not hosts) else REPAIR_ACTION}

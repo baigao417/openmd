@@ -37,3 +37,25 @@ def test_zip_boundaries(tmp_path, case):
     limits = EngineLimits(max_archive_bytes=1,max_file_bytes=1) if case=='oversize' else None
     assert ZipEngine().convert(path, limits).status == 'failed'
 
+
+
+def test_zip_extracts_when_the_temp_root_is_not_canonical(tmp_path, monkeypatch):
+    # macOS hands out /var/... temp dirs that resolve to /private/var/...; any
+    # non-canonical temp root must still extract (it used to fail as invalid container).
+    from contextlib import contextmanager
+    import openmd.engines.archive as archive
+
+    (tmp_path / 'real').mkdir()
+    (tmp_path / 'detour').mkdir()
+
+    @contextmanager
+    def non_canonical_root(prefix=''):
+        yield str(tmp_path / 'detour' / '..' / 'real')
+
+    monkeypatch.setattr(archive, 'owned_temporary_directory', non_canonical_root)
+    path = tmp_path / 'source.zip'
+    with ZipFile(path, 'w') as z:
+        z.writestr('data.csv', 'Name,Value\nOriginal,7')
+    result = ZipEngine().convert(path)
+    assert result.status == 'verified', result.error_code
+    assert '| Original | 7 |' in result.text

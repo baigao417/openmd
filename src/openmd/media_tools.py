@@ -40,7 +40,7 @@ _ERRORS = {
     "forbidden_or_outdated": (
         ("http error 403", "403 forbidden", "forbidden"),
         "下载站点返回 403，yt-dlp 可能已过期",
-        "运行 `openmd doctor` 查看版本，再更新 Openmd 管理的 yt-dlp。",
+        "yt-dlp 可能已过期：在 Openmd 所在环境运行 `python -m pip install -U yt-dlp`（或重装 `openmd-cli[media]`）后重试；`openmd doctor` 可查看当前版本。",
     ),
     "geo_or_private": (
         ("private video", "video is private", "not available in your country", "geo-restricted", "geographic restriction"),
@@ -105,7 +105,7 @@ def yt_dlp_diagnostics(
     if version is None:
         next_action = "无法读取版本；运行 `openmd doctor` 后检查 yt-dlp 安装。"
     elif age_days is not None and age_days > 90:
-        next_action = 'yt-dlp 已超过 90 天；运行 `openmd doctor` 查看并升级 Openmd 管理的 yt-dlp。'
+        next_action = 'yt-dlp 已超过 90 天，YouTube 等站点可能拒绝下载：在 Openmd 所在环境运行 `python -m pip install -U yt-dlp`（或重装 `openmd-cli[media]`）。'
     else:
         next_action = "yt-dlp 版本可用。"
     return {

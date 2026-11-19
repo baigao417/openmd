@@ -61,7 +61,7 @@ def test_doctor_reports_managed_version_age_and_stale_warning(monkeypatch):
     assert report["version"] == "2026.01.01"
     assert report["age_days"] == 91
     assert report["warning"] is True
-    assert "升级" in report["next_action"]
+    assert "python -m pip install -U yt-dlp" in report["next_action"]
 
 
 def test_doctor_reports_missing_without_running_command(monkeypatch):

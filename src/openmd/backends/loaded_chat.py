@@ -59,6 +59,16 @@ def loaded_chat_site(url: str) -> str | None:
     return HOSTS.get((parsed.hostname or "").lower())
 
 
+def loaded_snapshot_site(url: str) -> str | None:
+    """Return a platform whose currently loaded DOM has a bounded parser."""
+    host = (urlsplit(url).hostname or "").lower()
+    if host == "xiaohongshu.com" or host.endswith(".xiaohongshu.com") or host == "xhslink.com" or host.endswith(".xhslink.com"):
+        return "xiaohongshu"
+    if host == "douyin.com" or host.endswith(".douyin.com") or host == "iesdouyin.com" or host.endswith(".iesdouyin.com"):
+        return "douyin"
+    return None
+
+
 def snapshot_item(path: Path, url: str) -> ContentItem:
     """Use detail's exact identity, with a local-only snapshot extraction route."""
     site = loaded_chat_site(url)
@@ -69,6 +79,18 @@ def snapshot_item(path: Path, url: str) -> ContentItem:
 
         item = AiChatAdapter("ai_chat", ai_chat_backend_for_site(site)).resolve_items(url)[0]
         return replace(item, raw_meta={**item.raw_meta, **metadata, "chat_site": site})
+    loaded_site = loaded_snapshot_site(url)
+    if loaded_site in {"xiaohongshu", "douyin"}:
+        # Resolve identity through the normal adapter without invoking a
+        # provider. This keeps snapshot and interface routes on one source_id.
+        from openmd.adapters.registry import create_default_registry
+
+        item = create_default_registry().adapter_for(url).resolve_items(url)[0]
+        note_match = re.search(r"/(?:explore|discovery/item|item)/([A-Za-z0-9]+)", urlsplit(url).path)
+        extra = {"snapshot_site": loaded_site}
+        if note_match:
+            extra["snapshot_note_id"] = note_match.group(1)
+        return replace(item, raw_meta={**item.raw_meta, **metadata, **extra})
     return ContentItem(platform="page_snapshot", input_type="single", url=url, source_type="article", raw_meta=metadata)
 
 

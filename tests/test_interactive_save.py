@@ -135,3 +135,21 @@ def test_daily_start_enables_browser_without_prompt_when_route_needs_it(monkeypa
     assert interactive._authorize(args, args.url, tty=True)
     assert args.enable_browser_backends
     assert not args.enable_cloud_backends
+
+
+def test_daily_douyin_save_enables_media_and_local_asr_without_prompt(monkeypatch):
+    from openmd.cli import build_parser
+
+    args = build_parser().parse_args(["go", "https://v.douyin.com/oAI5iHKX4JQ/", "-o", "D:/openmd-run"])
+    monkeypatch.setattr(interactive, "_ask", lambda prompt: (_ for _ in ()).throw(AssertionError("prompt")))
+    assert interactive._authorize(args, args.url, tty=False)
+    assert args.enable_browser_backends and args.enable_media_download and args.enable_asr
+    assert not args.enable_cloud_backends
+
+
+def test_xiaohongshu_block_has_loaded_page_next_action():
+    from openmd.cli_login import source_next_action
+
+    action = source_next_action("xiaohongshu_request_blocked")
+    assert action and "浏览器打开" in action and "扩展保存" in action
+    assert source_next_action("xiaohongshu_loaded_page_mismatch") == action

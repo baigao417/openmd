@@ -1,7 +1,7 @@
 """CLI items responsibility; compatibility imports resolve at call time."""
 from __future__ import annotations
 
-from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields
+from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields, source_next_action
 
 def _process_items(
     items: list[ContentItem],
@@ -173,6 +173,10 @@ def _process_items(
             break
 
     ok = failed_count == 0 and paused_count == 0 and bool(items)
+    last_error = next(iter(reversed(failure_code_counts)), None)
+    recovery = recovery_fields(args)
+    if "next_action" not in recovery:
+        recovery["next_action"] = source_next_action(last_error)
     return CliResult(
         ok=ok,
         command=command,
@@ -186,7 +190,7 @@ def _process_items(
         failure_code_counts=failure_code_counts,
         coverage=coverage.as_dict(),
         paused_count=paused_count,
-        **recovery_fields(args),
+        **recovery,
         message="completed" if ok else ("guardrail stopped" if processed_count < len(items) else "completed with failures"),
     )
 
@@ -318,8 +322,12 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
     ok = failed_count == 0 and paused_count == 0 and bool(items)
     recovery = recovery_fields(args)
     recovery.setdefault("error_code", last_result.error_code if last_result is not None else None)
-    if "next_action" not in recovery and last_result is not None and last_result.error_code in {"engine_unavailable", "ai_chat_site_not_implemented"}:
-        recovery["next_action"] = last_result.error_summary
+    if "next_action" not in recovery and last_result is not None:
+        recovery["next_action"] = source_next_action(last_result.error_code) or (
+            last_result.error_summary
+            if last_result.error_code in {"engine_unavailable", "ai_chat_site_not_implemented"}
+            else None
+        )
     return CliResult(
         ok=ok,
         command=command,

@@ -110,7 +110,7 @@ const isLoadedAiChat = (url) => {
 
 async function getSettings() {
   const { settings } = await chrome.storage.local.get("settings");
-  return { videoMode: "note", includeThinking: false, ...(settings || { locations: [], defaultId: null, clickMode: "auto" }) };
+  return { videoMode: "note", includeThinking: false, allowFeedbackPackage: false, ...(settings || { locations: [], defaultId: null, clickMode: "auto" }) };
 }
 
 async function applyClickMode() {
@@ -180,6 +180,27 @@ async function notifyLogin(job, meta) {
     requireInteraction: true,
   });
 }
+
+async function notifyFeedback(job, meta) {
+  const settings = await getSettings();
+  if (settings.allowFeedbackPackage !== true) return;
+  const id = `openmd-feedback:${job.id}`;
+  chrome.notifications.create(id, {
+    type: "basic", iconUrl: "icons/icon-128.png", title: "保存结果需要检查",
+    message: "结果不完整或失败。可生成脱敏问题报告，附加前请先检查。",
+    buttons: [{ title: "生成问题报告" }], requireInteraction: true,
+  });
+}
+
+chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
+  if (!id.startsWith("openmd-feedback:") || buttonIndex !== 0) return;
+  const jobId = id.slice("openmd-feedback:".length);
+  const settings = await getSettings();
+  const location = await locationFor(settings.defaultId);
+  const reply = await native({ type: "feedback_report", id: jobId, save_to: location?.path });
+  if (reply?.ok) notify("问题报告已生成", "请检查后再附加到 GitHub issue。");
+  else notify("问题报告生成失败", reply?.error || "请在任务列表中重试。");
+});
 
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(async () => {
   const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
@@ -393,6 +414,7 @@ async function poll() {
             if (batch) batch.loginPaused = true;
             await notifyLogin(job, { ...meta, location: batch?.location });
           } else if (batch && job.state !== "done" && job.state !== "cancelled") batch.failed.push(`${meta.title}：${job.error || "状态未知"}`);
+          if (job.state === "failed" || job.state === "partial" || job.result?.status === "partial") await notifyFeedback(job, meta);
           const remaining = Object.values(state.jobs).some((m) => m.batch === meta.batch);
           if (batch && !remaining) {
             delete state.batches[meta.batch];

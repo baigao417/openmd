@@ -401,6 +401,7 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
             return current
         lines = [line for line in (done.stdout or "").splitlines() if line.strip().startswith("{")]
         result = json.loads(lines[-1]) if lines else {}
+        status["result"] = {key: result.get(key) for key in ("status", "source_level", "completeness", "error_code", "next_action") if result.get(key) is not None}
         if status.get("mcp"):
             from openmd.mcp_jobs import receipt
             status["receipt"] = receipt(result)
@@ -420,6 +421,18 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
                 login = login_for_url(status["url"])
                 status.update(error_code="login_required", login=login, error=login_hint(login))
                 _pause_login_jobs(status, login)
+        if status.get("snapshot"):
+            # Keep only a structural, synthetic source for a later report command.
+            # The captured page itself is removed below and is never an artifact.
+            from openmd.diagnostics.sanitize import sanitize_snapshot
+            try:
+                safe = sanitize_snapshot(Path(status["snapshot_path"]).read_text(encoding="utf-8", errors="replace"), status["url"])
+                safe_path = job_dir / "sanitized-structure.html"
+                safe_path.write_text(safe.html, encoding="utf-8")
+                status["sanitized_snapshot_path"] = str(safe_path)
+                status["sanitized_manifest"] = safe.manifest
+            except (OSError, ValueError):
+                pass
     except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
         status.update(state="failed", error="job_failed" if status.get("mcp") else sanitize_error_summary(exc) or "job_failed")
     status["finished"] = time.time()
@@ -621,6 +634,11 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
             return {"ok": True, "jobs": retry_login(str(message.get("id", "")), message.get("snapshot"))}
         if kind == "reveal":
             return reveal(str(message.get("id", "")))
+        if kind == "feedback_report":
+            from openmd.diagnostics.feedback import build_feedback_package_for_job
+            job_id = str(message.get("id", ""))
+            destination = _validate_destination(message.get("save_to")) / "Openmd-problem-reports" / job_id
+            return {"ok": True, "report": build_feedback_package_for_job(job_id, destination)}
         if kind == "pick_folder":
             return pick_folder(message.get("initial"))
         return {"ok": False, "error": "unknown_message_type"}

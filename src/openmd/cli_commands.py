@@ -215,6 +215,17 @@ def cmd_report_weixin_author_batch(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report_feedback(args: argparse.Namespace) -> int:
+    from .cli import CliResult, _print_result, argparse
+    from pathlib import Path
+    from openmd.diagnostics.feedback import build_feedback_package
+
+    result = build_feedback_package(args.input, url=args.url, output=args.out)
+    print("请检查后再附加到 GitHub issue。包内文件：" + ", ".join(result["files"]))
+    _print_result(CliResult(ok=True, command="report", outputs=[str(Path(args.out))], message="feedback package written"))
+    return 0
+
+
 def cmd_ingest(args: argparse.Namespace) -> int:
     from .cli import CliResult, _emit_result, _process_input, _read_single_input, _start_compact_receipt, argparse, sanitize_error_summary, sys
 

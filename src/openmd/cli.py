@@ -329,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
 from .cli_parser import build_parser, _add_shared_options
 from .cli_receipts import _start_compact_receipt, _compact_failure_payload, _print_compact_failure, _register_compact_inputs, _sync_compact_rows, _append_execution_entry, _prepare_compact_collection, _reconcile_compact_identity, _register_resolved_batch_items, _emit_result, _read_new_runlog_rows, _compact_item_identity, _compact_url_identity, _prepare_resolved_item, _record_compact_rows, _compact_terminal_status, _compact_execution_fingerprint
 from .cli_items import _process_items, _process_input, _maybe_skip_existing_package, _write_extraction_output, _build_package_validation_failure_entry, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _read_package_metadata
-from .cli_commands import cmd_doctor, cmd_routes, cmd_capabilities, cmd_plan, cmd_report_weixin_author_batch, cmd_ingest, cmd_batch
+from .cli_commands import cmd_doctor, cmd_routes, cmd_capabilities, cmd_plan, cmd_report_feedback, cmd_report_weixin_author_batch, cmd_ingest, cmd_batch
 from .cli_collections import _write_youtube_discovery_summary, cmd_collect, _write_douyin_coverage_summary, _package_coverage_source_level_counts, _write_xiaohongshu_coverage_summary, _xiaohongshu_component_coverage, _safe_count_mapping, _optional_non_negative_int, _non_negative_int, _guardrail_item_threshold, _guardrail_failure_streak, _guardrail_failure_streak_reached, _append_large_batch_guardrail_if_needed, _append_guardrail_stop_entry
 
 if __name__ == "__main__":

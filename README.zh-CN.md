@@ -267,7 +267,7 @@ OpenCLI 是 Openmd 托管的浏览器与平台组件。`openmd opencli list` 和
 PyPI 上的 `openmd` 已被一个无关项目占用。安装之后，命令仍然是 `openmd`。
 
 **某个链接处理失败了。**
-加上 `--verbose` 再运行一次，可以看到尝试了哪些读取路线；然后附上 Openmd 打印的那一行，提交一份 [链接失败报告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)。失败的真实链接是最有价值的贡献。
+加上 `--verbose` 再运行一次，可以看到尝试了哪些读取路线；然后附上 Openmd 打印的那一行，提交一份 [链接失败报告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)。失败的真实链接是最有价值的贡献。如果是已打开的页面（例如 AI 对话）保存得不对，可以运行 `openmd report feedback <任务号> -o <目录>` 生成脱敏问题包（只含页面结构，正文换成合成文字），检查后一并附上。
 
 ---
 

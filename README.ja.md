@@ -267,7 +267,7 @@ OpenCLI は Openmd が管理するブラウザ・プラットフォームコン�
 PyPI の `openmd` という名前は、無関係のプロジェクトが使っています。インストール後のコマンドは `openmd` のままです。
 
 **リンクがうまく処理できません。**
-`--verbose` を付けてもう一度実行すると、どの読み取りルートを試したかがわかります。そのうえで、Openmd が表示した 1 行を添えて [リンク失敗の報告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)を送ってください。失敗した実際のリンクは、何より役に立つ貢献です。
+`--verbose` を付けてもう一度実行すると、どの読み取りルートを試したかがわかります。そのうえで、Openmd が表示した 1 行を添えて [リンク失敗の報告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)を送ってください。失敗した実際のリンクは、何より役に立つ貢献です。すでに開いていたページ（AI チャットなど）の保存結果がおかしい場合は、`openmd report feedback <ジョブ ID> -o <ディレクトリ>` で匿名化した問題パッケージ（ページ構造のみ、本文は合成テキスト）を作成し、確認してから添付してください。
 
 ---
 

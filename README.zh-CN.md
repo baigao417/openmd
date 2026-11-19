@@ -82,6 +82,32 @@ pip install "openmd-cli[mcp]"
 claude mcp add --transport stdio openmd -- openmd mcp
 ```
 
+一行 `uvx` 配置（无需预先安装）：
+
+```bash
+uvx --from "openmd-cli[mcp]" openmd mcp
+```
+
+Cursor：在 **Cursor Settings → MCP → Add new MCP Server** 中加入同一个 stdio 服务：
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+Windows：使用可执行文件绝对路径；必要时设置 UTF-8 输出：
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "C:\\path\\to\\openmd.exe", "args": ["mcp"], "env": {"PYTHONIOENCODING": "utf-8"}}
+  }
+}
+```
+
 Claude Desktop：在 MCP 配置中加入以下内容；必要时把可执行文件改成绝对路径。
 
 ```json
@@ -92,7 +118,7 @@ Claude Desktop：在 MCP 配置中加入以下内容；必要时把可执行文�
 }
 ```
 
-四个工具为 `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor`。保存立即返回任务 ID，再轮询 `openmd_job`；`include_content=true` 可返回最多 32000 字符正文。输出目录必须显式提供绝对路径。HTML 快照接收字符串或绝对文件路径，UTF-8 上限 2 MiB。五个能力参数默认关闭，需显式开启 `network`、`browser`、`media`、`asr` 或 `cloud`。复用 CLI 的能力开关；MCP 不因给出输出目录推断日常 CLI 的自动授权，也不记住该目录。stdio 配置需要客户端可启动本地进程；远程 connector 需要另接传输桥。
+四个工具为 `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor`。`openmd_save` 可接收一个 source 或最多 20 个 `sources`；`openmd_job(action="cancel")` 可取消排队或运行中的任务。客户端提供 `progressToken` 时会收到队列进度，也可以继续轮询。已完成 Markdown 产物通过 `openmd://jobs` 和 `openmd://job/{job_id}` resources 暴露，读取有上限。输出目录必须显式提供绝对路径。HTML 快照接收字符串或绝对文件路径，UTF-8 上限 2 MiB。五个能力参数默认关闭，需显式开启 `network`、`browser`、`media`、`asr` 或 `cloud`。复用 CLI 的能力开关；MCP 不因给出输出目录推断日常 CLI 的自动授权，也不记住该目录。stdio 配置需要客户端可启动本地进程；远程 connector 需要另接传输桥。
 
 ---
 

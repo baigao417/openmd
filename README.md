@@ -82,6 +82,32 @@ pip install "openmd-cli[mcp]"
 claude mcp add --transport stdio openmd -- openmd mcp
 ```
 
+One-line `uvx` setup (no prior installation):
+
+```bash
+uvx --from "openmd-cli[mcp]" openmd mcp
+```
+
+Cursor: add the same stdio server in **Cursor Settings → MCP → Add new MCP Server**:
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+Windows: use an absolute executable path and UTF-8 process output when needed:
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "C:\\path\\to\\openmd.exe", "args": ["mcp"], "env": {"PYTHONIOENCODING": "utf-8"}}
+  }
+}
+```
+
 Claude Desktop: add this to its MCP configuration; use an absolute executable path if needed.
 
 ```json
@@ -92,7 +118,7 @@ Claude Desktop: add this to its MCP configuration; use an absolute executable pa
 }
 ```
 
-The four tools are `openmd_save`, `openmd_save_page`, `openmd_job` and `openmd_doctor`. Saves return a job ID immediately; poll `openmd_job`, optionally with `include_content=true` (32000 characters maximum). Output directories must be explicit absolute paths. HTML snapshots accept a string or an absolute file path, up to 2 MiB UTF-8. All five capability flags default off; explicitly grant `network`, `browser`, `media`, `asr` or `cloud`. The CLI capability flags are reused; MCP does not infer the daily CLI grants from an output directory and does not remember it. This stdio setup requires a local process launcher; remote connectors need their own transport bridge.
+The four tools are `openmd_save`, `openmd_save_page`, `openmd_job` and `openmd_doctor`. `openmd_save` accepts one source or up to 20 `sources`; `openmd_job(action="cancel")` cancels a queued or running job. Clients that send a `progressToken` receive queue progress, while polling remains available. Completed Markdown artifacts are exposed through `openmd://jobs` and `openmd://job/{job_id}` resources, with bounded reads. Output directories must be explicit absolute paths. HTML snapshots accept a string or an absolute file path, up to 2 MiB UTF-8. All five capability flags default off; explicitly grant `network`, `browser`, `media`, `asr` or `cloud`. The CLI capability flags are reused; MCP does not infer the daily CLI grants from an output directory and does not remember it. This stdio setup requires a local process launcher; remote connectors need their own transport bridge.
 
 ---
 

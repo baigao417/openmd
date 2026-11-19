@@ -308,7 +308,7 @@ def install(*, platform: str | None = None) -> dict[str, Any]:
                 "installed": False,
                 "platform": platform,
                 "error": "temporary_uv_install",
-                "next_action": "先用 `uv tool install openmd`（或 pipx）做持久安装，再运行 shell-menu install",
+                "next_action": "先用 `uv tool install openmd-cli`（或 `pipx install openmd-cli`）做持久安装，再运行 shell-menu install",
             }
         if _winreg is None:
             raise RuntimeError("windows_registry_unavailable")
@@ -396,19 +396,18 @@ def _registry_exists(path: str) -> bool:
         return False
 
 
-def _registry_values(path: str) -> dict[str, str]:
+def _registry_values(path: str) -> dict[str, Any]:
     try:
         key = _winreg.OpenKey(_winreg.HKEY_CURRENT_USER, path)
         try:
-            values: dict[str, str] = {}
+            values: dict[str, Any] = {}
             index = 0
             while True:
                 try:
-                    name, value, _kind = _winreg.EnumValue(key, index)
+                    name, value, kind = _winreg.EnumValue(key, index)
                 except OSError:
                     break
-                if isinstance(value, str):
-                    values[name] = value
+                values[name] = _encode_registry_value(value, kind)
                 index += 1
             return values
         finally:
@@ -417,7 +416,22 @@ def _registry_values(path: str) -> dict[str, str]:
         return {}
 
 
-def _restore_registry_key(path: str, values: dict[str, str]) -> None:
+def _encode_registry_value(value: Any, kind: int) -> dict[str, Any]:
+    """JSON-safe backup of one registry value that keeps its original type."""
+    if isinstance(value, (bytes, bytearray)):
+        return {"type": kind, "base64": base64.b64encode(bytes(value)).decode("ascii")}
+    return {"type": kind, "value": value}
+
+
+def _decode_registry_value(stored: Any) -> tuple[Any, int]:
+    if isinstance(stored, dict) and "type" in stored:
+        if "base64" in stored:
+            return base64.b64decode(stored["base64"]), int(stored["type"])
+        return stored.get("value"), int(stored["type"])
+    return stored, _winreg.REG_SZ  # backups written before value types were kept
+
+
+def _restore_registry_key(path: str, values: dict[str, Any]) -> None:
     key = _winreg.CreateKey(_winreg.HKEY_CURRENT_USER, path)
     try:
         index = 0
@@ -434,8 +448,9 @@ def _restore_registry_key(path: str, values: dict[str, str]) -> None:
                 _winreg.DeleteValue(key, name)
             except OSError:
                 pass
-        for name, value in values.items():
-            _winreg.SetValueEx(key, name, 0, _winreg.REG_SZ, value)
+        for name, stored in values.items():
+            value, kind = _decode_registry_value(stored)
+            _winreg.SetValueEx(key, name, 0, kind, value)
     finally:
         _winreg.CloseKey(key)
 

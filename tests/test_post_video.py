@@ -49,6 +49,17 @@ def _fake_run(durations=("74.8",), download_ok=True, calls=None):
     return run
 
 
+def test_text_mode_keeps_managed_module_prefix_intact(tmp_path, monkeypatch):
+    prefix = [sys.executable, "-m", "yt_dlp"]
+    monkeypatch.setattr(post_video, "yt_dlp_command", lambda: list(prefix))
+    calls = []
+    md = _post(tmp_path)
+    post_video.append_video_section(md, TWEET, "text", run=_fake_run(calls=calls), transcribe=_asr)
+    download = next(command for command in calls if "--simulate" not in command)
+    assert download[:3] == prefix
+    assert download.index("-S") > 2 and download[download.index("-S") + 1] == "res:480"
+
+
 def _asr(path):
     return TranscriptResult(text="[00:00:00-00:00:02] Hello there.\n[00:00:03-00:00:05] Second line.", status="verified", source_level="asr", backend="asr.auto")
 

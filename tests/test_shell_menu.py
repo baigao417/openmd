@@ -111,9 +111,10 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
     existing = r"Software\Classes\*\shell\OpenmdToMarkdown"
     existing_command = existing + r"\command"
     store = {
-        existing: {"": "Previous menu label", "AppliesTo": "previous filter", "CustomValue": "keep"},
+        existing: {"": "Previous menu label", "AppliesTo": "previous filter", "CustomValue": "keep", "Flags": 7, "Blob": b"\x01\x02"},
         existing_command: {"": "previous.exe %1", "CustomCommandValue": "keep"},
     }
+    kinds = {(existing, "Flags"): 4, (existing, "Blob"): 3}
     class FakeWinreg:
         HKEY_CURRENT_USER = object()
         REG_SZ = 1
@@ -122,6 +123,7 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
             return Key(store, path)
         def SetValueEx(self, key, name, reserved, kind, value):
             key.store[key.path][name] = value
+            kinds[(key.path, name)] = kind
         def OpenKey(self, root, path):
             if path not in store:
                 raise FileNotFoundError(path)
@@ -133,7 +135,7 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
                 name, value = list(key.store[key.path].items())[index]
             except IndexError as exc:
                 raise OSError("no more registry values") from exc
-            return name, value, self.REG_SZ
+            return name, value, kinds.get((key.path, name), self.REG_SZ)
         def DeleteValue(self, key, name):
             key.store[key.path].pop(name, None)
         def DeleteKey(self, root, path):
@@ -157,6 +159,8 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
     assert store[existing_command][""] == "previous.exe %1"
     assert store[existing]["CustomValue"] == "keep"
     assert store[existing_command]["CustomCommandValue"] == "keep"
+    assert store[existing]["Flags"] == 7 and kinds[(existing, "Flags")] == 4
+    assert store[existing]["Blob"] == b"\x01\x02" and kinds[(existing, "Blob")] == 3
 
 
 def test_windows_shell_command_uses_pythonw_when_available_and_falls_back(monkeypatch, tmp_path):
@@ -187,7 +191,7 @@ def test_windows_install_rejects_uv_temporary_cli_with_next_action(monkeypatch, 
     result = install(platform="windows")
 
     assert result["installed"] is False
-    assert "先用 `uv tool install openmd`（或 pipx）做持久安装，再运行 shell-menu install" == result["next_action"]
+    assert "先用 `uv tool install openmd-cli`（或 `pipx install openmd-cli`）做持久安装，再运行 shell-menu install" == result["next_action"]
 
 
 def test_uv_cache_install_rejection_returns_nonzero_cli_exit(monkeypatch, tmp_path, capsys):
@@ -202,7 +206,7 @@ def test_uv_cache_install_rejection_returns_nonzero_cli_exit(monkeypatch, tmp_pa
     exit_code = shell_menu.cmd_shell_menu(Namespace(shell_menu_action="install", platform="windows"))
 
     assert exit_code == 1
-    assert "uv tool install openmd" in json.loads(capsys.readouterr().out)["next_action"]
+    assert "uv tool install openmd-cli" in json.loads(capsys.readouterr().out)["next_action"]
 
 
 def test_file_menu_label_and_filter_are_localized_and_generated(monkeypatch):

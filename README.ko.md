@@ -67,6 +67,9 @@ pip install "openmd-cli[pandoc]"
 
 # 로컬 음성 인식(ASR)으로 음성·영상 전사
 pip install "openmd-cli[asr]"
+
+# 영상·음성 파일 저장 (Openmd 관리 yt-dlp)
+pip install "openmd-cli[media]"
 ```
 
 > 참고: 문서 분석, OCR, 로컬 ASR에는 Python 패키지 외에 FFmpeg나 로컬 모델이 필요할 수 있습니다. 준비 상태는 `openmd doctor`로 확인할 수 있습니다.
@@ -169,7 +172,7 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 | ZIP | 항목별 상태로 일부 지원 | 혼합 미디어는 별도 ASR/OCR 필요; 아카이브 자원 제한 적용 |
 | MOBI, AZW3 | Calibre 필요 | 도구가 없으면 `engine_unavailable`; 암호화 전자책은 거부하고 복호화하지 않음 |
 
-우클릭 변환은 `openmd shell-menu install`로 현재 사용자에게 설치합니다. 지원 문서 옆에 `.md`를 만들고, 폴더는 하위 폴더 구조를 유지하는 `<folder>-md` 미러로 변환합니다. 다시 실행하면 변경되지 않은 입력은 건너뛰고 사용자가 편집한 Markdown을 보호합니다. 이름은 같고 형식이 다른 파일은 Markdown 파일명에 원래 확장자를 남깁니다. Windows에서는 메뉴를 설치하기 전에 `uv tool install openmd` 또는 `pipx`로 영구 설치해야 합니다. 임시 `uvx` 캐시 설치는 거부됩니다. 스캔 PDF에는 로컬 OCR이 필요합니다. Windows 11에서는 기존 HKCU 메뉴가 '더 많은 옵션 표시' 아래에 나타날 수 있습니다. 이 경량 설치 프로그램은 패키지 앱이 필요한 최상위 메뉴 확장을 등록하지 않습니다. `openmd shell-menu uninstall`로 제거합니다.
+우클릭 변환은 `openmd shell-menu install`로 현재 사용자에게 설치합니다. 지원 문서 옆에 `.md`를 만들고, 폴더는 하위 폴더 구조를 유지하는 `<folder>-md` 미러로 변환합니다. 다시 실행하면 변경되지 않은 입력은 건너뛰고 사용자가 편집한 Markdown을 보호합니다. 이름은 같고 형식이 다른 파일은 Markdown 파일명에 원래 확장자를 남깁니다. Windows에서는 메뉴를 설치하기 전에 `uv tool install openmd-cli` 또는 `pipx install openmd-cli`로 영구 설치해야 합니다. 임시 `uvx` 캐시 설치는 거부됩니다. 스캔 PDF에는 로컬 OCR이 필요합니다. Windows 11에서는 기존 HKCU 메뉴가 '더 많은 옵션 표시' 아래에 나타날 수 있습니다. 이 경량 설치 프로그램은 패키지 앱이 필요한 최상위 메뉴 확장을 등록하지 않습니다. `openmd shell-menu uninstall`로 제거합니다.
 
 여러분의 컴퓨터에서 무엇이 준비되었는지는 `openmd doctor`로 확인할 수 있습니다. 링크 처리에 실패하면 Openmd가 원인과 함께, [버그 리포트](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)에 그대로 붙여 넣을 수 있는 한 줄을 출력합니다.
 

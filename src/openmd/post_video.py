@@ -157,7 +157,7 @@ def _download(url: str, workdir: Path, *, keep_video: bool, run) -> list[Path]:
     command = command_prefix + ["--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--socket-timeout", "30", "--retries", "3",
                "-f", "b[ext=mp4][protocol^=http]/b[ext=mp4]/b", "-o", template, url]
     if not keep_video:
-        command[1:1] = ["-S", "res:480"]
+        command[len(command_prefix):len(command_prefix)] = ["-S", "res:480"]
     done = run(command, DOWNLOAD_TIMEOUT_S)
     if done.returncode != 0:
         raise YtDlpFailure(done.stderr or done.stdout)

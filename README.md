@@ -67,6 +67,9 @@ pip install "openmd-cli[pandoc]"
 
 # Local speech recognition (ASR) for audio and video
 pip install "openmd-cli[asr]"
+
+# Save video/audio files (Openmd-managed yt-dlp)
+pip install "openmd-cli[media]"
 ```
 
 > Note: besides the Python packages, document parsing, OCR and local ASR may also need FFmpeg or local models. `openmd doctor` shows what is ready.
@@ -169,7 +172,7 @@ The `[document]` extra is the baseline for local document parsing. This matrix w
 | ZIP | Partial, with per-entry status | Mixed-media entries require ASR/OCR separately; archive resource limits apply |
 | MOBI, AZW3 | Requires Calibre | Missing tool returns `engine_unavailable`; encrypted books are rejected without decryption |
 
-The Explorer / Finder / file-manager action is installed per user with `openmd shell-menu install`. Right-click a supported document to create a neighboring `.md`; right-click a folder to create a `<folder>-md` mirror that preserves subfolders. Repeated runs skip unchanged inputs and preserve edited Markdown. Same-name files in different formats keep their extensions in the Markdown filename. On Windows, install Openmd persistently with `uv tool install openmd` or `pipx` before adding the menu; temporary `uvx` cache installs are rejected. Scanned PDFs still need local OCR. Windows 11 may show the classic HKCU menu under **Show more options**; a first-level packaged Explorer command is outside this lightweight installer. Use `openmd shell-menu uninstall` to remove it.
+The Explorer / Finder / file-manager action is installed per user with `openmd shell-menu install`. Right-click a supported document to create a neighboring `.md`; right-click a folder to create a `<folder>-md` mirror that preserves subfolders. Repeated runs skip unchanged inputs and preserve edited Markdown. Same-name files in different formats keep their extensions in the Markdown filename. On Windows, install Openmd persistently with `uv tool install openmd-cli` or `pipx install openmd-cli` before adding the menu; temporary `uvx` cache installs are rejected. Scanned PDFs still need local OCR. Windows 11 may show the classic HKCU menu under **Show more options**; a first-level packaged Explorer command is outside this lightweight installer. Use `openmd shell-menu uninstall` to remove it.
 
 Run `openmd doctor` to see what is ready on your machine. If a link fails, Openmd prints the reason and one line to paste into a [bug report](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml).
 

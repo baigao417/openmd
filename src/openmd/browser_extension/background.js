@@ -470,7 +470,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => saving(async () => {
   if (info.menuItemId === "save-link" && info.linkUrl) return saveMany([{ url: info.linkUrl, title: info.linkUrl }]);
   if (info.menuItemId === "save-page" && tab?.url) return saveTabs([tab]);
   if (info.menuItemId === "save-video-text" || info.menuItemId === "save-video-file") {
-    const url = info.pageUrl || tab?.url || info.linkUrl;
+    // A link click targets that link; on a video element the post page owns the
+    // text (the element's srcUrl is usually a blob: stream, not a public URL).
+    const url = (info.linkUrl && /^https?:/.test(info.linkUrl)) ? info.linkUrl : (info.pageUrl || tab?.url);
     const video = info.menuItemId === "save-video-file" ? "file" : "text";
     return saveMany([{ url, title: info.linkUrl ? url : tab?.title }], null, video);
   }

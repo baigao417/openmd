@@ -1,0 +1,69 @@
+{
+  "version": 2,
+  "surfaces": [
+    {
+      "name": "extension_identity_hash",
+      "owner": "browser_extension_sync.py",
+      "owner_function": "extension_file_hashes",
+      "allowed_modules": ["browser_extension_sync.py"],
+      "extensions": [".py"],
+      "detector": "extension_hash",
+      "detection_basis": "AST: hashlib.sha256 together with extension-directory traversal (rglob/glob/os.walk) and file reads; owner calls are not matches.",
+      "guidance": "调用 browser_extension_sync.extension_file_hashes，不要复制扩展目录遍历和哈希规则。"
+    },
+    {
+      "name": "opencli_patch_registration",
+      "owner": "runtime/opencli_patches.py",
+      "owner_function": "BRIDGE_PATCHES",
+      "allowed_modules": [
+        "runtime/opencli_patches.py",
+        "browser_extension/vendor/opencli-bridge/background.js",
+        "browser_extension/vendor/opencli-bridge/VENDOR.md"
+      ],
+      "extensions": [".py", ".js", ".mjs", ".md"],
+      "detector": "patch_table",
+      "detection_basis": "AST: a multi-field patch table containing original/replacement and count/version data combined with source.replace/count editing; owner calls are not matches.",
+      "guidance": "追加补丁必须登记到 runtime/opencli_patches.py，并由生成器写入 vendor 产物。"
+    },
+    {
+      "name": "user_preference_write",
+      "owner": "core/preferences.py",
+      "owner_function": "save_preferences",
+      "allowed_modules": ["core/preferences.py"],
+      "extensions": [".py"],
+      "detector": "preference_write",
+      "detection_basis": "AST: a preferences.json path literal combined with write_text/json.dump/open or equivalent write call; importing and calling save_preferences is allowed.",
+      "guidance": "调用 core.preferences.save_preferences，不要在其他模块直接写 preferences.json。"
+    },
+    {
+      "name": "process_startup",
+      "owner": "runtime/interpreters.py",
+      "owner_function": "owned_popen",
+      "allowed_modules": ["runtime/interpreters.py", "runtime/services.py", "browser_host.py"],
+      "extensions": [".py"],
+      "detector": "process_start",
+      "detection_basis": "AST: subprocess.Popen (including an imported or aliased Popen) outside the registered lifecycle modules; owner calls are not matches.",
+      "guidance": "进程只能在现有允许模块启动，并使用受管生命周期入口。"
+    },
+    {
+      "name": "completeness_summary",
+      "owner": "core/completeness.py",
+      "owner_function": "check_completeness",
+      "allowed_modules": ["core/completeness.py"],
+      "extensions": [".py"],
+      "detector": "check_status_aggregate",
+      "detection_basis": "AST: multiple Check/status values are reduced to downgrade/ok/unknown through any/all or conditional aggregation; collection completeness_counts is not this surface.",
+      "guidance": "单条内容完整度统一调用 core.completeness.check_completeness，不要在其他模块合成 Check 状态。"
+    },
+    {
+      "name": "ai_chat_title_cleaning",
+      "owner": "core/chat_title.py",
+      "owner_function": "clean_chat_title",
+      "allowed_modules": ["core/chat_title.py"],
+      "extensions": [".py"],
+      "detector": "title_suffix_cleaning",
+      "detection_basis": "AST: re.sub suffix removal with an end anchor and a site-name alias (for example 豆包 or Google Gemini); owner calls are not matches.",
+      "guidance": "AI 对话标题清洗统一调用 core.chat_title.clean_chat_title。"
+    }
+  ]
+}

@@ -15,6 +15,7 @@
 | Generation and scanners in a checkout with installed integration dependencies | CI installs `integrations/opencli/*` npm deps before `python -m openmd.routing.generate --check`; `python -m pytest tests/test_opencli_inventory.py tests/test_ci_generated_dependencies.py -q` | I077 |
 | Machine calls (`--json`, `--yes`, batch, MCP) never rewrite user preferences | `python -m pytest tests/test_save_preferences.py -q` | I078 |
 | Loaded AI chat pages: every role captured, TeX kept, oversized data images and thinking counted, titles cleaned | `python -m pytest tests/test_f_chat_quality.py tests/test_f_loaded_chat.py tests/test_f_loaded_chat_cli.py -q` | I079 |
+| Shared semantic surfaces have one owner: extension identity, OpenCLI patches, preferences, process startup, completeness summaries and AI chat titles | `python -m pytest tests/test_shared_surfaces.py tests/test_runtime_processes.py -q` | I080 |
 
 The gate wrapper validates a separately trusted user authority record and its
 hash. A worker or dispatcher cannot create new user authorization by relabeling

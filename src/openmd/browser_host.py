@@ -405,7 +405,11 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
             return current
         lines = [line for line in (done.stdout or "").splitlines() if line.strip().startswith("{")]
         result = json.loads(lines[-1]) if lines else {}
-        status["result"] = {key: result.get(key) for key in ("status", "source_level", "completeness", "error_code", "next_action") if result.get(key) is not None}
+        # Job status is read by the extension, MCP clients and shareable feedback
+        # packages, so it only ever carries the bounded receipt shape (labels and
+        # structure, generic next steps) -- never free text from the raw result.
+        from openmd.mcp_jobs import receipt as safe_receipt
+        status["result"] = safe_receipt(result)
         if status.get("mcp"):
             from openmd.mcp_jobs import receipt
             status["receipt"] = receipt(result)

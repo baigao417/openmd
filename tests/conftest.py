@@ -125,3 +125,23 @@ def isolated_browser_registration(monkeypatch):
     from openmd import browser_diagnostics
 
     monkeypatch.setattr(browser_diagnostics, "registered_manifests", lambda: {})
+
+
+class _RealRegistryForbidden:
+    """Stands in for winreg in shell_menu: a test reaching it would write the real HKCU."""
+
+    def __getattr__(self, name):
+        raise AssertionError(
+            "test reached the real Windows registry through openmd.shell_menu; "
+            "monkeypatch shell_menu._winreg with a fake registry first")
+
+
+@pytest.fixture(autouse=True)
+def isolated_shell_menu_registry(monkeypatch):
+    # round10c: a red-phase test called install() before the uv-cache rejection
+    # existed and left a dead "Openmd: Convert to Markdown" entry in the
+    # developer's real context menu. Tests that need a registry supply a fake.
+    from openmd import shell_menu
+
+    if shell_menu._winreg is not None:
+        monkeypatch.setattr(shell_menu, "_winreg", _RealRegistryForbidden())

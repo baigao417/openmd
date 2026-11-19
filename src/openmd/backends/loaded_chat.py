@@ -35,7 +35,9 @@ HOSTS = {
     "gemini.google.com": "gemini", "www.qianwen.com": "qwen", "qianwen.com": "qwen",
     "qianwen.aliyun.com": "qwen", "tongyi.aliyun.com": "qwen", "yuanbao.tencent.com": "yuanbao",
 }
-CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-testid="user-message"], [data-conversation-role="user"]'
+CHATGPT_USER_CONTAINERS = '[data-message-author-role="user"], [data-author="user"], [data-user-message-bubble], [data-chatgpt-search-unit-key$=":user"], [data-content-search-unit-key$=":user"], [data-testid="user-message"], [data-conversation-role="user"]'
+CHATGPT_USER_KEYS = '[data-chatgpt-search-unit-key$=":user"], [data-content-search-unit-key$=":user"]'
+CHATGPT_TURN_ANCHORS = '[data-turn-key], [data-content-search-turn-key], [data-conversation-turn-id], [data-message-id], [data-turn-id], article[data-testid*="conversation-turn"]'
 EMBEDDED_IMAGE_LIMIT = 8 * 1024  # UTF-8 bytes of the inline URI, before decoding.
 # Exact structural signals only. Site-specific variants require live acceptance;
 # prose such as "Thought for ..." is never enough to discard answer text.
@@ -85,6 +87,38 @@ def _visible(node: Tag) -> bool:
 def _outermost(nodes: list[Tag]) -> list[Tag]:
     identities = {id(node) for node in nodes}
     return [node for node in nodes if not any(id(parent) in identities for parent in node.parents)]
+
+
+def _chatgpt_user_turn_count(soup: BeautifulSoup) -> int:
+    """Count semantic user turns, collapsing markers from one DOM turn.
+
+    ChatGPT currently renders one user turn with a role heading, a search-unit
+    wrapper, a content-search wrapper, and a bubble.  These markers are often
+    siblings, so an outermost-node count treats one turn as several.  Prefer a
+    shared ``*:user`` search key; fall back to the nearest explicit turn anchor
+    for older layouts.  A bare marker remains independent evidence by itself.
+    """
+    markers = _outermost([node for node in soup.select(CHATGPT_USER_CONTAINERS) if _visible(node)])
+    groups: set[tuple[str, object]] = set()
+    for node in markers:
+        key: tuple[str, object] | None = None
+        for ancestor in [node, *node.parents]:
+            keyed = [candidate for candidate in ancestor.select(CHATGPT_USER_KEYS) if _visible(candidate)]
+            if ancestor in soup.select(CHATGPT_USER_KEYS) and _visible(ancestor):
+                keyed.append(ancestor)
+            values = {str(candidate.get("data-chatgpt-search-unit-key") or candidate.get("data-content-search-unit-key")) for candidate in keyed}
+            if len(values) == 1:
+                key = ("search", next(iter(values)))
+                break
+        if key is None:
+            for ancestor in [node, *node.parents]:
+                if not isinstance(ancestor, Tag):
+                    continue
+                if ancestor in soup.select(CHATGPT_TURN_ANCHORS):
+                    key = ("anchor", id(ancestor))
+                    break
+        groups.add(key or ("marker", id(node)))
+    return len(groups)
 
 
 def _role_content(site: str, node: Tag) -> tuple[str, Tag]:
@@ -256,7 +290,7 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
     independent_count = len(roots)
     # Separate evidence sweep: a missing role/content selector must not certify
     # an assistant-only export when user bubbles are present in the page.
-    user_count = len(_outermost([node for node in soup.select(CHATGPT_USER_CONTAINERS) if _visible(node)])) if site == "chatgpt" else None
+    user_count = _chatgpt_user_turn_count(soup) if site == "chatgpt" else None
     if site == "gemini" and not roots:
         # Upstream's legacy layout sweep lacks an independent turn container.
         roots = _outermost([node for node in soup.select('[data-testid*="message"], [data-test-id*="message"], [class*="message"], [class*="conversation-turn"], [class*="query-text"], [class*="response-text"]') if _visible(node)])

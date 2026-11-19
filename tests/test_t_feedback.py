@@ -32,6 +32,17 @@ def test_sanitize_preserves_structure_and_removes_sentinels():
     assert "secret" not in result.html
 
 
+def test_sanitize_attribute_whitelist_removes_all_identifier_sentinels():
+    html = f'''<html><head><meta property="og:title" content="{SENTINELS}"></head><body>
+    <div id="{SENTINELS}" data-message-id="{SENTINELS}" data-content="{SENTINELS}" data-text="{SENTINELS}"
+      datetime="{SENTINELS}" srcset="{SENTINELS}" style="background:url(https://x/{SENTINELS})"
+      data-message-author-role="user" class="turn"><span>{SENTINELS}</span></div></body></html>'''
+    result = sanitize_snapshot(html, "https://example.org/c/session-token")
+    assert SENTINELS not in result.html
+    assert "data-message-author-role=\"user\"" in result.html
+    assert "data-content" not in result.html and "data-text" not in result.html
+
+
 def test_sanitized_snapshot_roundtrips_loaded_chat_roles():
     sanitized = sanitize_snapshot(_html(), "https://chatgpt.com/c/synthetic")
     item = AiChatAdapter("ai_chat", ai_chat_backend_for_site("chatgpt")).resolve_items("https://chatgpt.com/c/synthetic")[0]

@@ -214,12 +214,15 @@ def start_snapshot_job(
     save_to: object = None,
     *,
     include_thinking: object = False,
+    feedback_opt_in: object = False,
     spawn=subprocess.Popen,
 ) -> dict[str, Any]:
     """Queue one user initiated current-page DOM snapshot without browser storage."""
     source_url = _validate_url(url)
     if type(include_thinking) is not bool:
         raise ValueError("invalid_include_thinking")
+    if type(feedback_opt_in) is not bool:
+        raise ValueError("invalid_feedback_opt_in")
     if not isinstance(html, str):
         raise ValueError("invalid_snapshot_html")
     payload = html.encode("utf-8")
@@ -247,6 +250,7 @@ def start_snapshot_job(
         "attempts": 0,
         "snapshot": True,
         "include_thinking": include_thinking,
+        "feedback_opt_in": feedback_opt_in,
     }
     _write_status(job_dir, status)
     _spawn_runner(spawn)
@@ -421,7 +425,10 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
                 login = login_for_url(status["url"])
                 status.update(error_code="login_required", login=login, error=login_hint(login))
                 _pause_login_jobs(status, login)
-        if status.get("snapshot"):
+        result_status = result.get("status")
+        failed_or_partial = done.returncode != 0 or not result.get("ok") or result_status in {"partial", "failed"}
+        should_keep_feedback = status.get("snapshot") and status.get("feedback_opt_in") is True and failed_or_partial
+        if should_keep_feedback:
             # Keep only a structural, synthetic source for a later report command.
             # The captured page itself is removed below and is never an artifact.
             from openmd.diagnostics.sanitize import sanitize_snapshot
@@ -606,7 +613,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"))}
         if kind == "save_snapshot":
-            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"), include_thinking=message.get("include_thinking", False))}
+            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"), include_thinking=message.get("include_thinking", False), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "save_many":
             return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"))}
         if kind == "status":
@@ -637,6 +644,9 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
         if kind == "feedback_report":
             from openmd.diagnostics.feedback import build_feedback_package_for_job
             job_id = str(message.get("id", ""))
+            status = read_status(job_id)
+            if not status.get("sanitized_snapshot_path"):
+                return {"ok": False, "error_code": "feedback_not_available", "next_action": "请在扩展设置中开启脱敏问题包后重新保存一次。"}
             destination = _validate_destination(message.get("save_to")) / "Openmd-problem-reports" / job_id
             return {"ok": True, "report": build_feedback_package_for_job(job_id, destination)}
         if kind == "pick_folder":

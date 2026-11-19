@@ -27,6 +27,17 @@ class SanitizedSnapshot:
 
 _LATIN = "loremipsum"
 _CJK = "示例文本问题回答内容"
+_ROLE_VALUES = {"user", "assistant", "system", "tool", "unknown", "send", "receive"}
+_STRUCTURAL_ATTRS = {
+    "class", "role", "data-message-author-role", "data-author", "data-user-message-bubble",
+    "data-testid", "data-test-id", "data-role", "data-conversation-role", "data-chatgpt-search-unit-key",
+    "data-chat-question-wrap", "data-chat-answers-wrap", "data-message-list", "data-union-message",
+    "data-send-message", "data-receive-message", "aria-hidden", "hidden",
+}
+
+
+def _identifier(value: object) -> str:
+    return "openmd-id-" + hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
 
 
 def _replacement(text: str) -> tuple[str, int]:
@@ -94,23 +105,35 @@ def sanitize_snapshot(html: str, url: str, *, captured_at: str | None = None) ->
     for node in soup.find_all(True):
         for key in list(node.attrs):
             value = node.attrs.get(key)
-            if is_sensitive_key(str(key)) or any(re.search(pattern, str(value), re.I) for pattern in (r"cookie", r"bearer", r"token", r"authorization", r"session")):
-                if key not in {"class"} and not (str(key).startswith("data-") and str(value).lower() in {"user", "assistant", "system", "tool", "turn"}):
-                    node.attrs.pop(key, None)
-                    stats["scrubbed_attributes"] += 1
+            key_text = str(key).lower()
+            # Attribute values use a whitelist. The retained values below are
+            # selectors/role markers consumed by loaded_chat, not page prose.
+            if node.name == "meta" and key_text == "content":
+                node.attrs.pop(key, None); stats["scrubbed_attributes"] += 1; continue
+            if key_text in {"style", "srcset", "datetime", "value", "title", "alt", "aria-label", "content"}:
+                node.attrs.pop(key, None); stats["scrubbed_attributes"] += 1; continue
+            if key_text in {"href", "src", "action", "poster"}:
+                node.attrs[key] = _safe_url(str(value)); stats["sanitized_urls"] += 1; continue
+            if key_text == "id" or key_text.endswith("-id") or key_text in {"name", "for"}:
+                node.attrs[key] = _identifier(value); stats["scrubbed_attributes"] += 1; continue
+            if key_text == "class":
+                node.attrs[key] = [str(v) for v in value] if isinstance(value, list) else str(value).split(); continue
+            if key_text in _STRUCTURAL_ATTRS:
+                if key_text in {"aria-hidden", "hidden"}:
+                    node.attrs[key] = str(value).lower() if str(value).lower() in {"true", "false", "hidden", ""} else "true"
+                elif key_text == "data-chatgpt-search-unit-key":
+                    suffix = str(value).rsplit(":", 1)[-1].lower()
+                    node.attrs[key] = f"synthetic:{suffix}" if suffix in _ROLE_VALUES else "synthetic"
+                elif key_text not in {"data-testid", "data-test-id"} and str(value).lower() not in _ROLE_VALUES and value not in (None, ""):
+                    node.attrs[key] = "synthetic"
+                continue
+            if key_text.startswith("data-"):
+                # Free-text data attributes (clipboard/content/text/etc.) are
+                # removed; unknown boolean markers are safe to retain empty.
+                if value in (None, ""):
                     continue
-            if key in {"href", "src", "action", "poster"}:
-                if isinstance(value, str):
-                    node.attrs[key] = _safe_url(value)
-                    stats["sanitized_urls"] += 1
-            elif key in {"value", "title", "alt", "aria-label"}:
-                # Keep labels useful only where they are structural. Textual
-                # labels are replaced below; these attrs must not leak them.
-                if key == "value" or not str(value).startswith("data-"):
-                    node.attrs[key] = "示例"
-                    stats["scrubbed_attributes"] += 1
-            elif isinstance(value, list):
-                node.attrs[key] = [str(v) for v in value]
+                node.attrs.pop(key, None); stats["scrubbed_attributes"] += 1; continue
+            node.attrs.pop(key, None); stats["scrubbed_attributes"] += 1
 
     for text_node in list(soup.find_all(string=True)):
         if not isinstance(text_node, NavigableString) or text_node.parent is None:

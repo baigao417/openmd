@@ -47,6 +47,7 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
     native_ready = any(formats.get(suffix, {}).get('available') for suffix in ('pdf', 'docx', 'pptx', 'xlsx'))
     rows: list[tuple[bool | None, str, str]] = [
         (_has("trafilatura") and _has("youtube_transcript_api"), "网页文章、YouTube 有字幕的视频", "pip install --upgrade openmd-cli"),
+        (bool((diagnostics.get("yt_dlp") or {}).get("version")), "保存公开视频 / 音频文件", 'pip install "openmd-cli[media]"'),
         _opencli_row(),
         (shutil.which("ffmpeg") is not None, "音视频处理（本机转录前置）", "winget install Gyan.FFmpeg"),
         (asr_ready, "无字幕视频 / 播客本机转录", 'pip install "openmd-cli[asr]"，再按 docs/tool-integration.md 准备模型'),
@@ -92,6 +93,13 @@ def render(payload: dict[str, Any]) -> str:
                   f"插件: {', '.join(managed.get('plugins') or []) or '无'}"]
         if managed.get("ignored_path_opencli"):
             lines.append(f"PATH 上的其他 opencli 已忽略: {managed['ignored_path_opencli']}")
+    yt_dlp = (payload.get("profile_diagnostics") or {}).get("yt_dlp") or {}
+    if yt_dlp:
+        origin = "Openmd 管理环境" if yt_dlp.get("source") == "managed" else "PATH" if yt_dlp.get("source") == "path" else "未安装"
+        age = f"；发布 {yt_dlp['age_days']} 天" if yt_dlp.get("age_days") is not None else ""
+        lines += ["", f"yt-dlp: {origin}；版本 {yt_dlp.get('version') or '未知'}{age}"]
+        if yt_dlp.get("warning"):
+            lines.append(f"  → {yt_dlp.get('next_action') or '运行 openmd doctor 查看版本。'}")
     if preparation.get("prepare_recommended"):
         lines.append("本机模型大分片会增加加载内存；运行 openmd asr prepare-models 准备独立小分片副本（原模型保留）。")
     patches = (payload.get('profile_diagnostics') or {}).get('opencli_patches') or {}

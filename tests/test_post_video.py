@@ -25,7 +25,7 @@ def test_real_runner_preserves_utf8_text_capture():
 
 @pytest.fixture(autouse=True)
 def yt_dlp_present(monkeypatch):
-    monkeypatch.setattr(post_video.shutil, "which", lambda name: "C:/bin/yt-dlp.exe")
+    monkeypatch.setattr(post_video, "yt_dlp_command", lambda: ["C:/bin/yt-dlp.exe"])
 
 
 def _post(tmp_path: Path) -> Path:
@@ -205,7 +205,35 @@ def test_download_failure_is_a_note_not_an_error(tmp_path):
     post_video.append_video_section(md, TWEET, "text", run=_fake_run(download_ok=False), transcribe=_asr)
     text = md.read_text(encoding="utf-8")
     assert "转文字未完成：视频下载失败" in text
-    assert "下一步：确认页面无需登录、付费或 DRM" in text
+    assert "下一步：运行 `openmd doctor` 查看版本" in text
+
+
+def test_reddit_login_failure_reports_manual_next_step(tmp_path):
+    def blocked(command, timeout):
+        if "--simulate" in command:
+            return subprocess.CompletedProcess(command, 0, "20\n", "")
+        return subprocess.CompletedProcess(command, 1, "", "Account authentication is required")
+
+    section = post_video.video_section(
+        "https://www.reddit.com/r/test/comments/abc", "file", tmp_path,
+        run=blocked, transcribe_media=False,
+    )
+
+    assert "login_required" in section
+    assert "该站点要求登录才能下载视频" in section
+    assert "浏览器中手动下载" in section
+    assert "不读取浏览器 cookie" in section
+
+
+def test_probe_error_uses_sanitized_category_and_action(tmp_path):
+    def blocked(command, timeout):
+        return subprocess.CompletedProcess(command, 1, "", "HTTP Error 403: Forbidden")
+
+    section = post_video.video_section(TWEET, "text", tmp_path, run=blocked, transcribe_media=False)
+
+    assert "forbidden_or_outdated" in section
+    assert "openmd doctor" in section
+    assert "HTTP Error 403" not in section
 
 
 def test_text_mode_without_media_gates_falls_back_to_note(tmp_path, monkeypatch):

@@ -18,6 +18,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from openmd.runtime.tempdirs import owned_mkdtemp
+from openmd.media_tools import YtDlpFailure, classify_yt_dlp_error, yt_dlp_command
 
 VIDEO_MODES = ("note", "text", "file")
 MAX_VIDEOS = 4
@@ -107,23 +108,31 @@ def _run(command: list[str], timeout: int) -> subprocess.CompletedProcess:
     return run_interruptibly(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
-def probe(url: str, *, run=_run) -> list[float] | None:
-    """Durations (seconds) of the post's videos; [] when it has none; None when unknown."""
-    if shutil.which("yt-dlp") is None:
-        return None
+def _probe_result(url: str, *, run=_run) -> tuple[list[float] | None, dict[str, str] | None]:
+    """Return duration results and a sanitized diagnostic when probing fails."""
+    command = yt_dlp_command()
+    if command is None:
+        return None, {"category": "missing", "message": "未安装 yt-dlp", "next_action": '安装媒体 extra：`pip install "openmd-cli[media]"`。'}
     try:
-        done = run(["yt-dlp", "--simulate", "--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--print", "%(duration)s", url], PROBE_TIMEOUT_S)
+        done = run(command + ["--simulate", "--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--print", "%(duration)s", url], PROBE_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        return None, {"category": "network", "message": "视频探测未完成", "next_action": "检查网络后重试。"}
     if done.returncode != 0:
-        return [] if "no video" in done.stderr.lower() else None
+        if "no video" in done.stderr.lower():
+            return [], None
+        return None, classify_yt_dlp_error(done.stderr or done.stdout)
     durations = []
     for line in done.stdout.splitlines():
         try:
             durations.append(float(line.strip()))
         except ValueError:
             continue
-    return durations
+    return durations, None
+
+
+def probe(url: str, *, run=_run) -> list[float] | None:
+    """Durations (seconds) of the post's videos; [] when it has none; None when unknown."""
+    return _probe_result(url, run=run)[0]
 
 
 def _clock(seconds: float) -> str:
@@ -139,16 +148,19 @@ def _summary(durations: list[float]) -> str:
 
 
 def _download(url: str, workdir: Path, *, keep_video: bool, run) -> list[Path]:
+    command_prefix = yt_dlp_command()
+    if command_prefix is None:
+        raise RuntimeError("未安装 yt-dlp")
     template = str(workdir / "video-%(autonumber)02d.%(ext)s")
     # Progressive mp4 only: X's HLS audio-only streams stall behind proxies (verified 2026-11-08),
     # while the single-file mp4 downloads in seconds. For text, a small rendition is enough.
-    command = ["yt-dlp", "--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--socket-timeout", "30", "--retries", "3",
+    command = command_prefix + ["--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--socket-timeout", "30", "--retries", "3",
                "-f", "b[ext=mp4][protocol^=http]/b[ext=mp4]/b", "-o", template, url]
     if not keep_video:
         command[1:1] = ["-S", "res:480"]
     done = run(command, DOWNLOAD_TIMEOUT_S)
     if done.returncode != 0:
-        raise RuntimeError("视频下载失败")
+        raise YtDlpFailure(done.stderr or done.stdout)
     files = sorted(p for p in workdir.iterdir() if p.is_file() and p.suffix.lower() in {".mp4", ".wav", ".m4a", ".webm", ".mkv"})
     if not files:
         raise RuntimeError("视频下载后没有找到文件")
@@ -177,13 +189,15 @@ def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcri
     """Markdown to append for ``url``; None when the post has no video or nothing can be said."""
     if mode not in VIDEO_MODES or not should_process(url, mode):
         return None
-    durations = probe(url, run=run)
+    durations, probe_error = _probe_result(url, run=run)
     if mode == "note" and durations in ([], None):
         return None
     if durations == []:
         return "> 未发现可下载的视频。\n"
     if durations is None:
-        return "> 视频处理未完成：yt-dlp 不支持此页面，或站点拦截了公开媒体。下一步：安装或更新 yt-dlp，确认页面无需付费/DRM 后重试。\n"
+        detail = probe_error or {"message": "视频处理未完成", "next_action": "确认视频可公开访问后重试。"}
+        category = f" [{detail['category']}]" if detail.get("category") else ""
+        return f"> 视频处理未完成{category}：{detail['message']}。下一步：{detail['next_action']}\n"
     summary = _summary(durations)
     if mode == "note":
         return f"> {summary}，未转文字。需要时用插件右键「用 Openmd 保存（含视频文字版）」或 `openmd go --video text`。\n"
@@ -198,8 +212,9 @@ def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcri
         try:
             files = _download(url, workdir, keep_video=mode == "file", run=run)
         except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
-            reason = exc if isinstance(exc, RuntimeError) else "视频下载失败"
-            action = "下一步：确认页面无需登录、付费或 DRM，并检查 yt-dlp 是否支持当前媒体格式后重试。"
+            diagnostic = exc.diagnostic if isinstance(exc, YtDlpFailure) else None
+            reason = f"视频下载失败 [{diagnostic['category']}]：{diagnostic['message']}" if diagnostic else (exc if isinstance(exc, RuntimeError) else "视频下载失败")
+            action = f"下一步：{diagnostic['next_action']}" if diagnostic else "下一步：确认页面无需登录、付费或 DRM，并检查 yt-dlp 是否支持当前媒体格式后重试。"
             if not transcribe_media:
                 return f"> {summary}，媒体文件保存未完成：{reason}。{action}\n"
             return f"> {summary}，转文字未完成：{reason}。{action}\n"

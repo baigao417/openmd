@@ -46,6 +46,7 @@ from openmd.backends.bilibili_wbi import (
 from openmd.core.detector import extract_first_url
 from openmd.core.models import ContentItem, SourceLevel, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.media_tools import classify_yt_dlp_error, yt_dlp_command
 from openmd.runtime.tempdirs import owned_temporary_directory
 from openmd.runtime.interpreters import run_interruptibly
 
@@ -470,7 +471,7 @@ class BilibiliMediaDownloadGateProvider:
     def health(self) -> BackendHealth:
         if not self._options.enable_media_download_backends:
             return BackendHealth(ok=True, warnings=("media download fallback is not enabled",))
-        ok = shutil.which("yt-dlp") is not None
+        ok = yt_dlp_command() is not None
         return BackendHealth(
             ok=ok,
             dependencies={"yt-dlp": "ok" if ok else "missing"},
@@ -543,7 +544,7 @@ class BilibiliMediaAsrFallbackProvider:
     def health(self) -> BackendHealth:
         if not (self._options.enable_media_download_backends and self._options.enable_asr_backends):
             return BackendHealth(ok=True, warnings=("Bilibili media ASR fallback is not enabled",))
-        yt_dlp_ok = shutil.which("yt-dlp") is not None
+        yt_dlp_ok = yt_dlp_command() is not None
         is_available = getattr(self._asr_backend, "is_available", None)
         asr_ok = bool(is_available()) if callable(is_available) else True
         dependencies = {
@@ -652,9 +653,16 @@ class BilibiliMediaAsrFallbackProvider:
         bvid: str,
         media_dir: Path,
     ) -> Path | TranscriptResult:
+        command_prefix = yt_dlp_command()
+        if command_prefix is None:
+            return _failed_result(
+                self.name,
+                "media_download_backend_missing",
+                'yt-dlp is missing; install the "openmd-cli[media]" extra.',
+                metadata={"bvid": bvid, "failure_class": "user_resolvable"},
+            )
         output_template = media_dir / f"{bvid}.%(ext)s"
-        command = [
-            "yt-dlp",
+        command = command_prefix + [
             "--no-playlist",
             "--extract-audio",
             "--audio-format",
@@ -688,11 +696,16 @@ class BilibiliMediaAsrFallbackProvider:
             )
 
         if exit_code != 0:
+            diagnostic = classify_yt_dlp_error(stderr or stdout)
             return _failed_result(
                 self.name,
-                f"media_download_exit_{exit_code}",
-                stderr or stdout or "yt-dlp media download failed.",
-                metadata={"bvid": bvid, "failure_class": "runtime_transient"},
+                f"media_download_{diagnostic['category']}",
+                f"{diagnostic['message']} Next: {diagnostic['next_action']}",
+                metadata={
+                    "bvid": bvid,
+                    "failure_class": "user_resolvable" if diagnostic["category"] != "network" else "runtime_transient",
+                    "next_action": diagnostic["next_action"],
+                },
             )
 
         media_path = _find_downloaded_media_file(media_dir, bvid)

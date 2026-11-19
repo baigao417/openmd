@@ -393,6 +393,8 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["snapshot_path"], "--as-snapshot", "--url", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
     else:
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+    if status.get("video") == "file":
+        command.append("--keep-media")
     if status.get("include_thinking") is True:
         command.append("--include-thinking")
     try:

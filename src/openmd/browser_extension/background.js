@@ -450,10 +450,10 @@ chrome.runtime.onInstalled.addListener(async () => {
     chrome.contextMenus.create({ id: "save-page", title: "用 Openmd 保存此页", contexts: ["page"] });
     chrome.contextMenus.create({ id: "save-link", title: "用 Openmd 保存此链接", contexts: ["link"] });
     chrome.contextMenus.create({ id: "save-selection", title: "用 Openmd 保存选中的链接", contexts: ["selection"] });
-    // Posts with an attached video (X for now): opt in per save, so a plain click stays fast.
-    const posts = ["*://x.com/*", "*://*.x.com/*", "*://twitter.com/*", "*://*.twitter.com/*"];
-    chrome.contextMenus.create({ id: "save-video-text", title: "用 Openmd 保存（含视频文字版）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
-    chrome.contextMenus.create({ id: "save-video-file", title: "用 Openmd 保存（含视频文字版和视频文件）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
+    // Keep the plain action fast; media is opt-in per save on every web page.
+    const posts = ["http://*/*", "https://*/*"];
+    chrome.contextMenus.create({ id: "save-video-text", title: "用 Openmd 保存（含视频/音频文字版）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
+    chrome.contextMenus.create({ id: "save-video-file", title: "用 Openmd 保存（含视频/音频文件）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
   });
   await seedSettings();
   await applyClickMode();
@@ -464,7 +464,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => saving(async () => {
   if (info.menuItemId === "save-link" && info.linkUrl) return saveMany([{ url: info.linkUrl, title: info.linkUrl }]);
   if (info.menuItemId === "save-page" && tab?.url) return saveTabs([tab]);
   if (info.menuItemId === "save-video-text" || info.menuItemId === "save-video-file") {
-    const url = info.linkUrl || info.pageUrl || tab?.url;
+    const url = info.pageUrl || tab?.url || info.linkUrl;
     const video = info.menuItemId === "save-video-file" ? "file" : "text";
     return saveMany([{ url, title: info.linkUrl ? url : tab?.title }], null, video);
   }

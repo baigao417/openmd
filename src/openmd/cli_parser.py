@@ -67,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     go.add_argument("--yes", action="store_true", help="compatibility no-op: a destination is the grant; capability flags narrow it")
     go.add_argument("--json", action="store_true", help="输出机器可读的 JSON 结果")
     go.add_argument("--verbose", action="store_true", help="显示用了哪条工具路线和诊断信息")
-    go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频时（目前 X）：note 只注明有视频（默认）；text 附上视频逐字稿；file 再保留视频文件")
+    go.add_argument("--video", choices=("note", "text", "file"), default="note", help="帖子带视频/音频时：note 只注明媒体（默认）；text 附上逐字稿；file 再保留媒体文件")
     go.add_argument("--as-snapshot", action="store_true", help="把本地 HTML 当作浏览器当前页快照处理")
     go.add_argument("--include-thinking", action="store_true", help="AI 对话：在对应回答前保留页面中的思考过程（默认省略）")
     go.add_argument("--url", dest="snapshot_url", help="快照对应的原始 http(s) URL")

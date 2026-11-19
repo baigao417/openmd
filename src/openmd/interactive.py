@@ -349,16 +349,32 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
     }
 
 
-def _attach_video(args: argparse.Namespace, url: str, markdown: Path) -> None:
-    from openmd.post_video import append_video_section, applies_to
+def _attach_video(args: argparse.Namespace, url: str, markdown: Path, *, stage: Path | None = None) -> None:
+    from openmd.post_video import (
+        append_media_retention_note,
+        append_retained_media_section,
+        append_video_section,
+        native_media_source,
+        native_transcript_source,
+        should_process,
+    )
 
     mode = getattr(args, "video", "note") or "note"
-    if not applies_to(url) or not getattr(args, "enable_network_backends", False):
+    native_source = native_transcript_source(url)
+    if mode == "file" and stage is not None and (native_media_source(url) is not None or native_source == "xiaoe"):
+        if append_retained_media_section(markdown, stage / "raw-media"):
+            return
+        if native_source == "xiaoe":
+            append_media_retention_note(markdown, "本站点转写路线未提供可安全保留的公开解码媒体；受加密或访问控制的流仅用于转写")
+            return
+        append_media_retention_note(markdown, "本站点转写路线未返回可保留的公开解码媒体")
+        return
+    if not should_process(url, mode) or not getattr(args, "enable_network_backends", False):
         return
     if mode in {"text", "file"} and not (getattr(args, "enable_media_download", False) and getattr(args, "enable_asr", False)):
         mode = "note"  # video text needs explicit media download plus local ASR
     if mode != "note":
-        _say(args, "正在处理帖子里的视频（下载音频并在本机转文字）…")
+        _say(args, "正在处理帖子里的视频/音频（下载并在本机转文字）…")
     try:
         append_video_section(markdown, url, mode)
     except OSError as exc:
@@ -454,6 +470,8 @@ def cmd_go(args: argparse.Namespace) -> int:
             run_args.package_root = None
             run_args.runlog = None
             run_args.command = "go"
+            if getattr(args, "video", "note") == "file":
+                run_args.keep_media = True
             start_error = _start_compact_receipt(run_args, "go")
             if start_error:
                 raise ValueError(start_error)
@@ -492,7 +510,9 @@ def cmd_go(args: argparse.Namespace) -> int:
                     meta = json.loads((first / "metadata.json").read_text(encoding="utf-8"))
                     title = str(meta.get("title") or title)
                 if not args.package and first.suffix == ".md":
-                    _attach_video(args, url, first)
+                    _attach_video(args, url, first, stage=stage)
+                elif args.package and first.is_dir() and (first / "index.md").is_file():
+                    _attach_video(args, url, first / "index.md", stage=stage)
                 label = "已取得部分正文" if any(row.get("status") == "partial" for row in rows) else "已取得正文"
                 _say(args, f"{label}：{title}" + (f"；来源：{source_label}" if source_label else ""))
                 if getattr(args, "verbose", False):

@@ -98,8 +98,8 @@ const notices=[]; const native=[];
 const chrome={runtime:{onInstalled:event('installed'),onMessage:event('message'),onStartup:event('startup'),sendNativeMessage:(_h,m,cb)=>{native.push(m);cb({ok:true,job:{id:'job'}})}},alarms:{create:()=>{},onAlarm:event('alarm')},notifications:{create:(id,n)=>notices.push({id,n}),onButtonClicked:event('notification'),onClosed:event('closed')},contextMenus:{onClicked:event('context')},storage:{local:{get:async()=>store,set:async v=>Object.assign(store,v)},onChanged:event('storage')},action:{onClicked:event('icon'),setPopup:async()=>{},setTitle:async()=>{},setBadgeBackgroundColor:async()=>{},setBadgeText:async()=>{}},tabs:{query:async()=>[]}};
 const ctx=vm.createContext({chrome,URL,setTimeout:()=>{},crypto:{randomUUID:()=> 'synthetic'},console});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
-(async()=>{await vm.runInContext('notifyFeedback({id:"job",result:{status:"partial"}},{})',ctx); store.settings.allowFeedbackPackage=true; await vm.runInContext('notifyFeedback({id:"job",result:{status:"partial"}},{})',ctx); for(const f of listeners.notification||[]) await f('openmd-feedback:job',0); console.log(JSON.stringify({notices:n​otices,native}));})().catch(e=>{console.error(e);process.exitCode=1;});
-'''.replace('n​otices','notices'), encoding="utf-8")
+(async()=>{await vm.runInContext('notifyFeedback({id:"job",result:{status:"partial"}},{})',ctx); store.settings.allowFeedbackPackage=true; await vm.runInContext('notifyFeedback({id:"job",result:{status:"partial"}},{})',ctx); for(const f of listeners.notification||[]) await f('openmd-feedback:job',0); console.log(JSON.stringify({notices:notices,native}));})().catch(e=>{console.error(e);process.exitCode=1;});
+''', encoding="utf-8")
     result = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
     payload = json.loads(result.stdout)
     assert len([item for item in payload["notices"] if item["id"].startswith("openmd-feedback:")]) == 1

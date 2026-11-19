@@ -19,7 +19,7 @@ DEPENDENCIES['pdf'] = ('pdfminer', 'pdfminer.six')
 # Promotion is explicit and follows a saved per-format benchmark.
 ODF_FORMATS = {'odt'}
 FALLBACK_FORMATS = {'doc', 'ppt'}
-PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt', 'ods', 'odp', 'fb2', 'msg'}
+PROMOTED = {'docx', 'pptx', 'xlsx', 'xls', 'csv', 'tsv', 'txt', 'json', 'xml', 'ipynb', 'html', 'htm', 'epub', 'rtf', 'odt', 'ods', 'odp', 'fb2', 'msg'}
 
 
 class NativeEngine(DocumentEngine):

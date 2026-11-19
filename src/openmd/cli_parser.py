@@ -51,6 +51,23 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("--prepared-root", help="prepared model root; configure asr_models.prepared_root to load it later")
     prepare.set_defaults(func=cmd_prepare_models)
 
+    from openmd.shell_menu import cmd_shell_menu
+    shell_menu = subparsers.add_parser("shell-menu", help="本地文件右键转 Markdown")
+    shell_menu_commands = shell_menu.add_subparsers(dest="shell_menu_action", required=True)
+    convert = shell_menu_commands.add_parser("convert", help="转换一个文件或镜像转换一个文件夹")
+    convert.add_argument("input")
+    convert.add_argument("--out")
+    convert.add_argument("--max-files", type=int, default=1000)
+    convert.add_argument("--max-bytes", type=int, default=100 * 1024 * 1024)
+    convert.add_argument("--confirm-large", action="store_true")
+    convert.add_argument("--gui", action="store_true", help=argparse.SUPPRESS)
+    convert.add_argument("--json", action="store_true")
+    convert.set_defaults(func=cmd_shell_menu)
+    for action in ("install", "uninstall", "status"):
+        command = shell_menu_commands.add_parser(action)
+        command.add_argument("--platform", choices=("windows", "macos", "linux"))
+        command.set_defaults(func=cmd_shell_menu)
+
     # Advanced commands are registered without help text so the daily help stays short;
     # they keep working exactly as before.
     ingest = subparsers.add_parser("ingest", description="ingest one input")

@@ -45,6 +45,16 @@ Every `--json` receipt exposes these fields at the top level when the route reac
 
 A zero process exit does not by itself prove that the body is valid. Check `status`, `completeness`, and the saved artifact.
 
+## Local right-click conversion
+
+Install or inspect the current-user file-manager action with `openmd shell-menu install`, `openmd shell-menu status`, and `openmd shell-menu uninstall`. The action calls the installed `openmd` command, not a checkout path. Use `openmd shell-menu convert <file-or-folder> --json` for the same conversion entry point.
+
+右键菜单按当前用户安装和查询：`openmd shell-menu install`、`status`、`uninstall`。菜单调用已安装的 `openmd`，不调用源码工作树。可用 `openmd shell-menu convert <文件或文件夹> --json` 执行相同转换入口。
+
+A supported file is saved as a neighboring `.md`. A folder is written to a sibling `<folder>-md` mirror with its relative directory structure. Unchanged inputs are skipped, edits to generated Markdown are retained with a separate update artifact, and unsupported files, conversion failures, and size-limit skips are counted. The default limits are 1,000 supported files and 100 MiB per source file. Scanned PDFs require the existing local OCR route; no cloud service is enabled. On Windows 11, legacy per-user registry verbs may appear under **Show more options**; a first-level packaged Explorer extension is not installed by this lightweight action.
+
+单文件会在源文件旁生成同名 `.md`。文件夹会生成同级 `<文件夹名>-md` 镜像并保留相对目录结构。重跑跳过未变化内容；检测到用户编辑会保留原文件并另存更新稿；不支持格式、失败和大小限制都会计数。默认最多 1,000 个支持文件，单文件上限 100 MiB。扫描版 PDF 需要现有本机 OCR 路线，不默认启用云服务。Windows 11 传统用户级菜单可能位于“显示更多选项”；本轻量实现不安装需要打包应用的一级 Explorer 扩展。
+
 ## Common errors and next actions
 
 | `error_code` | Next action |

@@ -27,7 +27,7 @@ MEDIA_EXTENSIONS: tuple[str, ...] = (
 # Keep the legacy `pdf` platform identity for the approved PDF/Office lane.
 DOCUMENT_EXTENSIONS: tuple[str, ...] = (".pdf", ".docx", ".pptx", ".xlsx")
 LOCAL_DOCUMENT_EXTENSIONS: tuple[str, ...] = (
-    ".html", ".htm", ".epub", ".rtf", ".odt", ".odp", ".ods",
+    ".html", ".htm", ".epub", ".txt", ".rtf", ".odt", ".odp", ".ods",
     ".doc", ".xls", ".ppt", ".csv", ".tsv", ".json", ".xml", ".ipynb", ".msg",
     ".mobi", ".azw3", ".fb2", ".zip",
 )

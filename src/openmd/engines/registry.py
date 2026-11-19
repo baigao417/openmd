@@ -37,6 +37,8 @@ def engine_chain(source_format: str):
         return [ZipEngine()]
     if suffix == 'pdf':
         return [MarkItDownEngine(), NativeEngine('pdf')]
+    if suffix == 'txt':
+        return [NativeEngine('txt')]
     if suffix in {'pdf', 'docx', 'pptx', 'xlsx', 'csv', 'tsv', 'json', 'xml', 'ipynb', 'msg'}:
         return [MarkItDownEngine()]
     return []

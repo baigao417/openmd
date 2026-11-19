@@ -34,6 +34,7 @@ def test_missing_yt_dlp_has_no_command(monkeypatch):
     ("stderr", "expected"),
     [
         ("Account authentication is required", "login_required"),
+        ("ERROR: [youtube] x: Requested format is not available. Use --list-formats", "format_unavailable"),
         ("Unsupported URL: https://example.test/watch", "unsupported_url"),
         ("HTTP Error 403: Forbidden", "forbidden_or_outdated"),
         ("Video unavailable in your country or private video", "geo_or_private"),
@@ -61,7 +62,7 @@ def test_doctor_reports_managed_version_age_and_stale_warning(monkeypatch):
     assert report["version"] == "2026.01.01"
     assert report["age_days"] == 91
     assert report["warning"] is True
-    assert "python -m pip install -U yt-dlp" in report["next_action"]
+    assert 'python -m pip install -U "yt-dlp[default]"' in report["next_action"]
 
 
 def test_doctor_reports_missing_without_running_command(monkeypatch):

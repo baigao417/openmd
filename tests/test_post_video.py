@@ -216,7 +216,7 @@ def test_download_failure_is_a_note_not_an_error(tmp_path):
     post_video.append_video_section(md, TWEET, "text", run=_fake_run(download_ok=False), transcribe=_asr)
     text = md.read_text(encoding="utf-8")
     assert "转文字未完成：视频下载失败" in text
-    assert "python -m pip install -U yt-dlp" in text and "`openmd doctor` 可查看当前版本" in text
+    assert 'python -m pip install -U "yt-dlp[default]"' in text and "`openmd doctor` 可查看当前版本" in text
 
 
 def test_reddit_login_failure_reports_manual_next_step(tmp_path):

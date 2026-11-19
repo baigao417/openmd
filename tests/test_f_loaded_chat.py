@@ -100,3 +100,48 @@ def test_login_dialog_over_loaded_history_is_not_exported(tmp_path):
     result = extract("grok", path)
     assert result.error_code == "login_required"
     assert not result.text and not result.blocks
+
+
+def test_chatgpt_nested_user_signals_count_one_conversation_turn(tmp_path):
+    """Multiple semantic markers in one user turn must not inflate the count."""
+    path = tmp_path / "page.html"
+    path.write_text(
+        """<main>
+        <div data-turn-key="synthetic-user-turn">
+          <h4 class="sr-only" data-conversation-role="user">You</h4>
+          <div data-author="user"><div data-user-message-bubble>Synthetic question.</div></div>
+        </div>
+        <div data-message-author-role="assistant"><div class="markdown">Synthetic answer.</div></div>
+        </main>""",
+        encoding="utf-8",
+    )
+    result = extract("chatgpt", path)
+    assert [turn.role for turn in result.blocks] == ["user", "assistant"]
+    assert result.metadata["independent_user_turn_count"] == 1
+    assert result.status == "verified"
+
+
+def test_chatgpt_real_turn_shape_collapses_heading_search_unit_and_bubble(tmp_path):
+    """The live ChatGPT shape uses three sibling signals for one user turn."""
+    path = tmp_path / "page.html"
+    path.write_text(
+        """<main><div data-content-search-turn-key="synthetic">
+          <div class="turn"><div class="unit">
+            <h4 data-conversation-role="user">Synthetic user label</h4>
+            <div data-chatgpt-search-unit-key="fallback-turn-0:0:user"
+                 data-content-search-unit-key="fallback-turn-0:0:user">
+              <div data-user-message-bubble="true">Synthetic question.</div>
+            </div>
+          </div></div>
+          <div class="turn"><div data-chatgpt-search-unit-key="fallback-turn-0:2:assistant"
+               data-content-search-unit-key="fallback-turn-0:2:assistant">
+            <h4 data-conversation-role="assistant">Synthetic assistant label</h4>
+            <div data-markdown-copy="contents"><p>Synthetic answer.</p></div>
+          </div></div>
+        </div></main>""",
+        encoding="utf-8",
+    )
+    result = extract("chatgpt", path)
+    assert [turn.role for turn in result.blocks] == ["user", "assistant"]
+    assert result.metadata["independent_user_turn_count"] == 1
+    assert result.status == "verified"

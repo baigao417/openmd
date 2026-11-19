@@ -334,13 +334,12 @@ def _gui_completion_heading(value: dict[str, Any]) -> str:
 
 
 def _gui_result_chips(value: dict[str, Any]) -> list[tuple[str, bool]]:
-    return [
-        (f"成功 {value.get('success', 0)}", False),
-        (f"未变化 {value.get('unchanged', 0)}", False),
-        (f"保留你的编辑 {value.get('conflict', 0)}", False),
-        (f"跳过 {value.get('skipped', 0)}", False),
-        (f"失败 {value.get('failed', 0)}", bool(value.get("failed", 0))),
-    ]
+    # Success is always shown; other counts only when they happened (user-picked
+    # preview shows "成功 9 · 未变化 1 · 保留你的编辑 1 · 失败 1", no zero chips).
+    rows = [("成功", "success", False), ("未变化", "unchanged", False), ("保留你的编辑", "conflict", False),
+            ("跳过", "skipped", False), ("失败", "failed", True)]
+    return [(f"{label} {int(value.get(key, 0) or 0)}", bad) for label, key, bad in rows
+            if key == "success" or int(value.get(key, 0) or 0)]
 
 
 def _gui_completion_subtitle(input_path: str | Path, output_dir: str | Path | None) -> str:
@@ -410,19 +409,18 @@ def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
     peach, cream = "#FFE9C9", "#fff8ee"
     brown, muted = "#4a2f17", "#8a6646"
     orange, stripe, track = "#F2A65A", "#f0b273", "#f6dcbc"
-    width, height = 700, 390
+    width = 560
     _set_process_dpi_awareness()
     window.title(_gui_title())
     window.resizable(False, False)
     window.configure(bg=peach)
     _set_window_icon(window, tk)
-    _center_window(window, width, height)
-    state: dict[str, Any] = {"cancelled": False}
+    state: dict[str, Any] = {"cancelled": False, "bar": (0.0, 1)}
 
     frame = tk.Frame(window, bg=peach, padx=18, pady=14)
     frame.pack(fill="both", expand=True)
     panel = tk.Frame(frame, bg=cream, padx=20, pady=18, highlightthickness=1, highlightbackground="#f1d6b3")
-    panel.pack(fill="both", expand=True)
+    panel.pack(fill="x")
     panel.grid_columnconfigure(1, weight=1)
     mascot_box = tk.Frame(panel, bg=peach, width=76, height=76)
     mascot_box.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 14))
@@ -434,7 +432,7 @@ def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
     heading.grid(row=0, column=1, sticky="ew")
     subtitle = tk.Label(panel, text="正在准备本地转换…", bg=cream, fg=muted, font=("Microsoft YaHei UI", 10), anchor="w")
     subtitle.grid(row=1, column=1, sticky="ew", pady=(4, 0))
-    bar = tk.Canvas(panel, width=520, height=12, bg=cream, bd=0, highlightthickness=0)
+    bar = tk.Canvas(panel, width=10, height=12, bg=cream, bd=0, highlightthickness=0)
     bar.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(18, 0))
     result_area = tk.Frame(panel, bg=cream)
     result_area.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(16, 0))
@@ -442,12 +440,27 @@ def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
     buttons.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(20, 0))
 
     def draw_bar(value: float, maximum: int) -> None:
+        state["bar"] = (value, maximum)
         bar.delete("all")
-        filled = max(1, int(520 * (value / max(maximum, 1))))
-        bar.create_rectangle(0, 1, 520, 11, fill=track, outline=track)
+        full = max(bar.winfo_width(), 10)
+        filled = max(1, min(full, int(full * (value / max(maximum, 1)))))
+        bar.create_rectangle(0, 1, full, 11, fill=track, outline=track)
         bar.create_rectangle(0, 1, filled, 11, fill=orange, outline=orange)
-        for x in range(-12, filled + 12, 12):
+        for x in range(-12, filled, 12):
             bar.create_polygon(x, 11, x + 5, 11, x + 17, 1, x + 12, 1, fill=stripe, outline=stripe)
+        # Stripes may cross the fill edge; repaint the unfilled track over them.
+        if filled < full:
+            bar.create_rectangle(filled, 0, full, 12, fill=cream, outline=cream)
+            bar.create_rectangle(filled, 1, full, 11, fill=track, outline=track)
+        else:
+            bar.create_rectangle(full, 0, full + 20, 12, fill=cream, outline=cream)
+
+    bar.bind("<Configure>", lambda _event: draw_bar(*state["bar"]))
+
+    def fit_height() -> None:
+        # Size the window to its content instead of a fixed height, keeping it centered.
+        window.update_idletasks()
+        _center_window(window, width, frame.winfo_reqheight())
 
     def set_progress(index: int, total: int, path: Path) -> None:
         if state["cancelled"]:
@@ -473,14 +486,14 @@ def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
             chip.pack(side="left", padx=(0, 6))
         lines = _gui_failure_lines(value.get("failures", []))
         if lines:
-            tk.Label(result_area, text="失败原因：\n" + "\n".join(lines), bg=cream, fg="#8a3a2f", justify="left", anchor="w", font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(8, 0))
+            tk.Label(result_area, text="失败原因：\n" + "\n".join(lines), bg=cream, fg="#8a3a2f", justify="left", anchor="w", wraplength=width - 90, font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(8, 0))
         for child in buttons.winfo_children():
             child.destroy()
         _rounded_canvas_item(buttons, tk, 72, 34, fill=track, text="关闭", command=window.destroy).pack(side="left")
         open_button = _rounded_canvas_item(buttons, tk, 132, 34, fill=orange, text="打开文件夹", text_color="#fff")
         open_button.pack(side="right")
         state["open_button"] = open_button
-        window.update_idletasks()
+        fit_height()
 
     def set_open_command(command: Callable[[], None]) -> None:
         if state.get("open_button") is not None:
@@ -491,6 +504,7 @@ def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
         window.destroy()
 
     _rounded_canvas_item(buttons, tk, 72, 34, fill=track, text="取消", command=cancel).pack(side="left")
+    fit_height()
     draw_bar(0, 1)
     window.deiconify()
     window.lift()

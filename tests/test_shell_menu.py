@@ -253,9 +253,10 @@ def test_warm_gui_copy_helpers_match_selected_mascot_variant():
     value = {"success": 9, "unchanged": 1, "conflict": 1, "skipped": 0, "failed": 1}
     assert shell_menu._gui_completion_heading(value) == "搬完啦，有 1 个没搬动"
     assert shell_menu._gui_result_chips(value) == [
-        ("成功 9", False), ("未变化 1", False), ("保留你的编辑 1", False),
-        ("跳过 0", False), ("失败 1", True),
+        ("成功 9", False), ("未变化 1", False), ("保留你的编辑 1", False), ("失败 1", True),
     ]
+    # Zero counts other than success are hidden, as in the user-picked preview.
+    assert shell_menu._gui_result_chips({"success": 0}) == [("成功 0", False)]
     assert shell_menu._gui_completion_subtitle(Path("E:/docs/input.pdf"), None) == "已放在原文件旁边"
     assert shell_menu._gui_completion_subtitle(Path("E:/docs/input"), Path("E:/docs/input-md")) == "已放到「input-md」文件夹"
 

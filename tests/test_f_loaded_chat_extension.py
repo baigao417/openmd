@@ -148,3 +148,11 @@ vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,
     result = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
     payload = json.loads(result.stdout)
     assert payload["notices"][-1]["n"]["message"] == "请先开启脱敏问题包后重新保存。"
+
+
+def test_extension_exposes_recent_feedback_entrypoint():
+    source = (ROOT / "src/openmd/browser_extension/background.js").read_text(encoding="utf-8")
+    popup = (ROOT / "src/openmd/browser_extension/popup.html").read_text(encoding="utf-8")
+    popup_js = (ROOT / "src/openmd/browser_extension/popup.js").read_text(encoding="utf-8")
+    assert "recent_feedback" in source and "feedback_report" in source
+    assert "recent-jobs" in popup and "feedback_report" in popup_js

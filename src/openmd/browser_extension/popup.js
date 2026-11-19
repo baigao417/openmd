@@ -61,6 +61,37 @@ async function init() {
       message("没能保存当前页，详情见通知。");
     }
   };
+  await loadRecentJobs(settings);
+}
+
+async function loadRecentJobs(settings) {
+  const list = $("recent-jobs");
+  const reply = await chrome.runtime.sendMessage({ cmd: "recent_feedback" });
+  const jobs = (reply?.jobs || []).filter((job) => ["done", "failed", "partial"].includes(job.state));
+  if (!jobs.length) {
+    list.innerHTML = "<li class=\"recent-empty\">暂无可检查的任务</li>";
+    return;
+  }
+  for (const job of jobs) {
+    const li = document.createElement("li");
+    li.className = "recent-job";
+    const label = document.createElement("span");
+    label.textContent = `任务 ${job.id.slice(0, 8)} · ${job.state}`;
+    li.append(label);
+    if (settings?.allowFeedbackPackage === true) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "结果不对？生成问题报告";
+      button.onclick = async () => {
+        button.disabled = true;
+        const result = await chrome.runtime.sendMessage({ cmd: "feedback_report", id: job.id });
+        if (result?.ok) message(`问题报告已保存到「${result.report?.output || "默认目录"}」`, true);
+        else message(result?.next_action || result?.error || "问题报告生成失败", false);
+      };
+      li.append(button);
+    }
+    list.append(li);
+  }
 }
 
 $("settings").addEventListener("click", (event) => {

@@ -274,7 +274,7 @@ OpenCLI は Openmd が管理するブラウザ・プラットフォームコン�
 PyPI の `openmd` という名前は、無関係のプロジェクトが使っています。インストール後のコマンドは `openmd` のままです。
 
 **リンクがうまく処理できません。**
-`--verbose` を付けてもう一度実行すると、どの読み取りルートを試したかがわかります。そのうえで、Openmd が表示した 1 行を添えて [リンク失敗の報告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)を送ってください。失敗した実際のリンクは、何より役に立つ貢献です。`openmd report feedback <ジョブ ID> -o <ディレクトリ>` で匿名化した問題パッケージを作成できます。リンクルートの失敗は有界な `manifest.json` と `receipt.json` のみ、捕捉済みページルートは匿名化した `structure.html`、`doctor.json`、`README.txt` を含む場合があります。添付前に確認してください。元の本文、cookie、アカウント情報、署名付き URL パラメータは含まれません。
+`--verbose` を付けてもう一度実行すると、どの読み取りルートを試したかがわかります。そのうえで、Openmd が表示した 1 行を添えて [リンク失敗の報告](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)を送ってください。失敗した実際のリンクは、何より役に立つ貢献です。匿名化問題パッケージを有効にすると、`openmd report feedback <ジョブ ID> -o <ディレクトリ>` で問題パッケージを作成できます。リンクルートの失敗は有界な `manifest.json` と `receipt.json` のみ、捕捉済みページルートは後から手動報告できる匿名化 `structure.html`、`doctor.json`、`README.txt` を含みます。拡張機能ポップアップの最近のタスク一覧にも「結果不对？生成问题报告」を表示します。添付前に確認してください。元の本文、cookie、アカウント情報、署名付き URL パラメータは含まれません。
 
 ---
 

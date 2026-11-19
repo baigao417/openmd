@@ -269,3 +269,25 @@ def test_concurrent_status_writers_never_share_a_temp_file(tmp_path, monkeypatch
 
     assert json.loads((job_dir / "status.json").read_text(encoding="utf-8"))["state"] == "running"
     assert not list(job_dir.glob("*.tmp"))
+
+
+def test_snapshot_feedback_is_retained_for_verified_result(tmp_path):
+    saved = tmp_path / "dest" / "note.md"
+    job = browser_host.start_snapshot_job(
+        '<div id="noteContainer"><p>private</p></div>',
+        "https://www.xiaohongshu.com/explore/note123",
+        save_to=str(tmp_path / "dest"),
+        feedback_opt_in=True,
+        spawn=lambda *a, **k: None,
+    )
+    done = browser_host.run_job(
+        browser_host.jobs_root() / job["id"],
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps({"ok": True, "status": "verified", "saved_to": str(saved)}), ""
+        ),
+    )
+    assert done["state"] == "done"
+    assert Path(done["sanitized_snapshot_path"]).is_file()
+    reply = browser_host.handle({"type": "feedback_report", "id": job["id"], "save_to": str(tmp_path)})
+    assert reply["ok"]
+    assert "structure.html" in reply["report"]["files"]

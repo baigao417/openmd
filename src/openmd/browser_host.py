@@ -435,23 +435,22 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
                 login = login_for_url(status["url"])
                 status.update(error_code="login_required", login=login, error=login_hint(login))
                 _pause_login_jobs(status, login)
-        result_status = result.get("status")
-        failed_or_partial = done.returncode != 0 or not result.get("ok") or result_status in {"partial", "failed"}
-        should_keep_feedback = status.get("snapshot") and status.get("feedback_opt_in") is True and failed_or_partial
-        if should_keep_feedback:
-            # Keep only a structural, synthetic source for a later report command.
-            # The captured page itself is removed below and is never an artifact.
-            from openmd.diagnostics.sanitize import sanitize_snapshot
-            try:
-                safe = sanitize_snapshot(Path(status["snapshot_path"]).read_text(encoding="utf-8", errors="replace"), status["url"])
+    except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
+        status.update(state="failed", error="job_failed" if status.get("mcp") else sanitize_error_summary(exc) or "job_failed")
+    if status.get("snapshot") and status.get("feedback_opt_in") is True:
+        # Keep one structural, synthetic source for a later report command for
+        # every completed snapshot task. The captured page itself is removed below.
+        from openmd.diagnostics.sanitize import sanitize_snapshot
+        try:
+            snapshot_path = Path(str(status.get("snapshot_path") or ""))
+            if snapshot_path.is_file():
+                safe = sanitize_snapshot(snapshot_path.read_text(encoding="utf-8", errors="replace"), status["url"])
                 safe_path = job_dir / "sanitized-structure.html"
                 safe_path.write_text(safe.html, encoding="utf-8")
                 status["sanitized_snapshot_path"] = str(safe_path)
                 status["sanitized_manifest"] = safe.manifest
-            except (OSError, ValueError):
-                pass
-    except Exception as exc:  # noqa: BLE001 - a background job must always end with a status
-        status.update(state="failed", error="job_failed" if status.get("mcp") else sanitize_error_summary(exc) or "job_failed")
+        except (OSError, ValueError):
+            pass
     status["finished"] = time.time()
     status.pop("pid", None)
     status.pop("child_pid", None)

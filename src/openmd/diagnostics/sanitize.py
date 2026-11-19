@@ -71,6 +71,11 @@ def _safe_url(value: str, *, source: bool = False) -> str:
     return f"{parsed.scheme}://{parsed.netloc}/" if not source else f"{parsed.scheme}://{parsed.netloc}/"
 
 
+def sanitize_url(value: str) -> str:
+    """Return the bounded origin form used in sanitized feedback artifacts."""
+    return _safe_url(value, source=True)
+
+
 def _structure_hash(soup: BeautifulSoup) -> str:
     parts: list[str] = []
     for node in soup.find_all(True):
@@ -113,7 +118,7 @@ def sanitize_snapshot(html: str, url: str, *, captured_at: str | None = None) ->
             if key_text in {"style", "srcset", "datetime", "value", "title", "alt", "aria-label", "content"}:
                 node.attrs.pop(key, None); stats["scrubbed_attributes"] += 1; continue
             if key_text in {"href", "src", "action", "poster"}:
-                node.attrs[key] = _safe_url(str(value)); stats["sanitized_urls"] += 1; continue
+                node.attrs[key] = sanitize_url(str(value)); stats["sanitized_urls"] += 1; continue
             if key_text == "id" or key_text.endswith("-id") or key_text in {"name", "for"}:
                 node.attrs[key] = _identifier(value); stats["scrubbed_attributes"] += 1; continue
             if key_text == "class":
@@ -148,7 +153,7 @@ def sanitize_snapshot(html: str, url: str, *, captured_at: str | None = None) ->
     serialized = str(soup)
     manifest = {
         "site": (urlsplit(url).hostname or "").lower(),
-        "source_url": _safe_url(url, source=True),
+        "source_url": sanitize_url(url),
         "captured_at": captured_at or datetime.now(timezone.utc).isoformat(),
         "structure_hash": _structure_hash(soup),
         "replacement_stats": stats,

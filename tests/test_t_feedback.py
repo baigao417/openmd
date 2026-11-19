@@ -3,6 +3,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
+from openmd import browser_host
 from openmd.cli import main
 from openmd.diagnostics.feedback import build_feedback_package
 from openmd.diagnostics.sanitize import sanitize_snapshot
@@ -78,3 +79,60 @@ def test_feedback_cli_prints_review_instruction(tmp_path, capsys):
     source.write_text(_html(), encoding="utf-8")
     assert main(["report", "feedback", str(source), "--url", "https://example.org/synthetic", "-o", str(tmp_path / "out")]) == 0
     assert "请检查后再附加" in capsys.readouterr().out
+
+
+def test_link_feedback_package_contains_only_bounded_receipts(tmp_path):
+    source_url = "https://www.douyin.com/video/123?signature=private&foo=bar"
+    status = {
+        "id": "a" * 32,
+        "state": "failed",
+        "url": source_url,
+        "feedback_opt_in": True,
+        "error_code": "route_failed",
+        "error": "原始错误正文 https://www.douyin.com/video/123?signature=private",
+        "result": {"status": "failed", "source_level": "platform", "error_code": "route_failed", "next_action": "重新保存"},
+    }
+    from openmd.diagnostics.feedback import build_feedback_package
+    out = tmp_path / "package"
+    result = build_feedback_package("job-id", output=out, status=status)
+    assert set(result["files"]) == {"manifest.json", "receipt.json"}
+    manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    receipt = json.loads((out / "receipt.json").read_text(encoding="utf-8"))
+    assert manifest["page_structure"] == "not_captured"
+    assert manifest["reason"] == "link_route"
+    assert manifest["route"] == "link_route"
+    assert manifest["platform"] == "douyin"
+    assert "signature" not in json.dumps([manifest, receipt], ensure_ascii=False)
+    assert "原始错误正文" in receipt["error_summary"]
+    assert len(receipt["error_summary"]) <= 240
+    assert not (out / "structure.html").exists()
+
+
+def test_link_feedback_report_uses_receipt_only_and_real_actions(tmp_path):
+    job = browser_host.start_job(
+        "https://www.bilibili.com/video/BV1abc?signature=private",
+        str(tmp_path),
+        feedback_opt_in=True,
+        spawn=lambda *a, **k: None,
+    )
+    status = browser_host.read_status(job["id"])
+    status.update(state="failed", error_code="route_failed", error="失败摘要")
+    browser_host._write_status(browser_host.jobs_root() / job["id"], status)
+    reply = browser_host.handle({"type": "feedback_report", "id": job["id"], "save_to": str(tmp_path)})
+    assert reply["ok"]
+    output = Path(reply["report"]["output"])
+    assert set(reply["report"]["files"]) == {"manifest.json", "receipt.json"}
+    assert not (output / "structure.html").exists()
+    assert json.loads((output / "receipt.json").read_text(encoding="utf-8"))["error_code"] == "route_failed"
+
+    missing = browser_host.handle({"type": "feedback_report", "id": "f" * 32, "save_to": str(tmp_path)})
+    assert missing["error_code"] == "job_not_found"
+    assert "任务" in missing["next_action"]
+
+
+def test_link_feedback_report_requires_opt_in(tmp_path):
+    job = browser_host.start_job("https://example.org/article", str(tmp_path), spawn=lambda *a, **k: None)
+    reply = browser_host.handle({"type": "feedback_report", "id": job["id"], "save_to": str(tmp_path)})
+    assert reply["ok"] is False
+    assert reply["error_code"] == "feedback_not_available"
+    assert "开启" in reply["next_action"]

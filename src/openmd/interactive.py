@@ -354,22 +354,26 @@ def _attach_video(args: argparse.Namespace, url: str, markdown: Path, *, stage: 
         append_media_retention_note,
         append_retained_media_section,
         append_video_section,
-        native_media_source,
         native_transcript_source,
         should_process,
     )
 
     mode = getattr(args, "video", "note") or "note"
     native_source = native_transcript_source(url)
-    if mode == "file" and stage is not None and (native_media_source(url) is not None or native_source == "xiaoe"):
-        if append_retained_media_section(markdown, stage / "raw-media"):
-            return
-        if native_source == "xiaoe":
-            append_media_retention_note(markdown, "本站点转写路线未提供可安全保留的公开解码媒体；受加密或访问控制的流仅用于转写")
-            return
-        append_media_retention_note(markdown, "本站点转写路线未返回可保留的公开解码媒体")
+    if not getattr(args, "enable_network_backends", False):
         return
-    if not should_process(url, mode) or not getattr(args, "enable_network_backends", False):
+    if mode == "file" and native_source == "xiaoe":
+        append_media_retention_note(markdown, "本站点转写路线未提供可安全保留的公开解码媒体；受加密或访问控制的流仅用于转写")
+        return
+    if mode == "file" and native_source is not None:
+        if stage is not None and append_retained_media_section(markdown, stage / "raw-media"):
+            return
+        # No native route artifact was retained (for example YouTube subtitles
+        # do not download media). Reuse post_video's bounded downloader without
+        # transcribing a second time.
+        append_video_section(markdown, url, mode, transcribe_media=False)
+        return
+    if not should_process(url, mode):
         return
     if mode in {"text", "file"} and not (getattr(args, "enable_media_download", False) and getattr(args, "enable_asr", False)):
         mode = "note"  # video text needs explicit media download plus local ASR

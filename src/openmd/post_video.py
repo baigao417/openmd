@@ -24,6 +24,8 @@ MAX_VIDEOS = 4
 PROBE_TIMEOUT_S = 45
 DOWNLOAD_TIMEOUT_S = 600
 _VIDEO_TEXT_SKIP = {"xiaohongshu"}
+_X_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.x.com", "mobile.twitter.com"}
+_X_STATUS = re.compile(r"^/[^/]+/status/[0-9]+")
 
 
 def _transcript_route_sources() -> frozenset[str]:
@@ -57,6 +59,9 @@ def should_process(url: str, mode: str = "note") -> bool:
     """Return whether the shared post-media step should inspect this URL."""
     if not applies_to(url):
         return False
+    parsed = urlparse(url)
+    if mode == "note":
+        return parsed.netloc.lower() in _X_HOSTS and bool(_X_STATUS.match(parsed.path))
     if mode in {"text", "note"}:
         try:
             from openmd.core.detector import detect_platform
@@ -65,11 +70,6 @@ def should_process(url: str, mode: str = "note") -> bool:
                 return False
         except (ImportError, ValueError, TypeError):
             pass
-    if mode == "file" and native_media_source(url) is not None:
-        # The native media route already owns download, ASR, and retention.
-        # The interactive layer publishes its retained artifact instead of
-        # starting a second yt-dlp download here.
-        return False
     return True
 
 
@@ -173,11 +173,13 @@ def _size_label(size: int) -> str:
     return f"{size} B"
 
 
-def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcribe=None) -> str | None:
+def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcribe=None, transcribe_media: bool = True) -> str | None:
     """Markdown to append for ``url``; None when the post has no video or nothing can be said."""
     if mode not in VIDEO_MODES or not should_process(url, mode):
         return None
     durations = probe(url, run=run)
+    if mode == "note" and durations in ([], None):
+        return None
     if durations == []:
         return "> 未发现可下载的视频。\n"
     if durations is None:
@@ -185,7 +187,7 @@ def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcri
     summary = _summary(durations)
     if mode == "note":
         return f"> {summary}，未转文字。需要时用插件右键「用 Openmd 保存（含视频文字版）」或 `openmd go --video text`。\n"
-    if transcribe is None:
+    if transcribe_media and transcribe is None:
         from openmd.runtime.asr import get_asr_backend
 
         transcribe = get_asr_backend("asr.auto").transcribe
@@ -196,15 +198,20 @@ def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcri
         try:
             files = _download(url, workdir, keep_video=mode == "file", run=run)
         except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
-            return f"> {summary}，转文字未完成：{exc if isinstance(exc, RuntimeError) else '视频下载失败'}。\n"
+            reason = exc if isinstance(exc, RuntimeError) else "视频下载失败"
+            action = "下一步：确认页面无需登录、付费或 DRM，并检查 yt-dlp 是否支持当前媒体格式后重试。"
+            if not transcribe_media:
+                return f"> {summary}，媒体文件保存未完成：{reason}。{action}\n"
+            return f"> {summary}，转文字未完成：{reason}。{action}\n"
         parts = []
         embeds = []
         for index, path in enumerate(files, 1):
-            heading = "## 视频逐字稿" if len(files) == 1 else f"## 视频逐字稿（第 {index} 段）"
-            try:
-                parts.append(f"{heading}\n\n{_transcribe(path, transcribe)}\n")
-            except RuntimeError as exc:
-                parts.append(f"{heading}\n\n> 转文字未完成：{exc}。\n")
+            if transcribe_media:
+                heading = "## 视频逐字稿" if len(files) == 1 else f"## 视频逐字稿（第 {index} 段）"
+                try:
+                    parts.append(f"{heading}\n\n{_transcribe(path, transcribe)}\n")
+                except RuntimeError as exc:
+                    parts.append(f"{heading}\n\n> 转文字未完成：{exc}。\n")
             if mode == "file":
                 assets = markdown_dir / "assets"
                 assets.mkdir(exist_ok=True)
@@ -216,7 +223,9 @@ def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcri
         body = "\n".join(parts)
         if embeds:
             body = "\n\n".join(embeds) + "\n\n" + body
-        return f"> {summary}；以下逐字稿由本机语音识别生成。\n\n{body}"
+        if transcribe_media:
+            return f"> {summary}；以下逐字稿由本机语音识别生成。\n\n{body}"
+        return f"> {summary}；已保存视频/音频文件，本站点逐字稿路线不会重复转写。\n\n{body}"
     finally:
         remove_tree_with_retry(workdir)
 

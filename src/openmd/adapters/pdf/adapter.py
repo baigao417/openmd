@@ -13,7 +13,7 @@ import hashlib
 
 from openmd.adapters.base import PlatformAdapter
 from openmd.adapters.local_audio.adapter import local_path_from_input
-from openmd.core.detector import DOCUMENT_EXTENSIONS, detect_platform, extract_first_url
+from openmd.core.detector import DOCUMENT_EXTENSIONS, FOLDER_BATCH_EXCLUDED_SUFFIXES, detect_platform, extract_first_url
 from openmd.core.models import ContentItem, TranscriptResult
 
 from .backends.markitdown import MarkItDownPDFParser
@@ -42,7 +42,7 @@ class PdfDocumentAdapter(PlatformAdapter):
             # Keep the legacy `go/ingest <folder>` PDF/Office scope stable.
             # The dedicated shell-menu folder converter owns the broader local
             # format set (including TXT) without changing this batch contract.
-            files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file() and candidate.suffix.lower() != ".txt" and _is_pdf_path(candidate))
+            files = sorted(candidate for candidate in path.rglob("*") if candidate.is_file() and candidate.suffix.lower() not in FOLDER_BATCH_EXCLUDED_SUFFIXES and _is_pdf_path(candidate))
             if limit is not None and not all:
                 files = files[: max(0, limit)]
             return [_content_item_for_path(candidate, platform=self.id) for candidate in files]

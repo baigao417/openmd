@@ -43,7 +43,7 @@ def _has_extension_hash(tree: ast.AST) -> bool:
     attrs = {node.attr.lower() for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
     strings = {value.lower() for value in _literal_strings(tree)}
     extension_context = any("extension_hash" in value for value in names | attrs) or any(
-        value.endswith("manifest.json") or "extension" in value for value in strings
+        value.endswith("manifest.json") or "browser_extension" in value for value in strings
     )
     return has_hash and has_walk and has_read and extension_context
 

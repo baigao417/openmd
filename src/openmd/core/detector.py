@@ -32,6 +32,10 @@ LOCAL_DOCUMENT_EXTENSIONS: tuple[str, ...] = (
     ".mobi", ".azw3", ".fb2", ".zip",
 )
 DOCUMENT_EXTENSIONS += LOCAL_DOCUMENT_EXTENSIONS
+# `.txt` converts as a single local file and inside the shell-menu folder
+# converter, but a stray note must not turn an image/media folder into a
+# document batch, so legacy `go/ingest <folder>` ignores it.
+FOLDER_BATCH_EXCLUDED_SUFFIXES: tuple[str, ...] = (".txt",)
 
 IMAGE_TEXT_EXTENSIONS: tuple[str, ...] = (
     ".png",
@@ -197,7 +201,7 @@ def _local_directory_platform(value: str) -> str | None:
             if not candidate.is_file():
                 continue
             suffix = candidate.suffix.lower()
-            seen_pdf = seen_pdf or (suffix in DOCUMENT_EXTENSIONS and not _looks_like_qq_export_path(str(candidate)))
+            seen_pdf = seen_pdf or (suffix in DOCUMENT_EXTENSIONS and suffix not in FOLDER_BATCH_EXCLUDED_SUFFIXES and not _looks_like_qq_export_path(str(candidate)))
             seen_image = seen_image or suffix in IMAGE_TEXT_EXTENSIONS
             seen_media = seen_media or suffix in MEDIA_EXTENSIONS
             checked += 1

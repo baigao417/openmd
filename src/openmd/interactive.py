@@ -374,6 +374,7 @@ def _attach_video(args: argparse.Namespace, url: str, markdown: Path, *, stage: 
             return
         if media_source is not None:
             if not getattr(args, "enable_media_download", False) or stage is None:
+                append_media_retention_note(markdown, "未开启媒体下载；在命令行加 --enable-media-download，或从扩展右键菜单选择保存文件")
                 return
             media_dir = stage / "raw-media"
             media_path = download_native_media_only(url, media_dir, media_kind=media_kind)

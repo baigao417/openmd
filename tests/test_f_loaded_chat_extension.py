@@ -11,6 +11,27 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.skipif(not shutil.which("node"), reason="Node is needed for the extension harness")
+def test_video_context_menus_cover_all_web_pages_and_use_page_url(tmp_path):
+    script = tmp_path / "video-menu.cjs"
+    script.write_text(r'''
+const fs=require('fs'), vm=require('vm');
+const listeners={}; const event=n=>({addListener:f=>(listeners[n]??=[]).push(f)});
+const created=[]; const native=[];
+const chrome={runtime:{onInstalled:event('installed'),onMessage:event('message'),onStartup:event('startup'),sendNativeMessage:(_h,m,cb)=>{native.push(m);cb({ok:true,protocol_version:1,save_to:'synthetic',job:{id:'synthetic',url:m.url}});}},alarms:{create:()=>{},onAlarm:event('alarm')},notifications:{create:()=>{},onButtonClicked:event('notification'),onClosed:event('closed')},contextMenus:{onClicked:event('context'),removeAll:cb=>cb(),create:item=>created.push(item)},storage:{local:{get:async()=>({settings:{locations:[{id:'d',name:'D',path:'synthetic'}],defaultId:'d'}}),set:async()=>{}},onChanged:event('storage')},action:{onClicked:event('icon'),setPopup:async()=>{},setTitle:async()=>{},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},tabs:{query:async()=>[]}};
+const ctx=vm.createContext({chrome,URL,setTimeout:()=>{},crypto:{randomUUID:()=> 'id'},console});
+vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
+(async()=>{for(const fn of listeners.installed||[]) await fn({reason:'install'}); const menus=created.filter(x=>x.id.startsWith('save-video-')); await (listeners.context||[])[0]({menuItemId:'save-video-file',pageUrl:'https://example.org/post/1',linkUrl:'https://cdn.example/video.mp4'},{url:'https://example.org/post/1',title:'Post'}); console.log(JSON.stringify({menus,native}));})().catch(e=>{console.error(e);process.exitCode=1;});
+''', encoding='utf-8')
+    result = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
+    payload = json.loads(result.stdout)
+    assert {menu["id"] for menu in payload["menus"]} == {"save-video-text", "save-video-file"}
+    assert all(menu["documentUrlPatterns"] == ["http://*/*", "https://*/*"] for menu in payload["menus"])
+    assert all(menu["contexts"] == ["page", "link", "video"] for menu in payload["menus"])
+    assert payload["native"][-1]["url"] == "https://example.org/post/1"
+    assert payload["native"][-1]["video"] == "file"
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node is needed for the extension harness")
 def test_ai_extension_entries_capture_current_tab_and_keep_non_ai_urls(tmp_path):
     script = tmp_path / "extension.cjs"
     script.write_text(r'''

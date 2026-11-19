@@ -214,6 +214,8 @@ Install the extension:
 2. Open `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**, click **Load unpacked**, and choose that folder.
 3. Click the Openmd icon on any page to save it. Select several tabs to save them all, or right-click a selection to save every link in it.
 
+On any public `http(s)` page, the right-click menu also offers **Save with video/audio transcript** and **Save with video/audio file**. Native transcript routes are not transcribed twice; `file` keeps public decoded media beside the Markdown when the route supports it. DRM, paywalled and encrypted media are not retained.
+
 You can also download the extension ZIP from [Releases](https://github.com/baigao417/openmd/releases), unzip it and load the unpacked folder after running `openmd browser-setup`.
 
 - **Default browser behavior.** Reads happen without a popup in inactive background tabs in an existing window; owned tabs start muted and close automatically when the job finishes.

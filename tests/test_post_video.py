@@ -53,11 +53,78 @@ def _asr(path):
     return TranscriptResult(text="[00:00:00-00:00:02] Hello there.\n[00:00:03-00:00:05] Second line.", status="verified", source_level="asr", backend="asr.auto")
 
 
-def test_only_x_status_urls_apply():
+def test_all_public_pages_apply_but_native_transcript_routes_skip_text():
     assert post_video.applies_to(TWEET)
     assert post_video.applies_to("https://twitter.com/a/status/1")
-    assert not post_video.applies_to("https://x.com/someone")
-    assert not post_video.applies_to("https://www.youtube.com/watch?v=abc")
+    assert post_video.applies_to("https://x.com/someone")
+    assert post_video.applies_to("https://www.reddit.com/r/test/comments/abc")
+    assert not post_video.should_process("https://www.youtube.com/watch?v=abc", "text")
+    assert post_video.should_process("https://www.youtube.com/watch?v=abc", "file")
+    assert post_video.should_process("https://www.bilibili.com/video/BV1abc123", "file")
+    assert post_video.native_media_source("https://www.bilibili.com/video/BV1abc123") == "bilibili"
+    assert post_video.native_media_source("https://www.youtube.com/watch?v=abc") is None
+
+
+def test_note_mode_only_applies_to_x_status_pages():
+    assert post_video.should_process("https://x.com/someone/status/123", "note")
+    assert not post_video.should_process("https://example.org/article", "note")
+    assert not post_video.should_process("https://www.youtube.com/watch?v=abc", "note")
+
+
+def test_default_note_mode_leaves_non_x_markdown_untouched(tmp_path):
+    calls = []
+    md = _post(tmp_path)
+    before = md.read_text(encoding="utf-8")
+    assert not post_video.append_video_section(md, "https://example.org/article", "note", run=_fake_run(calls=calls))
+    assert calls == []
+    assert md.read_text(encoding="utf-8") == before
+
+
+def test_native_transcript_file_download_does_not_transcribe(tmp_path):
+    calls = []
+    md = _post(tmp_path)
+    section = post_video.video_section(
+        "https://www.youtube.com/watch?v=abc",
+        "file",
+        tmp_path,
+        run=_fake_run(calls=calls),
+        transcribe=lambda _path: pytest.fail("native route transcript must not be repeated"),
+        transcribe_media=False,
+    )
+    assert section and "assets/video-01.mp4" in section
+    assert len(calls) == 2 and "--simulate" in calls[0]
+
+
+def test_retained_native_media_skips_download_and_transcribe(tmp_path, monkeypatch):
+    md = _post(tmp_path)
+    stage = tmp_path / "stage"
+    raw = stage / "raw-media"
+    raw.mkdir(parents=True)
+    (raw / "douyin-audio.mp4").write_bytes(b"mp4")
+    args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("should reuse retained media"))
+    _attach_video(args, "https://www.douyin.com/video/123", md, stage=stage)
+    assert (tmp_path / "assets" / "douyin-audio.mp4").is_file()
+
+
+def test_bilibili_file_mode_publishes_native_raw_media(tmp_path, monkeypatch):
+    md = _post(tmp_path)
+    stage = tmp_path / "stage"
+    raw = stage / "raw-media"
+    raw.mkdir(parents=True)
+    (raw / "bilibili-video.mp4").write_bytes(b"mp4")
+    args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("should reuse retained media"))
+    _attach_video(args, "https://www.bilibili.com/video/BV1abc123", md, stage=stage)
+    assert (tmp_path / "assets" / "bilibili-video.mp4").is_file()
+
+
+def test_native_transcript_text_skips_post_video_download_and_asr(tmp_path, monkeypatch):
+    md = _post(tmp_path)
+    args = argparse.Namespace(video="text", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("native transcript route must be skipped"))
+    _attach_video(args, "https://www.youtube.com/watch?v=abc", md)
+    assert md.read_text(encoding="utf-8").count("## 视频逐字稿") == 0
 
 
 def test_note_mode_only_probes_and_keeps_footer_last(tmp_path):
@@ -73,8 +140,18 @@ def test_note_mode_only_probes_and_keeps_footer_last(tmp_path):
 def test_post_without_video_is_left_untouched(tmp_path):
     md = _post(tmp_path)
     before = md.read_text(encoding="utf-8")
-    assert not post_video.append_video_section(md, TWEET, "note", run=_fake_run(durations=()))
-    assert md.read_text(encoding="utf-8") == before
+    assert post_video.append_video_section(md, TWEET, "text", run=_fake_run(durations=()))
+    assert md.read_text(encoding="utf-8") != before
+    assert "未发现可下载的视频" in md.read_text(encoding="utf-8")
+
+
+def test_probe_block_is_kept_as_next_action_note(tmp_path):
+    md = _post(tmp_path)
+    def blocked(command, timeout):
+        return subprocess.CompletedProcess(command, 1, "", "HTTP 403 forbidden")
+    assert post_video.append_video_section(md, "https://www.reddit.com/r/test/comments/abc", "text", run=blocked)
+    text = md.read_text(encoding="utf-8")
+    assert "下一步" in text and "yt-dlp" in text
 
 
 def test_text_mode_appends_readable_transcript_and_removes_media(tmp_path, monkeypatch):
@@ -95,14 +172,40 @@ def test_file_mode_keeps_video_next_to_markdown(tmp_path):
     post_video.append_video_section(md, TWEET, "file", run=_fake_run(durations=("10", "20")), transcribe=_asr)
     text = md.read_text(encoding="utf-8")
     assert "本帖含 2 段视频（共约 30 秒）" in text
-    assert "![视频](<assets/video-01.mp4>)" in text and "（第 2 段）" in text
+    assert "![视频/音频](<assets/video-01.mp4>)" in text and "大小：" in text and "（第 2 段）" in text
     assert (tmp_path / "assets" / "video-02.mp4").is_file()
+
+
+def test_native_route_media_is_published_from_retained_staging(tmp_path):
+    md = _post(tmp_path)
+    raw = tmp_path / "stage" / "raw-media"
+    raw.mkdir(parents=True)
+    (raw / "native-audio.wav").write_bytes(b"wav")
+    assert post_video.append_retained_media_section(md, raw)
+    text = md.read_text(encoding="utf-8")
+    assert "本站点下载路线保留" in text
+    assert "![视频/音频](<assets/native-audio.wav>)" in text
+    assert "大小：3 B" in text
+    assert (tmp_path / "assets" / "native-audio.wav").is_file()
+    assert not list(raw.iterdir())
+
+
+def test_xiaoe_native_file_request_never_falls_back_to_generic_media_download(tmp_path, monkeypatch):
+    md = _post(tmp_path)
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("generic download must not run for Xiaoe"))
+    _attach_video(args, "https://demo.xiaoe-tech.com/course/lesson", md, stage=stage)
+    assert "受加密或访问控制的流仅用于转写" in md.read_text(encoding="utf-8")
 
 
 def test_download_failure_is_a_note_not_an_error(tmp_path):
     md = _post(tmp_path)
     post_video.append_video_section(md, TWEET, "text", run=_fake_run(download_ok=False), transcribe=_asr)
-    assert "转文字未完成：视频下载失败" in md.read_text(encoding="utf-8")
+    text = md.read_text(encoding="utf-8")
+    assert "转文字未完成：视频下载失败" in text
+    assert "下一步：确认页面无需登录、付费或 DRM" in text
 
 
 def test_text_mode_without_media_gates_falls_back_to_note(tmp_path, monkeypatch):

@@ -58,6 +58,8 @@ A zero process exit does not by itself prove that the body is valid. Check `stat
 | `douyin_media_asr_not_enabled` | Install/configure the local `[asr]` path if transcription is wanted; metadata or detail identity alone is not a transcript. |
 | `xiaohongshu_request_blocked` | Report the site block. Do not bypass site security controls. |
 
+For a public web page, the browser extension can request a video/audio transcript or a retained video/audio file. Existing platform transcript routes are not transcribed a second time. File retention only keeps public decoded media; DRM, paywalls and encrypted streams are refused. If `yt-dlp` does not support the page or the site blocks it, keep the saved text and follow the returned `next_action` instead of treating the whole save as failed.
+
 ## Agent 自带浏览器时
 
 For AI conversations, first open the authorized conversation with the agent's

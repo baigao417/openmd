@@ -141,6 +141,54 @@ def _has_title_suffix_cleaning(tree: ast.AST) -> bool:
     return False
 
 
+def _status_result_target(node: ast.AST) -> bool:
+    """Match status['result'/'receipt'] or a field nested under that value."""
+    while isinstance(node, ast.Subscript):
+        key = node.slice
+        if isinstance(key, ast.Constant) and key.value in {"result", "receipt"}:
+            return isinstance(node.value, ast.Name) and node.value.id == "status"
+        node = node.value
+    return False
+
+
+def _has_raw_receipt_copy(tree: ast.AST) -> bool:
+    sensitive = {"next_action", "error", "content", "text", "body", "raw_text", "markdown"}
+
+    def raw_sensitive_read(node: ast.AST) -> bool:
+        for child in ast.walk(node):
+            if isinstance(child, ast.Call) and _call_parts(child) == ("result", "get"):
+                if child.args and isinstance(child.args[0], ast.Constant) and child.args[0].value in sensitive:
+                    return True
+            if isinstance(child, ast.Subscript) and isinstance(child.value, ast.Name) and child.value.id == "result":
+                key = child.slice
+                if isinstance(key, ast.Constant) and key.value in sensitive:
+                    return True
+        return False
+
+    assignments = [node for node in ast.walk(tree) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr))]
+    for assignment in assignments:
+        targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+        value = assignment.value
+        if not any(_status_result_target(target) for target in targets):
+            continue
+        if not isinstance(value, ast.DictComp):
+            # Also catch field-by-field copies such as status['result']['error'] = result.get('error').
+            if raw_sensitive_read(value):
+                return True
+            continue
+        if not raw_sensitive_read(value):
+            continue
+        key_vars = {node.id for node in ast.walk(value.key) if isinstance(node, ast.Name)}
+        for generator in value.generators:
+            if not (key_vars & {node.id for node in ast.walk(generator.target) if isinstance(node, ast.Name)}):
+                continue
+            fields = {item.value for item in ast.walk(generator.iter)
+                      if isinstance(item, ast.Constant) and isinstance(item.value, str)}
+            if fields & sensitive:
+                return True
+    return False
+
+
 _DETECTORS = {
     "extension_hash": ("ast:hashlib.sha256+extension traversal", _has_extension_hash),
     "patch_table": ("ast:patch table+source editing", _has_patch_table),
@@ -148,6 +196,7 @@ _DETECTORS = {
     "process_start": ("ast:subprocess.Popen", _has_process_start),
     "check_status_aggregate": ("ast:Check status aggregate", _has_check_status_aggregate),
     "title_suffix_cleaning": ("ast:site title suffix regex", _has_title_suffix_cleaning),
+    "raw_receipt_copy": ("ast:raw result fields copied into status receipt", _has_raw_receipt_copy),
 }
 
 

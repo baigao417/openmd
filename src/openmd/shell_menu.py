@@ -300,6 +300,19 @@ def _gui_title() -> str:
     return _GUI_WINDOW_TITLE
 
 
+def _gui_progress_heading(index: int, total: int) -> str:
+    return f"仓鼠正在搬运 {index} / {total}"
+
+
+def _gui_progress_filename(name: str, max_chars: int = 42) -> str:
+    if len(name) <= max_chars:
+        return name
+    suffix = Path(name).suffix
+    tail = suffix[-3:] if suffix else ""
+    head_len = max(1, max_chars - len(tail) - 1)
+    return name[:head_len] + "…" + tail
+
+
 def _gui_summary(value: dict[str, Any]) -> str:
     return (
         f"成功 {value.get('success', 0)} · 未变化 {value.get('unchanged', 0)} · "
@@ -313,6 +326,30 @@ def _gui_failure_lines(failures: list[dict[str, Any]], limit: int = 5) -> list[s
         f"{Path(row.get('path', '')).name}：{_failure_message(str(row.get('error', '')))}"
         for row in failures[:limit]
     ]
+
+
+def _gui_completion_heading(value: dict[str, Any]) -> str:
+    failed = int(value.get("failed", 0) or 0)
+    return f"搬完啦，有 {failed} 个没搬动" if failed else "搬完啦！"
+
+
+def _gui_result_chips(value: dict[str, Any]) -> list[tuple[str, bool]]:
+    return [
+        (f"成功 {value.get('success', 0)}", False),
+        (f"未变化 {value.get('unchanged', 0)}", False),
+        (f"保留你的编辑 {value.get('conflict', 0)}", False),
+        (f"跳过 {value.get('skipped', 0)}", False),
+        (f"失败 {value.get('failed', 0)}", bool(value.get("failed", 0))),
+    ]
+
+
+def _gui_completion_subtitle(input_path: str | Path, output_dir: str | Path | None) -> str:
+    source = Path(input_path).expanduser()
+    if source.is_file() or (not source.exists() and source.suffix):
+        return "已放在原文件旁边"
+    if output_dir:
+        return f"已放到「{Path(output_dir).name}」文件夹"
+    return "已放到 Markdown 文件夹"
 
 
 def _set_process_dpi_awareness() -> None:
@@ -347,53 +384,119 @@ def _set_window_icon(window: Any, tk: Any) -> None:
         pass
 
 
+def _rounded_canvas_item(canvas: Any, tk: Any, width: int, height: int, *, fill: str, text: str, command: Callable[[], None] | None = None, text_color: str = "#6b4524") -> Any:
+    widget = tk.Canvas(canvas, width=width, height=height, bd=0, highlightthickness=0, bg=canvas.cget("bg"))
+    radius = min(height // 2, 18)
+    widget.create_rectangle(radius, 0, width - radius, height, fill=fill, outline=fill)
+    widget.create_oval(0, 0, radius * 2, height, fill=fill, outline=fill)
+    widget.create_oval(width - radius * 2, 0, width, height, fill=fill, outline=fill)
+    widget.create_text(width // 2, height // 2, text=text, fill=text_color, font=("Microsoft YaHei UI", 10, "bold"))
+    widget._openmd_command = command
+    widget.bind("<Button-1>", lambda _event: widget._openmd_command() if widget._openmd_command else None)
+    return widget
+
+
+def _gui_output_dir(input_path: str | Path, out: str | Path | None) -> Path | None:
+    source = Path(input_path).expanduser()
+    if out:
+        return Path(out).expanduser()
+    if source.is_dir():
+        return source.parent / f"{safe_filename(source.name, max_length=120)}-md"
+    return None
+
+
 def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
-    """Build the GUI and return widget handles used by the conversion loop."""
+    """Build the selected warm mascot GUI and return conversion callbacks."""
+    peach, cream = "#FFE9C9", "#fff8ee"
+    brown, muted = "#4a2f17", "#8a6646"
+    orange, stripe, track = "#F2A65A", "#f0b273", "#f6dcbc"
+    width, height = 700, 390
     _set_process_dpi_awareness()
     window.title(_gui_title())
     window.resizable(False, False)
+    window.configure(bg=peach)
+    _set_window_icon(window, tk)
+    _center_window(window, width, height)
+    state: dict[str, Any] = {"cancelled": False}
+
+    frame = tk.Frame(window, bg=peach, padx=18, pady=14)
+    frame.pack(fill="both", expand=True)
+    panel = tk.Frame(frame, bg=cream, padx=20, pady=18, highlightthickness=1, highlightbackground="#f1d6b3")
+    panel.pack(fill="both", expand=True)
+    panel.grid_columnconfigure(1, weight=1)
+    mascot_box = tk.Frame(panel, bg=peach, width=76, height=76)
+    mascot_box.grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 14))
+    mascot_box.grid_propagate(False)
+    mascot = tk.PhotoImage(file=str(_brand_png_path())).subsample(2, 2)
+    window._openmd_mascot = mascot
+    tk.Label(mascot_box, image=mascot, bg=peach).place(relx=.5, rely=.5, anchor="center")
+    heading = tk.Label(panel, text=_gui_progress_heading(0, 0), bg=cream, fg=brown, font=("Microsoft YaHei UI", 16, "bold"), anchor="w")
+    heading.grid(row=0, column=1, sticky="ew")
+    subtitle = tk.Label(panel, text="正在准备本地转换…", bg=cream, fg=muted, font=("Microsoft YaHei UI", 10), anchor="w")
+    subtitle.grid(row=1, column=1, sticky="ew", pady=(4, 0))
+    bar = tk.Canvas(panel, width=520, height=12, bg=cream, bd=0, highlightthickness=0)
+    bar.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(18, 0))
+    result_area = tk.Frame(panel, bg=cream)
+    result_area.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(16, 0))
+    buttons = tk.Frame(panel, bg=cream)
+    buttons.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(20, 0))
+
+    def draw_bar(value: float, maximum: int) -> None:
+        bar.delete("all")
+        filled = max(1, int(520 * (value / max(maximum, 1))))
+        bar.create_rectangle(0, 1, 520, 11, fill=track, outline=track)
+        bar.create_rectangle(0, 1, filled, 11, fill=orange, outline=orange)
+        for x in range(-12, filled + 12, 12):
+            bar.create_polygon(x, 11, x + 5, 11, x + 17, 1, x + 12, 1, fill=stripe, outline=stripe)
+
+    def set_progress(index: int, total: int, path: Path) -> None:
+        if state["cancelled"]:
+            return
+        heading.configure(text=_gui_progress_heading(index, total))
+        subtitle.configure(text=_gui_progress_filename(path.name))
+        draw_bar(index, total)
+        window.update_idletasks()
+        window.update()
+
+    def show_result(value: dict[str, Any], input_path: str | Path, output_dir: Path | None) -> None:
+        if state["cancelled"]:
+            return
+        heading.configure(text=_gui_completion_heading(value))
+        subtitle.configure(text=_gui_completion_subtitle(input_path, output_dir))
+        draw_bar(1, 1)
+        for child in result_area.winfo_children():
+            child.destroy()
+        chips = tk.Frame(result_area, bg=cream)
+        chips.pack(anchor="w", fill="x")
+        for label_text, is_bad in _gui_result_chips(value):
+            chip = tk.Label(chips, text=label_text, bg="#fff3f1" if is_bad else "#fff", fg="#a3352b" if is_bad else "#6b4524", padx=10, pady=3, font=("Microsoft YaHei UI", 9, "bold"), bd=0, highlightthickness=1, highlightbackground="#f0b8b2" if is_bad else "#f1d6b3")
+            chip.pack(side="left", padx=(0, 6))
+        lines = _gui_failure_lines(value.get("failures", []))
+        if lines:
+            tk.Label(result_area, text="失败原因：\n" + "\n".join(lines), bg=cream, fg="#8a3a2f", justify="left", anchor="w", font=("Microsoft YaHei UI", 9)).pack(anchor="w", pady=(8, 0))
+        for child in buttons.winfo_children():
+            child.destroy()
+        _rounded_canvas_item(buttons, tk, 72, 34, fill=track, text="关闭", command=window.destroy).pack(side="left")
+        open_button = _rounded_canvas_item(buttons, tk, 132, 34, fill=orange, text="打开文件夹", text_color="#fff")
+        open_button.pack(side="right")
+        state["open_button"] = open_button
+        window.update_idletasks()
+
+    def set_open_command(command: Callable[[], None]) -> None:
+        if state.get("open_button") is not None:
+            state["open_button"]._openmd_command = command
+
+    def cancel() -> None:
+        state["cancelled"] = True
+        window.destroy()
+
+    _rounded_canvas_item(buttons, tk, 72, 34, fill=track, text="取消", command=cancel).pack(side="left")
+    draw_bar(0, 1)
     window.deiconify()
     window.lift()
-    _set_window_icon(window, tk)
-    _center_window(window)
-
-    style = ttk.Style(window)
-    try:
-        style.configure("Openmd.TFrame", padding=(28, 24))
-        style.configure("Openmd.Title.TLabel", font=("Microsoft YaHei UI", 16, "bold"))
-        style.configure("Openmd.Subtitle.TLabel", foreground="#5f6368")
-        style.configure("Openmd.Status.TLabel", font=("Microsoft YaHei UI", 10))
-    except Exception:
-        pass
-
-    frame = ttk.Frame(window, style="Openmd.TFrame")
-    frame.pack(fill="both", expand=True)
-    ttk.Label(frame, text="Openmd", style="Openmd.Title.TLabel").pack(anchor="w")
-    ttk.Label(frame, text="正在把本地文件转换成 Markdown", style="Openmd.Subtitle.TLabel").pack(anchor="w", pady=(4, 22))
-    current = ttk.Label(frame, text="正在准备本地转换…", style="Openmd.Status.TLabel", wraplength=500)
-    current.pack(anchor="w", fill="x")
-    progress = ttk.Progressbar(frame, orient="horizontal", mode="determinate", length=500)
-    progress.pack(fill="x", pady=(12, 18))
-    summary = ttk.Label(frame, text="", style="Openmd.Status.TLabel", wraplength=500)
-    summary.pack(anchor="w", fill="x")
-    failures = ttk.Label(frame, text="", style="Openmd.Subtitle.TLabel", wraplength=500, justify="left")
-    failures.pack(anchor="w", fill="x", pady=(8, 0))
-    buttons = ttk.Frame(frame)
-    buttons.pack(anchor="e", fill="x", pady=(20, 0))
-    open_button = ttk.Button(buttons, text="打开所在文件夹")
-    open_button.pack(side="left")
-    close_button = ttk.Button(buttons, text="关闭", command=window.destroy)
-    close_button.pack(side="right")
     window.update_idletasks()
     window.update()
-    return {
-        "current": current,
-        "progress": progress,
-        "summary": summary,
-        "failures": failures,
-        "open_button": open_button,
-        "close_button": close_button,
-    }
+    return {"set_progress": set_progress, "show_result": show_result, "set_open_command": set_open_command, "cancelled": lambda: state["cancelled"]}
 
 
 def _open_in_file_manager(path: Path) -> None:
@@ -658,13 +761,9 @@ def cmd_shell_menu(args) -> int:
                 ui = _build_progress_window(window, tk, ttk)
                 root_path = Path(args.input).expanduser()
                 total = len(_candidate_files(root_path)) if root_path.exists() else 0
-                ui["progress"]["maximum"] = max(total, 1)
 
                 def update_progress(index: int, total: int, path: Path) -> None:
-                    ui["current"].configure(text=f"正在转换 {index}/{total}：{path.name}")
-                    ui["progress"]["maximum"] = max(total, 1)
-                    ui["progress"]["value"] = index
-                    window.update_idletasks()
+                    ui["set_progress"](index, total, path)
 
                 progress = update_progress
             except Exception:
@@ -680,18 +779,14 @@ def cmd_shell_menu(args) -> int:
                 confirm_large = messagebox.askyesno("输入规模较大", f"输入超过默认限制（{args.max_files} 个文件 / 每个文件 {args.max_bytes // (1024 * 1024)} MiB）。仍要继续吗？", parent=window)
         value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes, confirm_large=confirm_large, progress=progress)
         if window is not None and ui is not None:
+            if ui["cancelled"]():
+                return 0 if value.get("ok") else 1
             failures = value.get("failures", [])
-            summary = _gui_summary(value)
-            ui["current"].configure(text="转换完成")
-            ui["progress"]["value"] = ui["progress"]["maximum"]
-            ui["summary"].configure(text=summary)
-            failure_lines = _gui_failure_lines(failures)
-            if failure_lines:
-                ui["failures"].configure(text="失败原因：\n" + "\n".join(failure_lines))
-            ui["open_button"].configure(command=lambda: _open_in_file_manager(_result_folder(args.input, value)))
+            ui["show_result"](value, args.input, _gui_output_dir(args.input, args.out))
+            ui["set_open_command"](lambda: _open_in_file_manager(_result_folder(args.input, value)))
             window.update_idletasks()
-            if not failures and value.get("ok"):
-                window.after(5000, window.destroy)
+            if not failures and value.get("ok") and not value.get("skipped"):
+                window.after(6000, window.destroy)
             window.mainloop()
             return 0 if value.get("ok") else 1
         if getattr(args, "json", False):

@@ -245,6 +245,21 @@ def test_gui_copy_helpers_build_title_progress_and_failure_summary():
     ]) == ["a.pdf：文档中没有可转换的文本（document_empty_text）", "b.pdf：没有读取或写入该文件的权限（PermissionError）"]
 
 
+def test_warm_gui_copy_helpers_match_selected_mascot_variant():
+    from openmd import shell_menu
+
+    assert shell_menu._gui_progress_heading(7, 12) == "仓鼠正在搬运 7 / 12"
+    assert shell_menu._gui_progress_filename("a" * 80 + ".pdf") == "a" * 38 + "…pdf"
+    value = {"success": 9, "unchanged": 1, "conflict": 1, "skipped": 0, "failed": 1}
+    assert shell_menu._gui_completion_heading(value) == "搬完啦，有 1 个没搬动"
+    assert shell_menu._gui_result_chips(value) == [
+        ("成功 9", False), ("未变化 1", False), ("保留你的编辑 1", False),
+        ("跳过 0", False), ("失败 1", True),
+    ]
+    assert shell_menu._gui_completion_subtitle(Path("E:/docs/input.pdf"), None) == "已放在原文件旁边"
+    assert shell_menu._gui_completion_subtitle(Path("E:/docs/input"), Path("E:/docs/input-md")) == "已放到「input-md」文件夹"
+
+
 def test_windows_shell_command_uses_pythonw_when_available_and_falls_back(monkeypatch, tmp_path):
     from openmd import shell_menu
 

@@ -20,6 +20,7 @@ def _module_available(name: str) -> bool:
 
 
 def _media_diagnostics() -> dict[str, Any]:
+    from openmd.media_tools import yt_dlp_diagnostics
     from openmd.runtime.interpreters import select_asr_runtime
     from openmd.runtime.models import configured_models
     from openmd.runtime.prepared_models import preparation_status
@@ -41,6 +42,7 @@ def _media_diagnostics() -> dict[str, Any]:
         "asr_runtime": runtime.as_dict(),
         "models": {key: model.as_dict() for key, model in models.items()},
         "model_preparation": preparation,
+        "yt_dlp": yt_dlp_diagnostics(),
         "ready": ready,
         "next_action": next_action,
     }

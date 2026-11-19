@@ -20,6 +20,7 @@ from openmd.core.secrets import is_sensitive_query_key, SENSITIVE_TEXT_PATTERNS
 
 MAX_HTML_BYTES = 2 * 1024 * 1024
 MAX_CONTENT_CHARS = 32_000
+MAX_BATCH = 20
 GATES = {"network": "--enable-network-backends", "browser": "--enable-browser-backends",
          "media": "--enable-media-download", "asr": "--enable-asr", "cloud": "--enable-cloud-backends"}
 RECEIPT_FIELDS = ("status", "source_level", "completeness", "sync", "login", "next_action", "error_code")
@@ -94,28 +95,68 @@ def _validate_source_url(value: str) -> str:
 
 
 def _initial(status: dict) -> dict:
-    return {"id": status["id"], "state": status["state"], **receipt({})}
+    result = {"id": status["id"], "state": status["state"], **receipt({})}
+    if status.get("batch"):
+        result["batch_id"] = status["batch"]
+    return result
+
+
+def _validate_source(source: str) -> str:
+    if not isinstance(source, str) or not source or len(source) > 4096:
+        raise ValueError("invalid_source")
+    if source.startswith(("http://", "https://")):
+        return _validate_source_url(source)
+    if not Path(source).is_absolute() or not Path(source).is_file():
+        raise ValueError("source_must_be_http_url_or_absolute_file")
+    return source
+
+
+def _save_one(source: str, target: Path, *, batch_id: str | None = None) -> dict:
+    source = _validate_source(source)
+    job_id = uuid.uuid4().hex
+    job_dir = host.jobs_root() / job_id
+    job_dir.mkdir(parents=True)
+    status = {"id": job_id, "state": "queued", "url": source, "save_to": str(target),
+              "created": time.time(), "seq": host._next_seq(), "attempts": 0, "mcp": True,
+              "permissions": {name: False for name in GATES}}
+    if batch_id:
+        status["batch"] = batch_id
+    host._write_status(job_dir, status)
+    return status
 
 
 def save(source: str, output_directory: str, *, network: bool = False, browser: bool = False,
          media: bool = False, asr: bool = False, cloud: bool = False) -> dict:
     target = destination(output_directory)
-    if not isinstance(source, str) or not source or len(source) > 4096:
-        raise ValueError("invalid_source")
-    if source.startswith(("http://", "https://")):
-        source = _validate_source_url(source)
-    elif not Path(source).is_absolute() or not Path(source).is_file():
-        raise ValueError("source_must_be_http_url_or_absolute_file")
     with queue():
-        job_id = uuid.uuid4().hex
-        job_dir = host.jobs_root() / job_id
-        job_dir.mkdir(parents=True)
-        status = {"id": job_id, "state": "queued", "url": source, "save_to": str(target),
-                  "created": time.time(), "seq": host._next_seq(), "attempts": 0, "mcp": True,
-                  "permissions": dict(network=network, browser=browser, media=media, asr=asr, cloud=cloud)}
-        host._write_status(job_dir, status)
+        status = _save_one(source, target)
+        status["permissions"] = dict(network=network, browser=browser, media=media, asr=asr, cloud=cloud)
+        host._write_status(host.jobs_root() / status["id"], status)
         _spawn()
     return _initial(status)
+
+
+def save_batch(sources: list[str], output_directory: str, *, network: bool = False, browser: bool = False,
+               media: bool = False, asr: bool = False, cloud: bool = False) -> dict:
+    if not isinstance(sources, list) or not sources:
+        raise ValueError("sources_required")
+    if len(sources) > MAX_BATCH:
+        raise ValueError("too_many_sources")
+    target = destination(output_directory)
+    # Validate every item before writing any status file, so one bad item cannot
+    # leave a half-created batch behind.
+    normalized = [_validate_source(source) for source in sources]
+    batch_id = uuid.uuid4().hex
+    permissions = dict(network=network, browser=browser, media=media, asr=asr, cloud=cloud)
+    with queue():
+        statuses = []
+        for source in normalized:
+            status = _save_one(source, target, batch_id=batch_id)
+            status["permissions"] = permissions.copy()
+            host._write_status(host.jobs_root() / status["id"], status)
+            statuses.append(status)
+        _spawn()
+    return {"batch_id": batch_id, "jobs": [_initial(status) for status in statuses], "count": len(statuses)}
 
 
 def save_page(source_url: str, output_directory: str, *, html: str | None = None,
@@ -162,7 +203,7 @@ def arguments(status: dict):
     return args
 
 
-def job(job_id: str, *, include_content: bool = False) -> dict:
+def _job_status(job_id: str, *, include_content: bool = False) -> dict:
     if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{32}", job_id):
         raise ValueError("invalid_job_id")
     with queue():
@@ -191,6 +232,49 @@ def job(job_id: str, *, include_content: bool = False) -> dict:
             result.update(content=redacted[:MAX_CONTENT_CHARS], content_truncated=max(len(content), len(redacted)) > MAX_CONTENT_CHARS,
                           content_redacted=redacted != bounded)
     return result
+
+
+def job(job_id: str, *, action: str = "status", include_content: bool = False) -> dict:
+    if action not in {"status", "cancel"}:
+        raise ValueError("invalid_job_action")
+    if action == "cancel":
+        with queue():
+            host.cancel_job(job_id)
+    return _job_status(job_id, include_content=include_content)
+
+
+def resource_index() -> str:
+    items = []
+    with queue():
+        root = host.jobs_root()
+        if root.is_dir():
+            for path in sorted(root.glob("*/status.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+                try:
+                    status = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if not status.get("mcp"):
+                    continue
+                saved = status.get("saved_to")
+                if status.get("state") != "done" or not saved:
+                    continue
+                artifact = Path(saved).resolve()
+                destination_root = Path(status.get("save_to", "")).resolve()
+                if not artifact.is_file() or not artifact.is_relative_to(destination_root):
+                    continue
+                items.append({"uri": f"openmd://job/{status['id']}", "name": status["id"],
+                              "mimeType": "text/markdown", "description": "Openmd MCP saved Markdown artifact"})
+                if len(items) >= MAX_BATCH:
+                    break
+    return json.dumps(items, ensure_ascii=False)
+
+
+def resource_content(job_id: str) -> str:
+    result = job(job_id, include_content=True)
+    content = result.get("content")
+    if isinstance(content, str):
+        return content
+    return json.dumps({key: value for key, value in result.items() if key != "saved_to"}, ensure_ascii=False)
 
 
 def doctor() -> dict:

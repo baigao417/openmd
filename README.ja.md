@@ -82,6 +82,32 @@ pip install "openmd-cli[mcp]"
 claude mcp add --transport stdio openmd -- openmd mcp
 ```
 
+事前インストール不要の `uvx` 一行設定：
+
+```bash
+uvx --from "openmd-cli[mcp]" openmd mcp
+```
+
+Cursor：**Cursor Settings → MCP → Add new MCP Server** で同じ stdio サーバーを追加します：
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+Windows：実行ファイルは絶対パスを使い、必要なら UTF-8 出力を設定します：
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "C:\\path\\to\\openmd.exe", "args": ["mcp"], "env": {"PYTHONIOENCODING": "utf-8"}}
+  }
+}
+```
+
 Claude Desktop：MCP 設定に以下を追加します。必要に応じて実行ファイルを絶対パスにします。
 
 ```json
@@ -92,7 +118,7 @@ Claude Desktop：MCP 設定に以下を追加します。必要に応じて実�
 }
 ```
 
-ツールは `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor` の4つです。保存は直ちにジョブ ID を返し、`openmd_job` で確認します。`include_content=true` は最大32000文字の本文を返します。出力先は明示的な絶対パスが必要です。HTML は文字列または絶対ファイルパスで指定し、UTF-8で最大2 MiBです。5つの能力は初期状態では無効です。`network`、`browser`、`media`、`asr`、`cloud` を明示的に許可します。CLI と同じ能力フラグを使いますが、MCP は出力先から日常 CLI の自動許可を推定せず、保存先も記憶しません。stdio はローカルプロセスを起動できるクライアント用です。リモート connector には別途トランスポートブリッジが必要です。
+ツールは `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor` の4つです。`openmd_save` は1件または最大20件の `sources` を受け取り、`openmd_job(action="cancel")` でジョブをキャンセルできます。`progressToken` を送るクライアントには進捗を通知し、ポーリングも利用できます。完了した Markdown は `openmd://jobs` と `openmd://job/{job_id}` resources で公開し、読み取り量を制限します。出力先は明示的な絶対パスが必要です。HTML は文字列または絶対ファイルパスで指定し、UTF-8で最大2 MiBです。5つの能力は初期状態では無効です。`network`、`browser`、`media`、`asr`、`cloud` を明示的に許可します。CLI と同じ能力フラグを使いますが、MCP は出力先から日常 CLI の自動許可を推定せず、保存先も記憶しません。stdio はローカルプロセスを起動できるクライアント用です。リモート connector には別途トランスポートブリッジが必要です。
 
 ---
 

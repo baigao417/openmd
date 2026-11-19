@@ -82,6 +82,32 @@ pip install "openmd-cli[mcp]"
 claude mcp add --transport stdio openmd -- openmd mcp
 ```
 
+사전 설치가 필요 없는 `uvx` 한 줄 설정:
+
+```bash
+uvx --from "openmd-cli[mcp]" openmd mcp
+```
+
+Cursor: **Cursor Settings → MCP → Add new MCP Server**에서 같은 stdio 서버를 추가하세요:
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "openmd", "args": ["mcp"]}
+  }
+}
+```
+
+Windows: 실행 파일은 절대 경로를 사용하고 필요하면 UTF-8 출력을 지정하세요:
+
+```json
+{
+  "mcpServers": {
+    "openmd": {"command": "C:\\path\\to\\openmd.exe", "args": ["mcp"], "env": {"PYTHONIOENCODING": "utf-8"}}
+  }
+}
+```
+
 Claude Desktop: MCP 설정에 다음을 추가하세요. 필요한 경우 실행 파일을 절대 경로로 지정하세요.
 
 ```json
@@ -92,7 +118,7 @@ Claude Desktop: MCP 설정에 다음을 추가하세요. 필요한 경우 실행
 }
 ```
 
-도구는 `openmd_save`, `openmd_save_page`, `openmd_job`, `openmd_doctor` 네 개입니다. 저장은 즉시 작업 ID를 반환하며 `openmd_job`으로 조회합니다. `include_content=true`는 최대 32000자의 본문을 반환합니다. 출력 폴더는 절대 경로로 명시해야 합니다. HTML 스냅샷은 문자열 또는 절대 파일 경로를 받으며 UTF-8 기준 최대 2 MiB입니다. 다섯 권한은 기본적으로 꺼져 있습니다. `network`, `browser`, `media`, `asr`, `cloud`를 명시적으로 허용하세요. CLI의 권한 플래그를 재사용하지만 MCP는 출력 폴더에서 일상 CLI의 자동 권한을 추론하지 않고 저장 위치도 기억하지 않습니다. stdio는 로컬 프로세스를 시작할 수 있는 클라이언트용입니다. 원격 connector에는 별도의 전송 브리지가 필요합니다.
+도구는 `openmd_save`, `openmd_save_page`, `openmd_job`, `openmd_doctor` 네 개입니다. `openmd_save`는 하나 또는 최대 20개의 `sources`를 받고, `openmd_job(action="cancel")`로 작업을 취소할 수 있습니다. `progressToken`을 보내는 클라이언트에는 진행률을 알리며 폴링도 사용할 수 있습니다. 완료된 Markdown은 `openmd://jobs` 및 `openmd://job/{job_id}` resources로 노출되고 읽기 크기는 제한됩니다. 출력 폴더는 절대 경로로 명시해야 합니다. HTML 스냅샷은 문자열 또는 절대 파일 경로를 받으며 UTF-8 기준 최대 2 MiB입니다. 다섯 권한은 기본적으로 꺼져 있습니다. `network`, `browser`, `media`, `asr`, `cloud`를 명시적으로 허용하세요. CLI의 권한 플래그를 재사용하지만 MCP는 출력 폴더에서 일상 CLI의 자동 권한을 추론하지 않고 저장 위치도 기억하지 않습니다. stdio는 로컬 프로세스를 시작할 수 있는 클라이언트용입니다. 원격 connector에는 별도의 전송 브리지가 필요합니다.
 
 ---
 

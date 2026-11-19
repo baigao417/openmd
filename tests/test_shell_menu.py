@@ -1,4 +1,5 @@
 import json
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -161,6 +162,87 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
     assert store[existing_command]["CustomCommandValue"] == "keep"
     assert store[existing]["Flags"] == 7 and kinds[(existing, "Flags")] == 4
     assert store[existing]["Blob"] == b"\x01\x02" and kinds[(existing, "Blob")] == 3
+
+
+def test_windows_install_adds_brand_icon_and_uninstall_removes_it(monkeypatch, tmp_path):
+    from openmd import shell_menu
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    icon = tmp_path / "openmd.ico"
+    icon.write_bytes(b"ico")
+    monkeypatch.setattr(shell_menu, "_brand_icon_path", lambda: icon)
+
+    class Key:
+        def __init__(self, store, path):
+            self.store, self.path = store, path
+
+    store = {}
+    kinds = {}
+
+    class FakeWinreg:
+        HKEY_CURRENT_USER = object()
+        REG_SZ = 1
+
+        def CreateKey(self, root, path):
+            store.setdefault(path, {})
+            return Key(store, path)
+
+        def SetValueEx(self, key, name, reserved, kind, value):
+            key.store[key.path][name] = value
+            kinds[(key.path, name)] = kind
+
+        def OpenKey(self, root, path):
+            if path not in store:
+                raise FileNotFoundError(path)
+            return Key(store, path)
+
+        def QueryValueEx(self, key, name):
+            return key.store[key.path][name], self.REG_SZ
+
+        def EnumValue(self, key, index):
+            try:
+                name, value = list(key.store[key.path].items())[index]
+            except IndexError as exc:
+                raise OSError("no more registry values") from exc
+            return name, value, kinds.get((key.path, name), self.REG_SZ)
+
+        def DeleteValue(self, key, name):
+            key.store[key.path].pop(name, None)
+
+        def DeleteKey(self, root, path):
+            store.pop(path, None)
+
+        def CloseKey(self, key):
+            return None
+
+    monkeypatch.setattr(shell_menu, "_winreg", FakeWinreg())
+    installed = shell_menu.install(platform="windows")
+    assert installed["installed"] is True
+    for key_path, _label, _command in shell_menu._win_keys():
+        assert store[key_path]["Icon"] == str(icon)
+    shell_menu.uninstall(platform="windows")
+    assert all("Icon" not in values for values in store.values())
+
+
+def test_brand_icon_is_packaged_and_gui_copy_is_readable():
+    icon = resources.files("openmd").joinpath("browser_extension", "icons", "openmd.ico")
+    assert icon.is_file()
+    assert icon.read_bytes()[:4] == b"\x00\x00\x01\x00"
+
+
+def test_gui_copy_helpers_build_title_progress_and_failure_summary():
+    from openmd import shell_menu
+
+    assert shell_menu._gui_title() == "Openmd · 转成 Markdown"
+    assert shell_menu._gui_summary({"success": 2, "unchanged": 1, "conflict": 0, "skipped": 3, "failed": 1}) == (
+        "成功 2 · 未变化 1 · 保留编辑 0 · 跳过 3 · 失败 1"
+    )
+    assert shell_menu._gui_failure_lines([
+        {"path": "/tmp/a.pdf", "error": "document_empty_text"},
+        {"path": "/tmp/b.pdf", "error": "PermissionError: denied"},
+    ]) == ["a.pdf：文档中没有可转换的文本（document_empty_text）", "b.pdf：没有读取或写入该文件的权限（PermissionError）"]
 
 
 def test_windows_shell_command_uses_pythonw_when_available_and_falls_back(monkeypatch, tmp_path):

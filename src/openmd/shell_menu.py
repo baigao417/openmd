@@ -35,6 +35,7 @@ SUPPORTED_SUFFIXES = frozenset(DOCUMENT_EXTENSIONS)
 DEFAULT_MAX_FILES = 1000
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 _DATA_URI = re.compile(r"data:image/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)")
+_GUI_WINDOW_TITLE = "Openmd · 转成 Markdown"
 
 
 def _hash_source(path: Path) -> str:
@@ -286,6 +287,139 @@ def _failure_message(error: str) -> str:
     return "转换失败"
 
 
+def _brand_icon_path() -> Path:
+    """Return the packaged ICO used by Windows shell entries and Tk."""
+    return Path(__file__).resolve().parent / "browser_extension" / "icons" / "openmd.ico"
+
+
+def _brand_png_path() -> Path:
+    return Path(__file__).resolve().parent / "browser_extension" / "icons" / "icon-128.png"
+
+
+def _gui_title() -> str:
+    return _GUI_WINDOW_TITLE
+
+
+def _gui_summary(value: dict[str, Any]) -> str:
+    return (
+        f"成功 {value.get('success', 0)} · 未变化 {value.get('unchanged', 0)} · "
+        f"保留编辑 {value.get('conflict', 0)} · 跳过 {value.get('skipped', 0)} · "
+        f"失败 {value.get('failed', 0)}"
+    )
+
+
+def _gui_failure_lines(failures: list[dict[str, Any]], limit: int = 5) -> list[str]:
+    return [
+        f"{Path(row.get('path', '')).name}：{_failure_message(str(row.get('error', '')))}"
+        for row in failures[:limit]
+    ]
+
+
+def _set_process_dpi_awareness() -> None:
+    if not sys.platform.startswith("win"):
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        pass
+
+
+def _center_window(window: Any, width: int = 560, height: int = 340) -> None:
+    window.update_idletasks()
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    x = max(0, (screen_width - width) // 2)
+    y = max(0, (screen_height - height) // 2)
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
+def _set_window_icon(window: Any, tk: Any) -> None:
+    try:
+        if sys.platform.startswith("win"):
+            window.iconbitmap(str(_brand_icon_path()))
+        else:
+            icon = tk.PhotoImage(file=str(_brand_png_path()))
+            window.iconphoto(True, icon)
+            window._openmd_icon = icon
+    except Exception:
+        pass
+
+
+def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
+    """Build the GUI and return widget handles used by the conversion loop."""
+    _set_process_dpi_awareness()
+    window.title(_gui_title())
+    window.resizable(False, False)
+    window.deiconify()
+    window.lift()
+    _set_window_icon(window, tk)
+    _center_window(window)
+
+    style = ttk.Style(window)
+    try:
+        style.configure("Openmd.TFrame", padding=(28, 24))
+        style.configure("Openmd.Title.TLabel", font=("Microsoft YaHei UI", 16, "bold"))
+        style.configure("Openmd.Subtitle.TLabel", foreground="#5f6368")
+        style.configure("Openmd.Status.TLabel", font=("Microsoft YaHei UI", 10))
+    except Exception:
+        pass
+
+    frame = ttk.Frame(window, style="Openmd.TFrame")
+    frame.pack(fill="both", expand=True)
+    ttk.Label(frame, text="Openmd", style="Openmd.Title.TLabel").pack(anchor="w")
+    ttk.Label(frame, text="正在把本地文件转换成 Markdown", style="Openmd.Subtitle.TLabel").pack(anchor="w", pady=(4, 22))
+    current = ttk.Label(frame, text="正在准备本地转换…", style="Openmd.Status.TLabel", wraplength=500)
+    current.pack(anchor="w", fill="x")
+    progress = ttk.Progressbar(frame, orient="horizontal", mode="determinate", length=500)
+    progress.pack(fill="x", pady=(12, 18))
+    summary = ttk.Label(frame, text="", style="Openmd.Status.TLabel", wraplength=500)
+    summary.pack(anchor="w", fill="x")
+    failures = ttk.Label(frame, text="", style="Openmd.Subtitle.TLabel", wraplength=500, justify="left")
+    failures.pack(anchor="w", fill="x", pady=(8, 0))
+    buttons = ttk.Frame(frame)
+    buttons.pack(anchor="e", fill="x", pady=(20, 0))
+    open_button = ttk.Button(buttons, text="打开所在文件夹")
+    open_button.pack(side="left")
+    close_button = ttk.Button(buttons, text="关闭", command=window.destroy)
+    close_button.pack(side="right")
+    window.update_idletasks()
+    window.update()
+    return {
+        "current": current,
+        "progress": progress,
+        "summary": summary,
+        "failures": failures,
+        "open_button": open_button,
+        "close_button": close_button,
+    }
+
+
+def _open_in_file_manager(path: Path) -> None:
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(str(path))
+        elif sys.platform == "darwin":
+            import subprocess
+
+            subprocess.Popen(["open", str(path)])
+        else:
+            import subprocess
+
+            subprocess.Popen(["xdg-open", str(path)])
+    except Exception:
+        pass
+
+
+def _result_folder(input_path: str | Path, value: dict[str, Any]) -> Path:
+    outputs = [Path(item) for item in value.get("outputs", []) if item]
+    if outputs:
+        return outputs[0].parent
+    source = Path(input_path).expanduser()
+    return source if source.is_dir() else source.parent
+
+
 def _win_keys() -> list[tuple[str, str, str]]:
     command = f'{_command()} shell-menu convert --gui "%1"'
     return [
@@ -319,6 +453,10 @@ def install(*, platform: str | None = None) -> dict[str, Any]:
             backup[command_path] = {"existed": _registry_exists(command_path), "values": _registry_values(command_path)}
             key = _winreg.CreateKey(_winreg.HKEY_CURRENT_USER, key_path)
             _winreg.SetValueEx(key, "", 0, _winreg.REG_SZ, label)
+            icon_path = _brand_icon_path()
+            if not icon_path.is_file():
+                raise RuntimeError(f"brand_icon_missing: {icon_path}")
+            _winreg.SetValueEx(key, "Icon", 0, _winreg.REG_SZ, str(icon_path))
             if key_path == r"Software\Classes\*\shell\OpenmdToMarkdown":
                 _winreg.SetValueEx(key, "AppliesTo", 0, _winreg.REG_SZ, _applies_to_filter())
             _winreg.CloseKey(key)
@@ -487,7 +625,7 @@ def _remove_owned_registry_key(path: str) -> None:
     except OSError:
         return
     try:
-        for name in ("", "AppliesTo"):
+        for name in ("", "AppliesTo", "Icon"):
             try:
                 _winreg.DeleteValue(key, name)
             except OSError:
@@ -506,19 +644,32 @@ def cmd_shell_menu(args) -> int:
     if action == "convert":
         gui = bool(getattr(args, "gui", False))
         window = None
+        ui = None
         progress = None
+        messagebox = None
         if gui:
             try:
                 import tkinter as tk
                 from tkinter import messagebox
+                from tkinter import ttk
+
+                _set_process_dpi_awareness()
                 window = tk.Tk()
-                window.title("用 Openmd 转成 Markdown")
-                label = tk.Label(window, text="正在准备本地转换…", padx=24, pady=18)
-                label.pack()
-                window.update()
-                progress = lambda index, total, path: (label.config(text=f"正在转换 {index}/{total}：{path.name}"), window.update_idletasks())
+                ui = _build_progress_window(window, tk, ttk)
+                root_path = Path(args.input).expanduser()
+                total = len(_candidate_files(root_path)) if root_path.exists() else 0
+                ui["progress"]["maximum"] = max(total, 1)
+
+                def update_progress(index: int, total: int, path: Path) -> None:
+                    ui["current"].configure(text=f"正在转换 {index}/{total}：{path.name}")
+                    ui["progress"]["maximum"] = max(total, 1)
+                    ui["progress"]["value"] = index
+                    window.update_idletasks()
+
+                progress = update_progress
             except Exception:
                 window = None
+                ui = None
                 progress = None
         confirm_large = args.confirm_large
         if window is not None and not confirm_large:
@@ -528,15 +679,19 @@ def cmd_shell_menu(args) -> int:
             if too_large:
                 confirm_large = messagebox.askyesno("输入规模较大", f"输入超过默认限制（{args.max_files} 个文件 / 每个文件 {args.max_bytes // (1024 * 1024)} MiB）。仍要继续吗？", parent=window)
         value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes, confirm_large=confirm_large, progress=progress)
-        if window is not None:
+        if window is not None and ui is not None:
             failures = value.get("failures", [])
-            summary = f"成功 {value.get('success', 0)} · 未变化 {value.get('unchanged', 0)} · 保留编辑 {value.get('conflict', 0)} · 跳过 {value.get('skipped', 0)} · 失败 {value.get('failed', 0)}"
-            label.config(text=summary)
-            if failures:
-                reasons = "\n".join(f"{Path(row['path']).name}：{_failure_message(str(row['error']))}" for row in failures[:8])
-                messagebox.showwarning("转换完成，但有文件失败", summary + "\n\n" + reasons + "\n\n扫描版 PDF 请安装并启用本机 OCR 后重试。", parent=window)
+            summary = _gui_summary(value)
+            ui["current"].configure(text="转换完成")
+            ui["progress"]["value"] = ui["progress"]["maximum"]
+            ui["summary"].configure(text=summary)
+            failure_lines = _gui_failure_lines(failures)
+            if failure_lines:
+                ui["failures"].configure(text="失败原因：\n" + "\n".join(failure_lines))
+            ui["open_button"].configure(command=lambda: _open_in_file_manager(_result_folder(args.input, value)))
             window.update_idletasks()
-            window.after(8000, window.destroy)
+            if not failures and value.get("ok"):
+                window.after(5000, window.destroy)
             window.mainloop()
             return 0 if value.get("ok") else 1
         if getattr(args, "json", False):

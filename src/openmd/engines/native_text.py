@@ -3,7 +3,7 @@ import csv
 import json
 from .base import EngineError
 
-FORMATS = {'csv'}
+FORMATS = {'csv', 'txt'}
 
 
 def parse_table(d):
@@ -32,6 +32,9 @@ def parse_table(d):
 
 def parse(d):
     suffix = d.path.suffix.lower().lstrip('.')
+    if suffix == 'txt':
+        d.add(d.path.read_text(encoding='utf-8-sig'))
+        return
     if suffix in {'csv', 'tsv'}:
         return parse_table(d)
     return globals()['parse_' + suffix](d)

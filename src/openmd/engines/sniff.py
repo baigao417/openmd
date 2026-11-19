@@ -42,7 +42,7 @@ def signature(path: Path, sniff: bytes) -> bool:
         return text.startswith('<')
     if suffix in {'json', 'ipynb'}:
         return bool(text) and text[0] in '[{'  # complete validation below
-    if suffix in {'csv', 'tsv'}:
+    if suffix in {'csv', 'tsv', 'txt'}:
         return bool(text.strip())
     return False
 

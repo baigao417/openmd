@@ -354,6 +354,8 @@ def _attach_video(args: argparse.Namespace, url: str, markdown: Path, *, stage: 
         append_media_retention_note,
         append_retained_media_section,
         append_video_section,
+        download_native_media_only,
+        native_media_source,
         native_transcript_source,
         should_process,
     )
@@ -365,13 +367,22 @@ def _attach_video(args: argparse.Namespace, url: str, markdown: Path, *, stage: 
     if mode == "file" and native_source == "xiaoe":
         append_media_retention_note(markdown, "本站点转写路线未提供可安全保留的公开解码媒体；受加密或访问控制的流仅用于转写")
         return
+    media_source = native_media_source(url) if mode == "file" else None
+    media_kind = "audio" if media_source == "xiaoyuzhou" else "video" if media_source == "bilibili" else "video/音频"
     if mode == "file" and native_source is not None:
-        if stage is not None and append_retained_media_section(markdown, stage / "raw-media"):
+        if stage is not None and append_retained_media_section(markdown, stage / "raw-media", media_kind=media_kind):
             return
+        if media_source is not None:
+            if not getattr(args, "enable_media_download", False) or stage is None:
+                return
+            media_dir = stage / "raw-media"
+            media_path = download_native_media_only(url, media_dir, media_kind=media_kind)
+            if media_path is not None and append_retained_media_section(markdown, media_dir, media_kind=media_kind):
+                return
         # No native route artifact was retained (for example YouTube subtitles
-        # do not download media). Reuse post_video's bounded downloader without
-        # transcribing a second time.
-        append_video_section(markdown, url, mode, transcribe_media=False)
+        # do not download media). If a native media tool failed, fall back to
+        # post_video's bounded downloader without transcribing a second time.
+        append_video_section(markdown, url, mode, transcribe_media=False, media_kind=media_kind)
         return
     if not should_process(url, mode):
         return

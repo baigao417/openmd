@@ -102,6 +102,30 @@ def native_media_source(url: str) -> str | None:
     return source if source in media_sources else None
 
 
+def download_native_media_only(url: str, destination: Path, *, media_kind: str) -> Path | None:
+    """Use the declared platform media tool to fetch media without running ASR."""
+    source = native_media_source(url)
+    if source is None:
+        return None
+    try:
+        from openmd.backends.registry import BackendRuntimeOptions
+        from openmd.core.models import ContentItem
+        from openmd.routing.loader import load_catalog
+        from openmd.routing.providers import CommandToolProvider
+
+        catalog = load_catalog(include_plugins=False)
+        route = next(row for row in catalog.routes if row.get("source") == source and row.get("capability") == "media")
+        backend = route["chain"][0]
+        capability = catalog.capabilities[backend]
+        card = catalog.cards[capability["card_id"]]
+        options = BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True)
+        provider = CommandToolProvider(card, capability, options)
+        result = provider.download_only(ContentItem(source, "single", url), destination, media_kind=media_kind)
+        return result if isinstance(result, Path) else None
+    except (ImportError, KeyError, StopIteration, TypeError, ValueError):
+        return None
+
+
 def _run(command: list[str], timeout: int) -> subprocess.CompletedProcess:
     from openmd.runtime.interpreters import run_interruptibly
 
@@ -141,10 +165,11 @@ def _clock(seconds: float) -> str:
     return f"{minutes} 分 {sec} 秒" if minutes else f"{sec} 秒"
 
 
-def _summary(durations: list[float]) -> str:
+def _summary(durations: list[float], media_kind: str = "video") -> str:
+    label = {"audio": "音频", "video": "视频"}.get(media_kind, "视频/音频")
     if len(durations) == 1:
-        return f"本帖含视频（约 {_clock(durations[0])}）"
-    return f"本帖含 {len(durations)} 段视频（共约 {_clock(sum(durations))}）"
+        return f"本帖含{label}（约 {_clock(durations[0])}）"
+    return f"本帖含 {len(durations)} 段{label}（共约 {_clock(sum(durations))}）"
 
 
 def _download(url: str, workdir: Path, *, keep_video: bool, run) -> list[Path]:
@@ -185,20 +210,21 @@ def _size_label(size: int) -> str:
     return f"{size} B"
 
 
-def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcribe=None, transcribe_media: bool = True) -> str | None:
+def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcribe=None, transcribe_media: bool = True, media_kind: str = "video") -> str | None:
     """Markdown to append for ``url``; None when the post has no video or nothing can be said."""
     if mode not in VIDEO_MODES or not should_process(url, mode):
         return None
     durations, probe_error = _probe_result(url, run=run)
     if mode == "note" and durations in ([], None):
         return None
+    label = {"audio": "音频", "video": "视频"}.get(media_kind, "视频/音频")
     if durations == []:
-        return "> 未发现可下载的视频。\n"
+        return f"> 未发现可下载的{label}。\n"
     if durations is None:
         detail = probe_error or {"message": "视频处理未完成", "next_action": "确认视频可公开访问后重试。"}
         category = f" [{detail['category']}]" if detail.get("category") else ""
         return f"> 视频处理未完成{category}：{detail['message']}。下一步：{detail['next_action']}\n"
-    summary = _summary(durations)
+    summary = _summary(durations, media_kind)
     if mode == "note":
         return f"> {summary}，未转文字。需要时用插件右键「用 Openmd 保存（含视频文字版）」或 `openmd go --video text`。\n"
     if transcribe_media and transcribe is None:
@@ -233,14 +259,14 @@ def video_section(url: str, mode: str, markdown_dir: Path, *, run=_run, transcri
                 target = assets / path.name
                 shutil.move(str(path), target)
                 embeds.append(
-                    f"![视频/音频](<assets/{target.name}>)（时长：{_clock(durations[min(index - 1, len(durations) - 1)])}；大小：{_size_label(target.stat().st_size)}）"
+                    f"![{label}](<assets/{target.name}>)（时长：{_clock(durations[min(index - 1, len(durations) - 1)])}；大小：{_size_label(target.stat().st_size)}）"
                 )  # <> keeps paths with spaces valid
         body = "\n".join(parts)
         if embeds:
             body = "\n\n".join(embeds) + "\n\n" + body
         if transcribe_media:
             return f"> {summary}；以下逐字稿由本机语音识别生成。\n\n{body}"
-        return f"> {summary}；已保存视频/音频文件，本站点逐字稿路线不会重复转写。\n\n{body}"
+        return f"> {summary}；已保存{label}文件，本站点逐字稿路线不会重复转写。\n\n{body}"
     finally:
         remove_tree_with_retry(workdir)
 
@@ -270,7 +296,18 @@ def _append_markdown_section(markdown_path: Path, section: str) -> None:
     markdown_path.write_text(updated, encoding="utf-8")
 
 
-def append_retained_media_section(markdown_path: Path, media_dir: Path) -> bool:
+def _local_media_duration(path: Path) -> float | None:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        done = _run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)], 10)
+        return float(done.stdout.strip()) if done.returncode == 0 and done.stdout.strip() else None
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+
+
+def append_retained_media_section(markdown_path: Path, media_dir: Path, *, media_kind: str = "media") -> bool:
     """Publish media already retained by a native route into Markdown assets."""
     if not media_dir.is_dir():
         return False
@@ -285,12 +322,14 @@ def append_retained_media_section(markdown_path: Path, media_dir: Path) -> bool:
         if target.exists():
             target = assets / f"{path.stem}-{index}{path.suffix}"
         shutil.move(str(path), target)
-        embeds.append(
-            f"![视频/音频](<assets/{target.name}>)（时长：未提供；大小：{_size_label(target.stat().st_size)}）"
-        )
+        duration = _local_media_duration(target)
+        duration_label = _clock(duration) if duration is not None else "未提供"
+        label = {"audio": "音频", "video": "视频"}.get(media_kind, "视频/音频")
+        embeds.append(f"![{label}](<assets/{target.name}>)（时长：{duration_label}；大小：{_size_label(target.stat().st_size)}）")
+    label = {"audio": "音频", "video": "视频"}.get(media_kind, "视频/音频")
     _append_markdown_section(
         markdown_path,
-        "> 本帖视频/音频文件已由本站点下载路线保留。\n\n" + "\n\n".join(embeds),
+        f"> 本帖{label}文件已由本站点下载路线保留。\n\n" + "\n\n".join(embeds),
     )
     return True
 

@@ -308,3 +308,41 @@ def test_repeated_optional_media_retention_keeps_success(monkeypatch, tmp_path):
     result = provider.extract(request)
     assert result.status == "verified" and result.metadata["media_retained"] is False
     assert blocked.read_text(encoding="utf-8") == "existing user file"
+
+
+@pytest.mark.parametrize(
+    ("card_id", "backend_id", "platform", "url", "media_kind", "suffix"),
+    [
+        ("yutto", "yutto.bilibili.media-asr", "bilibili", "https://www.bilibili.com/video/BV1abc123", "video", ".mp4"),
+        ("xyz-dl", "xyz-dl.xiaoyuzhou.media-asr", "xiaoyuzhou", "https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", "audio", ".m4a"),
+    ],
+)
+def test_declared_media_route_download_only_skips_asr(monkeypatch, tmp_path, card_id, backend_id, platform, url, media_kind, suffix):
+    import openmd.routing.providers as providers
+
+    catalog = load_catalog()
+    capability = catalog.capabilities[backend_id]
+    card = catalog.cards[card_id]
+    monkeypatch.setattr(providers, "installed_identity", lambda _card: {"tool_version_verified": True})
+    seen = []
+
+    def download(_card, passed_capability, _item, workdir):
+        seen.append(tuple(passed_capability["argv"]))
+        (workdir / f"downloaded{suffix}").write_bytes(b"native-media")
+        if media_kind == "video":
+            (workdir / "audio.m4a").write_bytes(b"audio")
+        return ToolRun(0, 1, "", "", {})
+
+    monkeypatch.setattr(providers, "run_tool", download)
+    output = tmp_path / "raw-media"
+    result = CommandToolProvider(
+        card,
+        capability,
+        BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True),
+    ).download_only(ContentItem(platform, "single", url), output, media_kind=media_kind)
+
+    assert isinstance(result, Path) and result.is_file() and result.suffix == suffix
+    assert result.read_bytes() == b"native-media"
+    assert len(seen) == 1
+    if card_id == "yutto":
+        assert "--audio-only" not in seen[0]

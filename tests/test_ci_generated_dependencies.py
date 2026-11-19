@@ -12,7 +12,9 @@ def test_ci_installs_integration_dependencies_before_generated_check():
     assert "integrations/opencli/*/" in step
     assert '"$directory/package.json"' in step
     assert '"$directory/package-lock.json"' in step
-    assert 'npm ci --prefix "$directory"' in step
-    assert 'npm install --prefix "$directory"' in step
+    # Installs run inside each directory: Windows npm ignores a trailing-slash --prefix.
+    assert '(cd "$directory" && npm ci ' in step
+    assert '(cd "$directory" && npm install ' in step
+    assert "npm ci --prefix" not in step and "npm install --prefix" not in step
     assert step.count("--ignore-scripts --no-audit --no-fund") == 2
     assert "python -m openmd.routing.generate --check" in workflow[check:]

@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "surfaces": [
+    {
+      "name": "extension_identity_hash",
+      "owner": "browser_extension_sync.py",
+      "owner_function": "extension_file_hashes",
+      "allowed_modules": ["browser_extension_sync.py", "browser_diagnostics.py"],
+      "extensions": [".py"],
+      "ast_calls": ["hashlib.sha256"],
+      "ast_context_any": ["extension_identity", "extension_file_hashes", "extension_content_hash"],
+      "text_patterns": ["extension_file_hashes", "extension_content_hash"],
+      "guidance": "调用 browser_extension_sync.extension_file_hashes，不要复制扩展身份哈希规则。"
+    },
+    {
+      "name": "opencli_patch_registration",
+      "owner": "runtime/opencli_patches.py",
+      "owner_function": "BRIDGE_PATCHES",
+      "allowed_modules": [
+        "runtime/opencli_patches.py",
+        "browser_extension/vendor/opencli-bridge/background.js",
+        "browser_extension/vendor/opencli-bridge/VENDOR.md"
+      ],
+      "extensions": [".py", ".js", ".mjs", ".md"],
+      "text_patterns": ["BRIDGE_PATCHES", "Openmd patch:"],
+      "guidance": "追加补丁必须登记到 runtime/opencli_patches.py，并由生成器写入 vendor 产物。"
+    },
+    {
+      "name": "user_preference_write",
+      "owner": "core/preferences.py",
+      "owner_function": "save_preferences",
+      "allowed_modules": ["core/preferences.py"],
+      "extensions": [".py"],
+      "text_patterns": ["preferences.json"],
+      "guidance": "调用 core.preferences.save_preferences，不要在其他模块直接写 preferences.json。"
+    },
+    {
+      "name": "process_startup",
+      "owner": "runtime/interpreters.py",
+      "owner_function": "owned_popen",
+      "allowed_modules": ["runtime/interpreters.py", "runtime/services.py", "browser_host.py"],
+      "extensions": [".py"],
+      "ast_calls": ["subprocess.Popen"],
+      "guidance": "进程只能在现有允许模块启动，并使用受管生命周期入口。"
+    },
+    {
+      "name": "completeness_summary",
+      "owner": "core/coverage.py",
+      "owner_function": "CollectionCoverage.as_dict",
+      "allowed_modules": ["core/coverage.py"],
+      "extensions": [".py"],
+      "text_patterns": ["completeness_counts"],
+      "guidance": "完整度汇总统一由 CollectionCoverage.as_dict 生成。"
+    },
+    {
+      "name": "ai_chat_title_cleaning",
+      "owner": "core/chat_title.py",
+      "owner_function": "clean_chat_title",
+      "allowed_modules": ["core/chat_title.py"],
+      "extensions": [".py"],
+      "text_patterns": ["clean_chat_title", "SITE_TITLES"],
+      "guidance": "AI 对话标题清洗统一调用 core.chat_title.clean_chat_title。"
+    }
+  ]
+}

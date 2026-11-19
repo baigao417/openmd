@@ -54,6 +54,7 @@ version = { attr = "openmd.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
+"openmd.contracts" = ["shared_surfaces.json"]
 "openmd.routing" = ["routes.json", "declarations.json", "cards/*.json"]
 "openmd" = ["SKILL.md", "browser_extension/*", "browser_extension/icons/*", "browser_extension/vendor/opencli-bridge/*"]
 "openmd.ocr" = ["settings.json", "ovis-prompt.txt"]

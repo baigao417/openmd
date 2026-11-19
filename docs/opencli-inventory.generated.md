@@ -51,8 +51,8 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 
 ## Source references
 
-- `bilibili/subtitle`: `src/openmd/backends/bilibili.py:401`
-- `bilibili/user-videos`: `src/openmd/backends/bilibili.py:841`
+- `bilibili/subtitle`: `src/openmd/backends/bilibili.py:402`
+- `bilibili/user-videos`: `src/openmd/backends/bilibili.py:854`
 - `browser/close`: `src/openmd/backends/discourse.py:157`, `src/openmd/backends/douyin.py:525`
 - `browser/eval`: `src/openmd/backends/discourse.py:144`, `src/openmd/backends/douyin.py:514`
 - `browser/open`: `src/openmd/backends/discourse.py:116`, `src/openmd/backends/douyin.py:511`

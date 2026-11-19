@@ -274,7 +274,7 @@ OpenCLI는 Openmd가 관리하는 브라우저·플랫폼 구성 요소입니다
 PyPI의 `openmd`라는 이름은 관련 없는 프로젝트가 쓰고 있습니다. 설치 후 명령어는 그대로 `openmd`입니다.
 
 **링크가 처리되지 않습니다.**
-`--verbose`를 붙여 다시 실행하면 어떤 읽기 경로를 시도했는지 볼 수 있습니다. 그다음 Openmd가 출력한 한 줄을 첨부해 [링크 실패 리포트](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)를 보내 주세요. 실패한 실제 링크는 가장 쓸모 있는 기여입니다. 이미 열어 둔 페이지(예: AI 대화)가 잘못 저장됐다면 `openmd report feedback <작업 ID> -o <디렉터리>`로 익명화된 문제 패키지(페이지 구조만, 본문은 합성 텍스트)를 만들어 확인한 뒤 함께 첨부해 주세요.
+`--verbose`를 붙여 다시 실행하면 어떤 읽기 경로를 시도했는지 볼 수 있습니다. 그다음 Openmd가 출력한 한 줄을 첨부해 [링크 실패 리포트](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml)를 보내 주세요. 실패한 실제 링크는 가장 쓸모 있는 기여입니다. `openmd report feedback <작업 ID> -o <디렉터리>`로 익명화된 문제 패키지를 만들 수 있습니다. 링크 경로 실패에는 제한된 `manifest.json`과 `receipt.json`만 들어가고, 캡처된 페이지 경로에는 익명화된 `structure.html`, `doctor.json`, `README.txt`가 추가될 수 있습니다. 첨부 전에 확인하세요. 원문, 쿠키, 계정 정보, 서명된 URL 매개변수는 포함되지 않습니다.
 
 ---
 

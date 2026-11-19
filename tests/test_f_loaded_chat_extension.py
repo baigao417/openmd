@@ -132,3 +132,19 @@ vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,
     payload = json.loads(result.stdout)
     assert len([item for item in payload["notices"] if item["id"].startswith("openmd-feedback:")]) == 1
     assert payload["native"][-1]["type"] == "feedback_report"
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node is needed for the extension harness")
+def test_feedback_notification_uses_host_next_action_and_saved_location(tmp_path):
+    script = tmp_path / "feedback-next-action.cjs"
+    script.write_text(r'''
+const fs=require('fs'), vm=require('vm');
+const listeners={}; const event=n=>({addListener:f=>(listeners[n]??=[]).push(f)});
+const notices=[]; const native=[];
+const chrome={runtime:{onInstalled:event('installed'),onMessage:event('message'),onStartup:event('startup'),sendNativeMessage:(_h,m,cb)=>{native.push(m);cb(m.type==='feedback_report'?{ok:false,error_code:'feedback_not_available',next_action:'请先开启脱敏问题包后重新保存。'}:{ok:true,job:{id:'job'}})}},alarms:{create:()=>{},onAlarm:event('alarm')},notifications:{create:(id,n)=>notices.push({id,n}),onButtonClicked:event('notification'),onClosed:event('closed')},contextMenus:{onClicked:event('context')},storage:{local:{get:async()=>({settings:{locations:[{id:'default',path:'synthetic'}],defaultId:'default',allowFeedbackPackage:true}}),set:async()=>{}},onChanged:event('storage')},action:{onClicked:event('icon'),setPopup:async()=>{},setTitle:async()=>{},setBadgeText:async()=>{},setBadgeBackgroundColor:async()=>{}},tabs:{query:async()=>[]}};
+const ctx=vm.createContext({chrome,URL,setTimeout:()=>{},crypto:{randomUUID:()=> 'synthetic'},console});
+vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
+(async()=>{for(const f of listeners.notification||[]) await f('openmd-feedback:job',0); console.log(JSON.stringify({notices,native}));})().catch(e=>{console.error(e);process.exitCode=1;});
+''', encoding="utf-8")
+    result = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
+    payload = json.loads(result.stdout)
+    assert payload["notices"][-1]["n"]["message"] == "请先开启脱敏问题包后重新保存。"

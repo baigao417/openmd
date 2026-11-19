@@ -204,8 +204,11 @@ chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
   const settings = await getSettings();
   const location = await locationFor(settings.defaultId);
   const reply = await native({ type: "feedback_report", id: jobId, save_to: location?.path });
-  if (reply?.ok) notify("问题报告已生成", "请检查后再附加到 GitHub issue。");
-  else notify("问题报告生成失败", reply?.error || "请在任务列表中重试。");
+  if (reply?.ok) notify("问题报告已生成", `已保存到 ${reply.report?.output || "默认问题报告目录"}，请检查后再附加到 GitHub issue。`);
+  else {
+    const actions = { feedback_not_available: "请在扩展设置中开启脱敏问题包后重新保存一次。", job_not_found: "请确认任务 ID，并在同一 Openmd 数据目录中重试。" };
+    notify("问题报告生成失败", reply?.next_action || actions[reply?.error_code] || reply?.error || "请在任务列表中重试。");
+  }
 });
 
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(async () => {
@@ -312,11 +315,13 @@ async function saveManyImpl(items, locationId, video) {
     chrome.runtime.openOptionsPage();
     return fail("先设置一个保存位置", "已打开设置页。");
   }
-  video = video || (await getSettings()).videoMode || "note";
+  const settings = await getSettings();
+  video = video || settings.videoMode || "note";
+  const feedbackOptIn = settings.allowFeedbackPackage === true;
   const titles = Object.fromEntries(web.map((item) => [item.url, item.title]));
   const reply = web.length === 1
-    ? await native({ type: "save", url: web[0].url, save_to: location.path, video })
-    : await native({ type: "save_many", urls: web.map((item) => item.url), save_to: location.path, video });
+    ? await native({ type: "save", url: web[0].url, save_to: location.path, video, feedback_opt_in: feedbackOptIn })
+    : await native({ type: "save_many", urls: web.map((item) => item.url), save_to: location.path, video, feedback_opt_in: feedbackOptIn });
   if (!reply.ok) return fail("没能开始保存", reply.error);
   const jobs = (reply.jobs || [reply.job]).map((job) => ({ ...job, title: titles[job.url] }));
   await track(jobs, reply.batch || jobs[0].id, location.name);

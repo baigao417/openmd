@@ -97,7 +97,7 @@ def test_status_rejects_path_like_ids():
 
 
 def test_feedback_report_reads_only_sanitized_snapshot(tmp_path):
-    job = browser_host.start_snapshot_job("<p>private-sentinel</p>", "https://example.org/page", save_to=str(tmp_path), spawn=lambda *a, **k: None)
+    job = browser_host.start_snapshot_job("<p>private-sentinel</p>", "https://example.org/page", save_to=str(tmp_path), feedback_opt_in=True, spawn=lambda *a, **k: None)
     job_dir = browser_host.jobs_root() / job["id"]
     # Simulate the queue's safe handoff after the raw snapshot was removed.
     safe = job_dir / "sanitized-structure.html"

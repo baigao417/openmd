@@ -275,7 +275,7 @@ Nowhere. Openmd runs locally, reads pages with your own network and browser, and
 The name `openmd` on PyPI belongs to an unrelated project. Once installed, the command is still `openmd`.
 
 **A link didn't work.**
-Run it again with `--verbose` to see which reader was tried, then open a [link failure report](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml) with the line Openmd printed. Failing links are the most useful contribution there is. If a page you already had open (for example an AI chat) was saved wrongly, run `openmd report feedback <job-id> -o <dir>` to create a sanitized problem package (page structure only, text replaced with synthetic text), check it, and attach it as well.
+Run it again with `--verbose` to see which reader was tried, then open a [link failure report](https://github.com/baigao417/openmd/issues/new?template=link-failure.yml) with the line Openmd printed. Failing links are the most useful contribution there is. Run `openmd report feedback <job-id> -o <dir>` to create a sanitized problem package: failed link routes contain only bounded `manifest.json` and `receipt.json`, while captured page routes may include sanitized `structure.html`, `doctor.json`, and `README.txt`. Check the package before attaching it; raw page content, cookies, account data, and signed URL parameters are never included.
 
 ---
 

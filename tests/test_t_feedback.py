@@ -136,3 +136,14 @@ def test_link_feedback_report_requires_opt_in(tmp_path):
     assert reply["ok"] is False
     assert reply["error_code"] == "feedback_not_available"
     assert "开启" in reply["next_action"]
+
+
+def test_sanitize_preserves_structural_ids_but_hashes_dynamic_ids():
+    html = '<div id="noteContainer"><span id="detail-title">标题</span><span id="hash-tag">标签</span><span id="comment-6afaa2fc">评论</span><span data-note-id="noteContainer">内容</span></div>'
+    safe = sanitize_snapshot(html, "https://example.org/note")
+    assert 'id="noteContainer"' in safe.html
+    assert 'id="detail-title"' in safe.html
+    assert 'id="hash-tag"' in safe.html
+    assert 'id="comment-6afaa2fc"' not in safe.html
+    assert 'openmd-id-' in safe.html
+    assert 'data-note-id="openmd-id-' in safe.html

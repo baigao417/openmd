@@ -198,12 +198,16 @@ async function notifyFeedback(job, meta) {
   });
 }
 
+async function feedbackReport(jobId) {
+  const settings = await getSettings();
+  const location = await locationFor(settings.defaultId);
+  return native({ type: "feedback_report", id: jobId, save_to: location?.path });
+}
+
 chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
   if (!id.startsWith("openmd-feedback:") || buttonIndex !== 0) return;
   const jobId = id.slice("openmd-feedback:".length);
-  const settings = await getSettings();
-  const location = await locationFor(settings.defaultId);
-  const reply = await native({ type: "feedback_report", id: jobId, save_to: location?.path });
+  const reply = await feedbackReport(jobId);
   if (reply?.ok) notify("问题报告已生成", `已保存到 ${reply.report?.output || "默认问题报告目录"}，请检查后再附加到 GitHub issue。`);
   else {
     const actions = { feedback_not_available: "请在扩展设置中开启脱敏问题包后重新保存一次。", job_not_found: "请确认任务 ID，并在同一 Openmd 数据目录中重试。" };
@@ -500,6 +504,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.cmd === "save") { saveTabs(msg.items, msg.locationId).then(reply); return true; }
   if (msg?.cmd === "snapshot") { saving(async () => { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return saveSnapshot(tab?.id, msg.locationId); }).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
+  if (msg?.cmd === "recent_feedback") {
+    native({ type: "recent" }).then((result) => reply({
+      ok: result?.ok === true,
+      jobs: (result?.jobs || []).map((job) => ({ id: job.id, state: job.state, snapshot: job.snapshot === true, feedback_opt_in: job.feedback_opt_in === true })),
+      error: result?.error,
+    }));
+    return true;
+  }
+  if (msg?.cmd === "feedback_report") { feedbackReport(msg.id).then(reply); return true; }
   return false;
 });
 

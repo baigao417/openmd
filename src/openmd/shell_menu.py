@@ -289,11 +289,15 @@ def _failure_message(error: str) -> str:
 
 def _brand_icon_path() -> Path:
     """Return the packaged ICO used by Windows shell entries and Tk."""
-    return Path(__file__).resolve().parent / "browser_extension" / "icons" / "openmd.ico"
+    from openmd.browser_setup import EXTENSION_DIR  # one owner of the packaged extension location
+
+    return EXTENSION_DIR / "icons" / "openmd.ico"
 
 
 def _brand_png_path() -> Path:
-    return Path(__file__).resolve().parent / "browser_extension" / "icons" / "icon-128.png"
+    from openmd.browser_setup import EXTENSION_DIR
+
+    return EXTENSION_DIR / "icons" / "icon-128.png"
 
 
 def _gui_title() -> str:
@@ -514,17 +518,16 @@ def _build_progress_window(window: Any, tk: Any, ttk: Any) -> dict[str, Any]:
 
 
 def _open_in_file_manager(path: Path) -> None:
+    # No subprocess here: process launches belong to the runtime owners. The OS
+    # shell opens the folder (Windows) and webbrowser hands a file URI to
+    # open/xdg-open on macOS/Linux, the same handler a user double-click uses.
     try:
         if sys.platform.startswith("win"):
             os.startfile(str(path))
-        elif sys.platform == "darwin":
-            import subprocess
-
-            subprocess.Popen(["open", str(path)])
         else:
-            import subprocess
+            import webbrowser
 
-            subprocess.Popen(["xdg-open", str(path)])
+            webbrowser.open(path.resolve().as_uri())
     except Exception:
         pass
 

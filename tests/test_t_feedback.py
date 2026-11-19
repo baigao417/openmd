@@ -147,3 +147,11 @@ def test_sanitize_preserves_structural_ids_but_hashes_dynamic_ids():
     assert 'id="comment-6afaa2fc"' not in safe.html
     assert 'openmd-id-' in safe.html
     assert 'data-note-id="openmd-id-' in safe.html
+
+
+def test_structural_ids_keep_only_ascii_letter_names():
+    from openmd.diagnostics.sanitize import sanitize_snapshot
+    html = '<div id="noteContainer"><span id="张三丰">x</span><span id="comment-6afaa2fc">y</span><b id="detail-title">z</b></div>'
+    out = sanitize_snapshot(html, "https://www.xiaohongshu.com/explore/abc").html
+    assert 'id="noteContainer"' in out and 'id="detail-title"' in out
+    assert "张三丰" not in out and "6afaa2fc" not in out

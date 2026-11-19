@@ -42,7 +42,9 @@ def _identifier(value: object) -> str:
 
 def _structural_id(value: object) -> str:
     text = str(value)
-    if 3 <= len(text) <= 40 and any(char.isalpha() for char in text) and all(char.isalpha() or char == "-" for char in text):
+    # ASCII only: str.isalpha() also accepts CJK, so an id holding a person's
+    # name in Chinese would otherwise survive sanitizing.
+    if 3 <= len(text) <= 40 and text.isascii() and any(char.isalpha() for char in text) and all(char.isalpha() or char == "-" for char in text):
         return text
     return _identifier(value)
 

@@ -47,10 +47,12 @@ jobs:
         run: |
           for directory in integrations/opencli/*/; do
             if [ -f "$directory/package.json" ]; then
+              # Run inside the directory: on Windows, npm ignores a --prefix with a
+              # trailing slash and reads the repository root package.json instead.
               if [ -f "$directory/package-lock.json" ]; then
-                npm ci --prefix "$directory" --ignore-scripts --no-audit --no-fund
+                (cd "$directory" && npm ci --ignore-scripts --no-audit --no-fund)
               else
-                npm install --prefix "$directory" --ignore-scripts --no-audit --no-fund
+                (cd "$directory" && npm install --ignore-scripts --no-audit --no-fund)
               fi
             fi
           done

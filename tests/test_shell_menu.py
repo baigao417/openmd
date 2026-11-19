@@ -259,3 +259,22 @@ def test_unix_shell_menu_install_uninstall_roundtrip_uses_temporary_home(monkeyp
     removed = uninstall(platform=platform)
     assert removed["removed"] is True
     assert status(platform=platform)["installed"] is False
+
+
+@pytest.mark.parametrize("platform", ["macos", "linux"])
+def test_unix_shell_menu_never_overwrites_or_deletes_a_foreign_same_name_item(monkeypatch, tmp_path, platform):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    if platform == "macos":
+        foreign = tmp_path / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow" / "Contents" / "document.wflow"
+    else:
+        foreign = tmp_path / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown"
+    foreign.parent.mkdir(parents=True)
+    foreign.write_text("user's own item", encoding="utf-8")
+
+    installed = install(platform=platform)
+    assert installed["installed"] is False and installed["error"] == "menu_name_taken"
+    assert status(platform=platform)["installed"] is False
+    removed = uninstall(platform=platform)
+    assert removed["removed"] is False and removed["error"] == "menu_not_owned"
+    assert foreign.read_text(encoding="utf-8") == "user's own item"

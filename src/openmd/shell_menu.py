@@ -328,8 +328,17 @@ def install(*, platform: str | None = None) -> dict[str, Any]:
         _backup_path().parent.mkdir(parents=True, exist_ok=True)
         _backup_path().write_text(json.dumps(backup, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"installed": True, "platform": platform, "scope": "HKCU", "menu_visibility": "Windows 11 may place legacy entries under Show more options."}
+    target = _unix_menu_path(platform)
+    if target.exists() and not _owns_unix_menu(platform, target):
+        return {
+            "installed": False,
+            "platform": platform,
+            "error": "menu_name_taken",
+            "path": str(target),
+            "next_action": "同名菜单项已存在且不是 Openmd 安装的；请先自行移走或改名该项，再运行 shell-menu install",
+        }
     if platform == "macos":
-        root = Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow" / "Contents"
+        root = target / "Contents"
         root.mkdir(parents=True, exist_ok=True)
         (root / "document.wflow").write_text(_automator_workflow(), encoding="utf-8")
         (root / "Info.plist").write_text('''<?xml version="1.0" encoding="UTF-8"?>
@@ -337,7 +346,7 @@ def install(*, platform: str | None = None) -> dict[str, Any]:
 <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.openmd.shell-menu</string><key>CFBundleName</key><string>用 Openmd 转成 Markdown</string></dict></plist>
 ''', encoding="utf-8")
         return {"installed": True, "platform": platform, "path": str(root.parent)}
-    script = Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown"
+    script = target
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(
         f'#!/bin/sh\ntarget="${{1:-$(printf \'%s\\n\' "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" | sed -n \'1p\')}}"\n'
@@ -367,23 +376,40 @@ def uninstall(*, platform: str | None = None) -> dict[str, Any]:
         if _backup_path().exists():
             _backup_path().unlink()
         return {"removed": True, "platform": platform}
+    path = _unix_menu_path(platform)
+    if path.exists() and not _owns_unix_menu(platform, path):
+        # Never delete a same-name item that Openmd did not install.
+        return {"removed": False, "platform": platform, "error": "menu_not_owned", "path": str(path)}
     if platform == "macos":
-        path = Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow"
         shutil.rmtree(path, ignore_errors=True)
-        return {"removed": True, "platform": platform}
-    path = Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown"
-    path.unlink(missing_ok=True)
+    else:
+        path.unlink(missing_ok=True)
     return {"removed": True, "platform": platform}
+
+
+def _unix_menu_path(platform: str) -> Path:
+    if platform == "macos":
+        return Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow"
+    return Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown"
+
+
+def _owns_unix_menu(platform: str, path: Path) -> bool:
+    """True when the item at ``path`` carries the marker Openmd writes at install."""
+    try:
+        if platform == "macos":
+            return "dev.openmd.shell-menu" in (path / "Contents" / "Info.plist").read_text(encoding="utf-8")
+        return path.is_file() and "shell-menu convert --gui" in path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
 
 
 def status(*, platform: str | None = None) -> dict[str, Any]:
     platform = _platform_name(platform)
     if platform == "windows":
         installed = bool(_winreg is not None and all(_registry_exists(path) for path, _, _ in _win_keys()))
-    elif platform == "macos":
-        installed = (Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow").exists()
     else:
-        installed = (Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown").exists()
+        path = _unix_menu_path(platform)
+        installed = path.exists() and _owns_unix_menu(platform, path)
     return {"installed": installed, "platform": platform}
 
 
@@ -522,7 +548,8 @@ def cmd_shell_menu(args) -> int:
         return 0 if value.get("ok") else 1
     value = {"install": install, "uninstall": uninstall, "status": status}[action](platform=args.platform)
     print(json.dumps(value, ensure_ascii=True, sort_keys=True))
-    return 1 if action == "install" and value.get("installed") is False else 0
+    failed = (action == "install" and value.get("installed") is False) or (action == "uninstall" and value.get("removed") is False)
+    return 1 if failed else 0
 
 
 def _automator_workflow() -> str:

@@ -15,11 +15,11 @@ from typing import Any
 from openmd.backends.base import BackendCapability, BackendDescriptor, BackendHealth
 from openmd.core.local_config import load_local_config
 from openmd.core.login import structured_login_code
-from openmd.core.models import TranscriptResult
+from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 
 from .loader import load_catalog, route_trace
-from .readers import read_media, read_text
+from .readers import MEDIA_EXTENSIONS, read_media, read_text
 from .runner import ToolError, isolated_environment, resolve_launcher, run_tool
 
 from openmd.runtime.tempdirs import owned_temporary_directory
@@ -126,6 +126,41 @@ class CommandToolProvider:
                 return replace(result, metadata={**result.metadata, **metadata})
         except (ToolError, OSError, ValueError) as exc:
             return replace(self._failed(getattr(exc, "code", "tool_artifact_invalid"), sanitize_error_summary(exc) or "Tool failed."), metadata=metadata)
+
+    def download_only(self, item: ContentItem, destination: Path, *, media_kind: str) -> Path | TranscriptResult:
+        """Run this declared media route and retain its media without invoking ASR."""
+        download_capability = {**self.capability, "gates": [gate for gate in self.capability.get("gates", []) if gate != "asr"]}
+        if self.capability.get("capability") != "media" or not gates_open(download_capability, self.options):
+            return self._failed("tool_permission_required", "Network and media download permissions are required.")
+        if item.platform not in self.capability.get("sources", ()):
+            return self._failed("tool_input_unsupported", "Tool card does not cover this source.")
+        try:
+            identity = installed_identity(self.card)
+            if not identity["tool_version_verified"]:
+                return self._failed("tool_version_mismatch", "Installed tool differs from its locked card; run openmd doctor --profile tools.")
+            capability = dict(self.capability)
+            if self.card.get("id") == "yutto" and media_kind == "video":
+                capability["argv"] = [arg for arg in capability.get("argv", []) if arg != "--audio-only"]
+            with owned_temporary_directory(prefix="openmd-media-only-") as tmp:
+                workdir = Path(tmp)
+                run = run_tool(self.card, capability, item, workdir)
+                login_code = structured_login_code(run.stdout)
+                if login_code or run.exit_code == 77:
+                    return self._failed(login_code or "backend_exit_77", "Tool requires login.")
+                if run.exit_code != 0:
+                    return self._failed("tool_backend_exit", f"Tool exited with code {run.exit_code}; raw logs were not retained.")
+                candidates = [path for path in workdir.rglob("*") if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS and path.stat().st_size > 0 and path.resolve().is_relative_to(workdir.resolve())]
+                preferred_suffixes = {"video": {".mp4", ".webm"}, "audio": {".m4a", ".mp3", ".aac", ".opus", ".wav", ".ogg", ".flac"}}
+                preferred = [path for path in candidates if path.suffix.lower() in preferred_suffixes.get(media_kind, set())]
+                media = max(preferred or candidates, key=lambda path: path.stat().st_size) if candidates else read_media(workdir)
+                destination.mkdir(parents=True, exist_ok=True)
+                name = hashlib.sha256(item.url.encode("utf-8")).hexdigest()[:12] + media.suffix.lower()
+                target = destination / name
+                with media.open("rb") as source, target.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+                return target
+        except (ToolError, OSError, ValueError) as exc:
+            return self._failed(getattr(exc, "code", "tool_artifact_invalid"), sanitize_error_summary(exc) or "Tool failed.")
 
     def _failed(self, code: str, detail: str) -> TranscriptResult:
         return TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=self.name, source_notes=["The declared tool did not produce validated source content."], error_code=code, error_summary=detail)

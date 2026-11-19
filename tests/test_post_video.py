@@ -119,6 +119,59 @@ def test_bilibili_file_mode_publishes_native_raw_media(tmp_path, monkeypatch):
     assert (tmp_path / "assets" / "bilibili-video.mp4").is_file()
 
 
+@pytest.mark.parametrize(
+    ("url", "kind", "filename", "label"),
+    [
+        ("https://www.bilibili.com/video/BV1abc123", "video", "native.mp4", "视频"),
+        ("https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", "audio", "native.m4a", "音频"),
+    ],
+)
+def test_native_media_route_download_only_is_published(tmp_path, monkeypatch, url, kind, filename, label):
+    md = _post(tmp_path)
+    stage = tmp_path / "stage"
+    args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    calls = []
+
+    def download_only(request_url, destination, *, media_kind):
+        calls.append((request_url, media_kind))
+        destination.mkdir(parents=True, exist_ok=True)
+        path = destination / filename
+        path.write_bytes(b"media")
+        return path
+
+    monkeypatch.setattr(post_video, "download_native_media_only", download_only)
+    monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("native route should run before generic fallback"))
+    _attach_video(args, url, md, stage=stage)
+
+    assert calls == [(url, kind)]
+    assert (tmp_path / "assets" / filename).is_file()
+    assert label in md.read_text(encoding="utf-8")
+
+
+def test_native_media_download_failure_falls_back_to_generic_once(tmp_path, monkeypatch):
+    md = _post(tmp_path)
+    args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    calls = []
+    monkeypatch.setattr(post_video, "download_native_media_only", lambda *a, **kw: calls.append("native") or None)
+    monkeypatch.setattr(post_video, "append_video_section", lambda _md, _url, _mode, **kw: calls.append(kw) or True)
+    _attach_video(args, "https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", md, stage=tmp_path / "stage")
+    assert calls == ["native", {"transcribe_media": False, "media_kind": "audio"}]
+
+
+def test_existing_native_raw_media_skips_both_downloaders(tmp_path, monkeypatch):
+    md = _post(tmp_path)
+    stage = tmp_path / "stage"
+    raw = stage / "raw-media"
+    raw.mkdir(parents=True)
+    (raw / "native.m4a").write_bytes(b"media")
+    args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
+    monkeypatch.setattr(post_video, "download_native_media_only", lambda *a, **kw: pytest.fail("must reuse raw-media"))
+    monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("must not use generic downloader"))
+    _attach_video(args, "https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", md, stage=stage)
+    assert (tmp_path / "assets" / "native.m4a").is_file()
+    assert "音频" in md.read_text(encoding="utf-8")
+
+
 def test_native_transcript_text_skips_post_video_download_and_asr(tmp_path, monkeypatch):
     md = _post(tmp_path)
     args = argparse.Namespace(video="text", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
@@ -172,7 +225,7 @@ def test_file_mode_keeps_video_next_to_markdown(tmp_path):
     post_video.append_video_section(md, TWEET, "file", run=_fake_run(durations=("10", "20")), transcribe=_asr)
     text = md.read_text(encoding="utf-8")
     assert "本帖含 2 段视频（共约 30 秒）" in text
-    assert "![视频/音频](<assets/video-01.mp4>)" in text and "大小：" in text and "（第 2 段）" in text
+    assert "![视频](<assets/video-01.mp4>)" in text and "大小：" in text and "（第 2 段）" in text
     assert (tmp_path / "assets" / "video-02.mp4").is_file()
 
 

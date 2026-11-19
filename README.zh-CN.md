@@ -169,7 +169,7 @@ Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信�
 | ZIP | 部分可用，逐条报告状态 | 音视频 / 图片另需 ASR / OCR；受容器资源上限约束 |
 | MOBI、AZW3 | 需安装 Calibre | 缺工具返回 `engine_unavailable`；拒收加密电子书，不解密 |
 
-右键转换可通过 `openmd shell-menu install` 按当前用户安装到资源管理器、访达或文件管理器。右键支持的文档会在旁边生成 `.md`；右键文件夹会生成保留子目录结构的 `<文件夹名>-md` 镜像目录。重跑会跳过未变化的源文件，并保护用户编辑过的 Markdown。扫描版 PDF 仍需本机 OCR。Windows 11 可能把传统 HKCU 菜单放在“显示更多选项”中；本轻量安装器不注册需要打包应用的一级菜单扩展。运行 `openmd shell-menu uninstall` 可卸载。
+右键转换可通过 `openmd shell-menu install` 按当前用户安装到资源管理器、访达或文件管理器。右键支持的文档会在旁边生成 `.md`；右键文件夹会生成保留子目录结构的 `<文件夹名>-md` 镜像目录。重跑会跳过未变化的源文件，并保护用户编辑过的 Markdown。同名不同格式的文件会在 Markdown 文件名中保留原扩展名。Windows 安装菜单前，请用 `uv tool install openmd` 或 `pipx` 持久安装；临时 `uvx` 缓存中的安装会被拒绝。扫描版 PDF 仍需本机 OCR。Windows 11 可能把传统 HKCU 菜单放在“显示更多选项”中；本轻量安装器不注册需要打包应用的一级菜单扩展。运行 `openmd shell-menu uninstall` 可卸载。
 
 在你的电脑上运行 `openmd doctor` 可以看到哪些已经就绪。链接处理失败时，Openmd 会打印原因，以及一行可以直接贴进 [问题反馈](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml) 的信息。
 

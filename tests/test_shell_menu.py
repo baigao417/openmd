@@ -1,8 +1,9 @@
+import json
 from pathlib import Path
 
 import pytest
 
-from openmd.shell_menu import convert_path, install, uninstall, status
+from openmd.shell_menu import SUPPORTED_SUFFIXES, convert_path, install, uninstall, status
 
 
 def test_txt_conversion_writes_markdown(tmp_path):
@@ -43,6 +44,38 @@ def test_folder_mirror_rerun_and_user_edit_are_protected(tmp_path):
     assert list(mirror.glob("a.openmd-update*.md"))
 
 
+def test_same_stem_different_formats_keep_distinguishable_names_and_manifest_paths(tmp_path):
+    folder = tmp_path / "docs"
+    folder.mkdir()
+    (folder / "sample.txt").write_text("text format", encoding="utf-8")
+    (folder / "sample.html").write_text("<html><body>html format</body></html>", encoding="utf-8")
+
+    first = convert_path(folder)
+    mirror = tmp_path / "docs-md"
+    assert first["success"] == 2
+    assert (mirror / "sample.txt.md").is_file()
+    assert (mirror / "sample.html.md").is_file()
+
+    second = convert_path(folder)
+    assert second["unchanged"] == 2
+    assert set(second["outputs"]) == {str(mirror / "sample.txt.md"), str(mirror / "sample.html.md")}
+
+    manifest_path = mirror / ".openmd" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    old_names = {"sample.html.md": "sample.md", "sample.txt.md": "sample-2.md"}
+    for entry in manifest["entries"].values():
+        previous_name = entry["path"]
+        legacy_name = old_names[previous_name]
+        (mirror / previous_name).rename(mirror / legacy_name)
+        entry["path"] = legacy_name
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    migrated = convert_path(folder)
+    assert set(migrated["outputs"]) == {str(mirror / "sample.txt.md"), str(mirror / "sample.html.md")}
+    assert (mirror / "sample.txt.md").is_file()
+    assert (mirror / "sample.html.md").is_file()
+
+
 def test_large_source_is_skipped_until_confirmed(tmp_path):
     source = tmp_path / "large.txt"
     source.write_text("large fixture", encoding="utf-8")
@@ -78,7 +111,7 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
     existing = r"Software\Classes\*\shell\OpenmdToMarkdown"
     existing_command = existing + r"\command"
     store = {
-        existing: {"": "Previous menu label", "CustomValue": "keep"},
+        existing: {"": "Previous menu label", "AppliesTo": "previous filter", "CustomValue": "keep"},
         existing_command: {"": "previous.exe %1", "CustomCommandValue": "keep"},
     }
     class FakeWinreg:
@@ -95,6 +128,12 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
             return Key(store, path)
         def QueryValueEx(self, key, name):
             return key.store[key.path][name], self.REG_SZ
+        def EnumValue(self, key, index):
+            try:
+                name, value = list(key.store[key.path].items())[index]
+            except IndexError as exc:
+                raise OSError("no more registry values") from exc
+            return name, value, self.REG_SZ
         def DeleteValue(self, key, name):
             key.store[key.path].pop(name, None)
         def DeleteKey(self, root, path):
@@ -105,14 +144,104 @@ def test_install_uninstall_roundtrip_uses_fake_home_and_registry(monkeypatch, tm
     monkeypatch.setattr("openmd.shell_menu._winreg", FakeWinreg())
     installed = install(platform="windows")
     assert installed["installed"] is True
+    applies_to = store[existing]["AppliesTo"]
+    assert applies_to.startswith("System.FileExtension:=")
+    assert all(suffix in applies_to for suffix in SUPPORTED_SUFFIXES)
+    assert "System.FileExtension:=" not in store[r"Software\Classes\Directory\shell\OpenmdToMarkdown"]
     assert status(platform="windows")["installed"] is True
     removed = uninstall(platform="windows")
     assert removed["removed"] is True
     assert status(platform="windows")["installed"] is False
     assert store[existing][""] == "Previous menu label"
+    assert store[existing]["AppliesTo"] == "previous filter"
     assert store[existing_command][""] == "previous.exe %1"
     assert store[existing]["CustomValue"] == "keep"
     assert store[existing_command]["CustomCommandValue"] == "keep"
+
+
+def test_windows_shell_command_uses_pythonw_when_available_and_falls_back(monkeypatch, tmp_path):
+    from openmd import shell_menu
+
+    interpreter = tmp_path / "python.exe"
+    windowless = tmp_path / "pythonw.exe"
+    interpreter.touch()
+    windowless.touch()
+    monkeypatch.setattr(shell_menu.sys, "platform", "win32")
+    monkeypatch.setattr(shell_menu.sys, "executable", str(interpreter))
+    monkeypatch.setattr(shell_menu.shutil, "which", lambda name: "C:/tools/openmd.exe" if name == "openmd" else None)
+
+    assert shell_menu._command() == f'"{windowless}" -m openmd'
+
+    windowless.unlink()
+    assert shell_menu._command() == '"C:/tools/openmd.exe"'
+
+
+def test_windows_install_rejects_uv_temporary_cli_with_next_action(monkeypatch, tmp_path):
+    from openmd import shell_menu
+
+    uv_cache = tmp_path / ".cache" / "uv" / "archive-v0" / "bin" / "openmd.exe"
+    uv_cache.parent.mkdir(parents=True)
+    uv_cache.touch()
+    monkeypatch.setattr(shell_menu.shutil, "which", lambda name: str(uv_cache) if name == "openmd" else None)
+
+    result = install(platform="windows")
+
+    assert result["installed"] is False
+    assert "先用 `uv tool install openmd`（或 pipx）做持久安装，再运行 shell-menu install" == result["next_action"]
+
+
+def test_uv_cache_install_rejection_returns_nonzero_cli_exit(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from openmd import shell_menu
+
+    uv_cache = tmp_path / ".cache" / "uv" / "archive-v0" / "bin" / "openmd.exe"
+    uv_cache.parent.mkdir(parents=True)
+    uv_cache.touch()
+    monkeypatch.setattr(shell_menu.shutil, "which", lambda name: str(uv_cache) if name == "openmd" else None)
+
+    exit_code = shell_menu.cmd_shell_menu(Namespace(shell_menu_action="install", platform="windows"))
+
+    assert exit_code == 1
+    assert "uv tool install openmd" in json.loads(capsys.readouterr().out)["next_action"]
+
+
+def test_file_menu_label_and_filter_are_localized_and_generated(monkeypatch):
+    from openmd import shell_menu
+
+    monkeypatch.setattr(shell_menu, "_command", lambda: '"C:/Python/pythonw.exe" -m openmd')
+    file_key, label, _ = shell_menu._win_keys()[0]
+
+    assert file_key == r"Software\Classes\*\shell\OpenmdToMarkdown"
+    assert label == "用 Openmd 转成 Markdown"
+    assert shell_menu._applies_to_filter() == " OR ".join(
+        f"System.FileExtension:={suffix}" for suffix in sorted(SUPPORTED_SUFFIXES)
+    )
+
+
+def test_error_labels_are_chinese_and_hide_manifest_directory_is_best_effort(monkeypatch, tmp_path):
+    from openmd import shell_menu
+
+    assert shell_menu._failure_message("document_empty_text") == "文档中没有可转换的文本（document_empty_text）"
+    assert shell_menu._failure_message("SomeError: details") == "转换失败（SomeError）"
+    assert shell_menu._failure_message("PermissionError: access denied") == "没有读取或写入该文件的权限（PermissionError）"
+    manifest_dir = tmp_path / ".openmd"
+    manifest_dir.mkdir()
+    calls = []
+
+    def fail_to_hide(path):
+        calls.append(path)
+        raise OSError("access denied")
+
+    monkeypatch.setattr(shell_menu, "_set_windows_hidden_attribute", fail_to_hide)
+    monkeypatch.setattr(shell_menu.sys, "platform", "win32")
+    source = tmp_path / "note.txt"
+    source.write_text("conversion continues", encoding="utf-8")
+
+    result = convert_path(source)
+
+    assert result["success"] == 1
+    assert source.with_suffix(".md").is_file()
+    assert calls == [manifest_dir]
 
 
 @pytest.mark.parametrize("platform", ["macos", "linux"])

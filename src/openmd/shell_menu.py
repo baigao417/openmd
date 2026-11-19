@@ -15,6 +15,7 @@ import shlex
 import shutil
 import stat
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from collections.abc import Callable
@@ -105,6 +106,12 @@ def _candidate_files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in SUPPORTED_SUFFIXES)
 
 
+def _output_relative(path: Path, source: Path, is_folder: bool, stem_counts: Counter) -> str:
+    parent = path.parent.relative_to(source) if is_folder else Path()
+    name = f"{path.name}.md" if stem_counts[(path.parent, path.stem.casefold())] > 1 else f"{path.stem}.md"
+    return (parent / name).as_posix()
+
+
 def convert_path(
     input_path: str | Path,
     *,
@@ -127,6 +134,7 @@ def convert_path(
         source.parent / f"{safe_filename(source.name, max_length=120)}-md" if is_folder else source.parent
     )
     files = _candidate_files(source)
+    stem_counts = Counter((path.parent, path.stem.casefold()) for path in files)
     all_files = [p for p in (source.rglob("*") if is_folder else [source]) if p.is_file()]
     unsupported = sum(1 for p in all_files if p.suffix.lower() not in SUPPORTED_SUFFIXES)
     result: dict[str, Any] = {"ok": True, "success": 0, "failed": 0, "skipped": unsupported, "unchanged": 0, "conflict": 0, "outputs": [], "failures": [], "skipped_reasons": {"unsupported_format": unsupported}}
@@ -151,7 +159,7 @@ def convert_path(
             if progress:
                 progress(index, len(files), path)
             continue
-        relative = path.with_suffix(".md").name if not is_folder else path.relative_to(source).with_suffix(".md").as_posix()
+        relative = _output_relative(path, source, is_folder, stem_counts)
         target = manifest_root / relative
         try:
             item = _item(path)
@@ -159,7 +167,8 @@ def convert_path(
             content_identity = _hash_source(path)
             previous = manifest.read(source_id)
             previous_target = manifest._target(previous["path"]) if previous else None
-            if (previous and previous.get("content_identity") == content_identity and previous_target
+            if (previous and previous.get("path") == relative
+                    and previous.get("content_identity") == content_identity and previous_target
                     and previous_target.is_file()
                     and hashlib.sha256(previous_target.read_bytes()).hexdigest() == previous.get("content_sha256")):
                 result["success"] += 1
@@ -181,6 +190,8 @@ def convert_path(
             content = staging.read_text(encoding="utf-8")
             synced = manifest.write(source_id, relative, content, content_identity=content_identity)
             staging.unlink(missing_ok=True)
+            if not is_folder:
+                _hide_manifest_directory(manifest.path.parent)
             result["success"] += 1
             result["outputs"].append(str(synced.path))
             if synced.operation == "unchanged":
@@ -207,15 +218,80 @@ def _platform_name(platform: str | None = None) -> str:
 
 
 def _command() -> str:
-    return shutil.which("openmd") or "openmd"
+    if sys.platform.startswith("win"):
+        pythonw = Path(sys.executable).with_name("pythonw.exe")
+        if pythonw.is_file():
+            return f'"{pythonw}" -m openmd'
+    executable = shutil.which("openmd") or "openmd"
+    return f'"{executable}"' if sys.platform.startswith("win") else executable
+
+
+def _applies_to_filter() -> str:
+    return " OR ".join(f"System.FileExtension:={suffix}" for suffix in sorted(SUPPORTED_SUFFIXES))
+
+
+def _is_uv_cache_executable(executable: str | None = None) -> bool:
+    path = Path(executable or shutil.which("openmd") or "openmd")
+    parts = [part.casefold() for part in path.parts]
+    return any(parts[index:index + 2] == ["uv", "cache"] for index in range(len(parts) - 1)) or any(
+        parts[index:index + 2] == [".cache", "uv"] for index in range(len(parts) - 1)
+    )
+
+
+def _set_windows_hidden_attribute(path: Path) -> None:
+    import ctypes
+
+    get_attributes = ctypes.windll.kernel32.GetFileAttributesW
+    set_attributes = ctypes.windll.kernel32.SetFileAttributesW
+    get_attributes.argtypes = [ctypes.c_wchar_p]
+    get_attributes.restype = ctypes.c_uint32
+    set_attributes.argtypes = [ctypes.c_wchar_p, ctypes.c_uint32]
+    set_attributes.restype = ctypes.c_int
+    attributes = get_attributes(str(path))
+    if attributes != 0xFFFFFFFF and not attributes & 0x2:
+        set_attributes(str(path), attributes | 0x2)
+
+
+def _hide_manifest_directory(path: Path) -> None:
+    if not sys.platform.startswith("win") or not path.is_dir():
+        return
+    try:
+        _set_windows_hidden_attribute(path)
+    except Exception:
+        # Metadata visibility must never make a successful conversion fail.
+        pass
+
+
+def _failure_message(error: str) -> str:
+    messages = {
+        "document_empty_text": "文档中没有可转换的文本",
+        "engine_unavailable": "缺少此格式所需的转换工具",
+        "file_too_large": "文件超过可处理大小",
+        "permission_denied": "没有读取该文件的权限",
+        "input_missing": "找不到输入文件",
+        "FileNotFoundError": "找不到输入文件或所需转换工具",
+        "PermissionError": "没有读取或写入该文件的权限",
+        "IsADirectoryError": "当前输入要求文件，但收到的是文件夹",
+        "UnicodeDecodeError": "文本编码无法识别",
+        "ValueError": "文件内容或格式无效",
+        "TimeoutError": "转换等待超时",
+        "OSError": "读取或写入文件时发生错误",
+        "RuntimeError": "转换工具运行失败",
+    }
+    code = error.split(":", 1)[0].strip()
+    if code in messages:
+        return f"{messages[code]}（{code}）"
+    if code and code.replace("_", "").isalnum() and code[0].isalpha():
+        return f"转换失败（{code}）"
+    return "转换失败"
 
 
 def _win_keys() -> list[tuple[str, str, str]]:
-    command = f'"{_command()}" shell-menu convert --gui "%1"'
+    command = f'{_command()} shell-menu convert --gui "%1"'
     return [
-        (r"Software\Classes\*\shell\OpenmdToMarkdown", "Openmd: Convert to Markdown", command),
-        (r"Software\Classes\Directory\shell\OpenmdToMarkdown", "Openmd: Convert to Markdown", command),
-        (r"Software\Classes\Directory\Background\shell\OpenmdToMarkdown", "Openmd: Convert to Markdown", f'"{_command()}" shell-menu convert --gui "%V"'),
+        (r"Software\Classes\*\shell\OpenmdToMarkdown", "用 Openmd 转成 Markdown", command),
+        (r"Software\Classes\Directory\shell\OpenmdToMarkdown", "用 Openmd 转成 Markdown", command),
+        (r"Software\Classes\Directory\Background\shell\OpenmdToMarkdown", "用 Openmd 转成 Markdown", f'{_command()} shell-menu convert --gui "%V"'),
     ]
 
 
@@ -226,6 +302,14 @@ def _backup_path() -> Path:
 def install(*, platform: str | None = None) -> dict[str, Any]:
     platform = _platform_name(platform)
     if platform == "windows":
+        executable = shutil.which("openmd")
+        if _is_uv_cache_executable(executable):
+            return {
+                "installed": False,
+                "platform": platform,
+                "error": "temporary_uv_install",
+                "next_action": "先用 `uv tool install openmd`（或 pipx）做持久安装，再运行 shell-menu install",
+            }
         if _winreg is None:
             raise RuntimeError("windows_registry_unavailable")
         backup: dict[str, Any] = {}
@@ -235,6 +319,8 @@ def install(*, platform: str | None = None) -> dict[str, Any]:
             backup[command_path] = {"existed": _registry_exists(command_path), "values": _registry_values(command_path)}
             key = _winreg.CreateKey(_winreg.HKEY_CURRENT_USER, key_path)
             _winreg.SetValueEx(key, "", 0, _winreg.REG_SZ, label)
+            if key_path == r"Software\Classes\*\shell\OpenmdToMarkdown":
+                _winreg.SetValueEx(key, "AppliesTo", 0, _winreg.REG_SZ, _applies_to_filter())
             _winreg.CloseKey(key)
             command_key = _winreg.CreateKey(_winreg.HKEY_CURRENT_USER, key_path + r"\command")
             _winreg.SetValueEx(command_key, "", 0, _winreg.REG_SZ, command)
@@ -243,15 +329,15 @@ def install(*, platform: str | None = None) -> dict[str, Any]:
         _backup_path().write_text(json.dumps(backup, ensure_ascii=False, indent=2), encoding="utf-8")
         return {"installed": True, "platform": platform, "scope": "HKCU", "menu_visibility": "Windows 11 may place legacy entries under Show more options."}
     if platform == "macos":
-        root = Path.home() / "Library" / "Services" / "Openmd Convert to Markdown.workflow" / "Contents"
+        root = Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow" / "Contents"
         root.mkdir(parents=True, exist_ok=True)
         (root / "document.wflow").write_text(_automator_workflow(), encoding="utf-8")
         (root / "Info.plist").write_text('''<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.openmd.shell-menu</string><key>CFBundleName</key><string>Openmd Convert to Markdown</string></dict></plist>
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.openmd.shell-menu</string><key>CFBundleName</key><string>用 Openmd 转成 Markdown</string></dict></plist>
 ''', encoding="utf-8")
         return {"installed": True, "platform": platform, "path": str(root.parent)}
-    script = Path.home() / ".local" / "share" / "nautilus" / "scripts" / "Openmd Convert to Markdown"
+    script = Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown"
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(
         f'#!/bin/sh\ntarget="${{1:-$(printf \'%s\\n\' "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" | sed -n \'1p\')}}"\n'
@@ -282,10 +368,10 @@ def uninstall(*, platform: str | None = None) -> dict[str, Any]:
             _backup_path().unlink()
         return {"removed": True, "platform": platform}
     if platform == "macos":
-        path = Path.home() / "Library" / "Services" / "Openmd Convert to Markdown.workflow"
+        path = Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow"
         shutil.rmtree(path, ignore_errors=True)
         return {"removed": True, "platform": platform}
-    path = Path.home() / ".local" / "share" / "nautilus" / "scripts" / "Openmd Convert to Markdown"
+    path = Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown"
     path.unlink(missing_ok=True)
     return {"removed": True, "platform": platform}
 
@@ -295,9 +381,9 @@ def status(*, platform: str | None = None) -> dict[str, Any]:
     if platform == "windows":
         installed = bool(_winreg is not None and all(_registry_exists(path) for path, _, _ in _win_keys()))
     elif platform == "macos":
-        installed = (Path.home() / "Library" / "Services" / "Openmd Convert to Markdown.workflow").exists()
+        installed = (Path.home() / "Library" / "Services" / "用 Openmd 转成 Markdown.workflow").exists()
     else:
-        installed = (Path.home() / ".local" / "share" / "nautilus" / "scripts" / "Openmd Convert to Markdown").exists()
+        installed = (Path.home() / ".local" / "share" / "nautilus" / "scripts" / "用 Openmd 转成 Markdown").exists()
     return {"installed": installed, "platform": platform}
 
 
@@ -314,10 +400,17 @@ def _registry_values(path: str) -> dict[str, str]:
     try:
         key = _winreg.OpenKey(_winreg.HKEY_CURRENT_USER, path)
         try:
-            try:
-                return {"": _winreg.QueryValueEx(key, "")[0]}
-            except OSError:
-                return {}
+            values: dict[str, str] = {}
+            index = 0
+            while True:
+                try:
+                    name, value, _kind = _winreg.EnumValue(key, index)
+                except OSError:
+                    break
+                if isinstance(value, str):
+                    values[name] = value
+                index += 1
+            return values
         finally:
             _winreg.CloseKey(key)
     except OSError:
@@ -327,10 +420,20 @@ def _registry_values(path: str) -> dict[str, str]:
 def _restore_registry_key(path: str, values: dict[str, str]) -> None:
     key = _winreg.CreateKey(_winreg.HKEY_CURRENT_USER, path)
     try:
-        try:
-            _winreg.DeleteValue(key, "")
-        except OSError:
-            pass
+        index = 0
+        names: list[str] = []
+        while True:
+            try:
+                name, _value, _kind = _winreg.EnumValue(key, index)
+            except OSError:
+                break
+            names.append(name)
+            index += 1
+        for name in names:
+            try:
+                _winreg.DeleteValue(key, name)
+            except OSError:
+                pass
         for name, value in values.items():
             _winreg.SetValueEx(key, name, 0, _winreg.REG_SZ, value)
     finally:
@@ -343,10 +446,11 @@ def _remove_owned_registry_key(path: str) -> None:
     except OSError:
         return
     try:
-        try:
-            _winreg.DeleteValue(key, "")
-        except OSError:
-            pass
+        for name in ("", "AppliesTo"):
+            try:
+                _winreg.DeleteValue(key, name)
+            except OSError:
+                pass
     finally:
         _winreg.CloseKey(key)
     try:
@@ -367,11 +471,11 @@ def cmd_shell_menu(args) -> int:
                 import tkinter as tk
                 from tkinter import messagebox
                 window = tk.Tk()
-                window.title("Openmd — Convert to Markdown")
-                label = tk.Label(window, text="Preparing local conversion…", padx=24, pady=18)
+                window.title("用 Openmd 转成 Markdown")
+                label = tk.Label(window, text="正在准备本地转换…", padx=24, pady=18)
                 label.pack()
                 window.update()
-                progress = lambda index, total, path: (label.config(text=f"Converting {index}/{total}: {path.name}"), window.update_idletasks())
+                progress = lambda index, total, path: (label.config(text=f"正在转换 {index}/{total}：{path.name}"), window.update_idletasks())
             except Exception:
                 window = None
                 progress = None
@@ -381,15 +485,15 @@ def cmd_shell_menu(args) -> int:
             candidates = _candidate_files(root_path) if root_path.exists() else []
             too_large = len(candidates) > args.max_files or any(p.stat().st_size > args.max_bytes for p in candidates)
             if too_large:
-                confirm_large = messagebox.askyesno("Large conversion", f"This input exceeds the default limits ({args.max_files} files / {args.max_bytes // (1024 * 1024)} MiB per file). Continue?", parent=window)
+                confirm_large = messagebox.askyesno("输入规模较大", f"输入超过默认限制（{args.max_files} 个文件 / 每个文件 {args.max_bytes // (1024 * 1024)} MiB）。仍要继续吗？", parent=window)
         value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes, confirm_large=confirm_large, progress=progress)
         if window is not None:
             failures = value.get("failures", [])
-            summary = f"Success {value.get('success', 0)} · unchanged {value.get('unchanged', 0)} · edits kept {value.get('conflict', 0)} · skipped {value.get('skipped', 0)} · failed {value.get('failed', 0)}"
+            summary = f"成功 {value.get('success', 0)} · 未变化 {value.get('unchanged', 0)} · 保留编辑 {value.get('conflict', 0)} · 跳过 {value.get('skipped', 0)} · 失败 {value.get('failed', 0)}"
             label.config(text=summary)
             if failures:
-                reasons = "\n".join(f"{Path(row['path']).name}: {row['error']}" for row in failures[:8])
-                messagebox.showwarning("Openmd conversion finished with errors", summary + "\n\n" + reasons + "\n\nFor scanned PDFs, install and enable local OCR before retrying.", parent=window)
+                reasons = "\n".join(f"{Path(row['path']).name}：{_failure_message(str(row['error']))}" for row in failures[:8])
+                messagebox.showwarning("转换完成，但有文件失败", summary + "\n\n" + reasons + "\n\n扫描版 PDF 请安装并启用本机 OCR 后重试。", parent=window)
             window.update_idletasks()
             window.after(8000, window.destroy)
             window.mainloop()
@@ -397,13 +501,13 @@ def cmd_shell_menu(args) -> int:
         if getattr(args, "json", False):
             print(json.dumps(value, ensure_ascii=True, sort_keys=True))
         else:
-            print(f"Openmd conversion: success={value.get('success', 0)}, unchanged={value.get('unchanged', 0)}, conflict={value.get('conflict', 0)}, skipped={value.get('skipped', 0)}, failed={value.get('failed', 0)}")
+            print(f"转换结果：成功 {value.get('success', 0)}，未变化 {value.get('unchanged', 0)}，保留编辑 {value.get('conflict', 0)}，跳过 {value.get('skipped', 0)}，失败 {value.get('failed', 0)}")
             for row in value.get("failures", []):
-                print(f"失败：{row['path']} ({row['error']})")
+                print(f"失败：{row['path']}：{_failure_message(str(row['error']))}")
         return 0 if value.get("ok") else 1
     value = {"install": install, "uninstall": uninstall, "status": status}[action](platform=args.platform)
     print(json.dumps(value, ensure_ascii=True, sort_keys=True))
-    return 0
+    return 1 if action == "install" and value.get("installed") is False else 0
 
 
 def _automator_workflow() -> str:
@@ -415,6 +519,6 @@ def _automator_workflow() -> str:
 <key>AMAccepts</key><dict><key>Container</key><string>List</string><key>Optional</key><true/><key>Types</key><array><string>com.apple.file-system.object</string></array></dict>
 <key>AMActionVersion</key><string>1.0</string><key>AMBundleIdentifier</key><string>com.apple.RunShellScript</string><key>AMParameterProperties</key><dict/></dict>
 <key>parameters</key><dict><key>COMMAND_STRING</key><string>{command} shell-menu convert --gui "$@"</string><key>inputMethod</key><string>2</string><key>shell</key><string>/bin/zsh</string><key>workingDirectory</key><string>"$HOME"</string></dict>
-<key>UUID</key><string>5B477F7A-23E0-4E7D-9F08-0F3D00000001</string></dict><key>isEnabled</key><true/><key>name</key><string>Run Shell Script</string><key>workflowActionType</key><string>com.apple.RunShellScript</string></dict></array>
+<key>UUID</key><string>5B477F7A-23E0-4E7D-9F08-0F3D00000001</string></dict><key>isEnabled</key><true/><key>name</key><string>用 Openmd 转成 Markdown</string><key>workflowActionType</key><string>com.apple.RunShellScript</string></dict></array>
 <key>connectors</key><dict/><key>workflowMetaData</key><dict><key>workflowTypeIdentifier</key><string>com.apple.Automator.servicesMenu</string></dict>
 <key>inputTypeIdentifier</key><string>com.apple.Automator.fileSystemObject</string><key>outputTypeIdentifier</key><string>com.apple.Automator.nothing</string><key>serviceInputTypeIdentifier</key><string>com.apple.Automator.fileSystemObject</string><key>serviceApplication</key><string>Finder</string></dict></plist>'''

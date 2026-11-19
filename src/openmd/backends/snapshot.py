@@ -84,11 +84,16 @@ class SnapshotProvider:
         site = loaded_snapshot_site(item.url)
         if site == "xiaohongshu":
             title = item.title or _html_title(html) or "小红书笔记"
-            if login_wall_reason(html, title) or _snapshot_login_wall(html):
+            soup = BeautifulSoup(html, "html.parser")
+            has_note_title = soup.select_one("[data-testid='note-title'], .title, h1") is not None
+            has_note_body = soup.select_one("[data-testid='note-content'], .note-content, .desc") is not None
+            if _snapshot_login_wall(html) and not (has_note_title or has_note_body):
                 return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
             return _extract_xiaohongshu_snapshot(html, item, path)
+        if site == "douyin":
+            return _failed("douyin_snapshot_no_transcript", "抖音视频快照不提供逐字稿，请改走媒体转写路线。")
         title = item.title or _html_title(html) or "当前页快照"
-        if login_wall_reason(html, title) or _snapshot_login_wall(html):
+        if login_wall_reason(html, title):
             return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
         markdown, used_managed = self._html_to_markdown(path, html, item.url)
         text = (markdown or "").strip()

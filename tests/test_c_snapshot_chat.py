@@ -167,6 +167,50 @@ def test_xiaohongshu_snapshot_rejects_login_wall(tmp_path):
     assert result.error_code == "login_required"
 
 
+def test_ordinary_snapshot_with_login_button_and_full_body_is_verified(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "article.html"
+    page.write_text("""<html><head><title>完整文章</title></head><body>
+      <header><button>登录</button></header>
+      <main><article><p>这是一段完整且可保存的文章正文。</p></article></main>
+    </body></html>""", encoding="utf-8")
+    item = snapshot_item(page, "https://example.org/article")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "verified"
+    assert "完整且可保存" in result.text
+
+
+def test_xiaohongshu_snapshot_with_login_button_and_full_note_is_verified(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "note.html"
+    page.write_text("""<html><body>
+      <header><button>登录</button></header>
+      <article data-testid="note-detail">
+        <h1 data-testid="note-title">一篇完整笔记</h1>
+        <div data-testid="note-content"><p>这里是完整的笔记正文。</p></div>
+      </article>
+    </body></html>""", encoding="utf-8")
+    item = snapshot_item(page, "https://www.xiaohongshu.com/explore/fixture")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "verified"
+    assert result.title == "一篇完整笔记"
+    assert "完整的笔记正文" in result.text
+
+
+def test_douyin_snapshot_is_rejected_as_no_transcript(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "douyin.html"
+    page.write_text("<html><body><main>视频标题和页面文案，不是逐字稿</main></body></html>", encoding="utf-8")
+    item = snapshot_item(page, "https://www.douyin.com/video/123456")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "failed"
+    assert result.error_code == "douyin_snapshot_no_transcript"
+    assert result.text == ""
+
+
 def test_xiaohongshu_snapshot_rejects_loaded_recommendation_feed(tmp_path):
     from openmd.backends.loaded_chat import snapshot_item
 

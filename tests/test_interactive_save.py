@@ -153,3 +153,19 @@ def test_xiaohongshu_block_has_loaded_page_next_action():
     action = source_next_action("xiaohongshu_request_blocked")
     assert action and "浏览器打开" in action and "扩展保存" in action
     assert source_next_action("xiaohongshu_loaded_page_mismatch") == action
+
+
+def test_douyin_snapshot_cli_returns_structured_error_without_markdown(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(interactive, "is_interactive", lambda: False)
+    page = tmp_path / "douyin.html"
+    page.write_text("<html><body><main>页面文案，不是逐字稿</main></body></html>", encoding="utf-8")
+    destination = tmp_path / "saved"
+    code = main([
+        "go", str(page), "--as-snapshot", "--url", "https://www.douyin.com/video/123456",
+        "--yes", "--json", "--save-to", str(destination),
+    ])
+    payload = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert code == 1
+    assert payload["error_code"] == "douyin_snapshot_no_transcript"
+    assert payload["next_action"] == "抖音视频需走媒体转写：openmd go <链接>（扩展点击会走链接路线）"
+    assert not list(destination.rglob("*.md")) if destination.exists() else True

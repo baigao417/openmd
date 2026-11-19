@@ -23,6 +23,8 @@ def source_next_action(error_code: str | None) -> str | None:
     """Return a bounded user route for source-level blocks."""
     if error_code in {"xiaohongshu_request_blocked", "xiaohongshu_loaded_page_mismatch"}:
         return "在浏览器打开这篇小红书笔记后，点击 Openmd 扩展保存；Openmd 将读取当前已加载页面。"
+    if error_code == "douyin_snapshot_no_transcript":
+        return "抖音视频需走媒体转写：openmd go <链接>（扩展点击会走链接路线）"
     return None
 
 

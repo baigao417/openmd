@@ -50,7 +50,6 @@ THINKING_SELECTORS = {
     "yuanbao": '.hyc-component-reasoner, .hyc-content-think, .agent-chat__thinking, .hyc-component-deepsearch-cot__think',
 }
 COMMON_THINKING_SELECTOR = '.thinking-container, [data-message-type="reasoning"], [data-testid="reasoning"], [data-testid="thinking"]'
-DOUBAO_STATUS_SELECTOR = '[data-testid="message_status"], [data-testid="status_message"], [data-testid*="status"], [class*="status-message"], [class*="thinking-status"]'
 DOUBAO_STATUS_TEXT = re.compile(
     r'^(?:这个问题我需要花点时间来处理|正在(?:思考|分析|搜索|整理|生成)|正在(?:进行)?(?:深度)?研究|'
     r'(?:已开始|开始进行)(?:深度)?研究|深度研究(?:中|已开始)|请稍候)(?:[。.!！…]|，请稍候)?$',
@@ -270,9 +269,8 @@ def _doubao_status_text(site: str, node: Tag, role: str) -> str | None:
     Doubao's loaded page can expose a progress bubble as a second
     ``union_message`` with ``receive_message`` and ``message_text_content``.
     The managed OpenCLI selectors identify the surrounding message root but do
-    not distinguish this progress signal from a final answer, so use the
-    explicit status markers when present and a short, known progress phrase as
-    the fallback.  Ordinary answer prose is left untouched.
+    not distinguish this progress signal from a final answer, so match only a
+    complete, known progress phrase.  Ordinary answer prose is left untouched.
     """
     if site != "doubao" or role != "assistant":
         return None
@@ -280,8 +278,7 @@ def _doubao_status_text(site: str, node: Tag, role: str) -> str | None:
     text = re.sub(r"\s+", " ", content.get_text(" ", strip=True)).strip()
     if not text or len(text) > 160:
         return None
-    structural = node.select_one(DOUBAO_STATUS_SELECTOR) is not None
-    if structural or DOUBAO_STATUS_TEXT.fullmatch(text):
+    if DOUBAO_STATUS_TEXT.fullmatch(text):
         return text
     return None
 

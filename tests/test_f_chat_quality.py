@@ -150,6 +150,49 @@ def test_doubao_status_bubble_is_not_an_assistant_turn_and_can_be_included_as_th
     assert included.metadata['status_included_count'] == 1
 
 
+def test_doubao_short_answer_with_status_testid_is_preserved():
+    html = '''<main data-testid="message-list">
+      <div data-testid="union_message">
+        <div data-testid="receive_message">
+          <div data-testid="message_status">Synthetic short answer.</div>
+        </div>
+      </div>
+    </main>'''
+    result = extract(html, 'doubao')
+    assert [turn.role for turn in result.blocks] == ['assistant']
+    assert result.blocks[0].text == 'Synthetic short answer.'
+    assert result.metadata['status_omitted_count'] == 0
+
+
+@pytest.mark.parametrize(
+    ('text', 'expected'),
+    [
+        ('### H3\n\n#### H4', ['#### H3', '##### H4']),
+        ('# H1\n\n### H3', ['#### H1', '###### H3']),
+        ('#### H4\n\n###### H6', ['#### H4', '###### H6']),
+    ],
+)
+def test_turn_body_headings_use_relative_demotion(text, expected):
+    from openmd.core.renderer import render_conversation_blocks
+    rendered = render_conversation_blocks(
+        [{'type': 'turn', 'role': 'assistant', 'text': text}],
+        source_url=URLS['chatgpt'], platform='chatgpt', exported_at='synthetic',
+    )
+    for heading in expected:
+        assert heading in rendered
+
+
+def test_generated_thinking_headings_are_not_demoted_with_body_headings():
+    from openmd.core.renderer import render_conversation_blocks
+    rendered = render_conversation_blocks(
+        [{'type': 'turn', 'role': 'assistant', 'text': '# Body\n\n#### 思考过程\n\nreasoning\n\n#### 最终回答\n\nanswer'}],
+        source_url=URLS['chatgpt'], platform='chatgpt', exported_at='synthetic',
+    )
+    assert '#### Body' in rendered
+    assert '#### 思考过程' in rendered
+    assert '#### 最终回答' in rendered
+
+
 def test_turn_body_headings_are_demoted_without_touching_fenced_code():
     from openmd.core.renderer import render_conversation_blocks
     text = '# H1\n\n## H2\n\n### H3\n\n#### H4\n\n**Bold heading**\n\n```text\n# code H1\n### code H3\n```'

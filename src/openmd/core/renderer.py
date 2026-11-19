@@ -44,6 +44,26 @@ _SOURCE_LABELS = {
 def _demote_turn_headings(text: str) -> str:
     """Keep turn headings above Markdown headings in the original turn body."""
     lines = text.splitlines(keepends=True)
+    min_level: int | None = None
+    fence: str | None = None
+    for line in lines:
+        stripped = line.lstrip(" ")
+        fence_match = re.match(r"(`{3,}|~{3,})", stripped)
+        if fence is not None:
+            if fence_match and fence_match.group(1)[0] == fence[0] and len(fence_match.group(1)) >= len(fence):
+                fence = None
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            continue
+        if stripped.rstrip("\r\n") in {"#### 思考过程", "#### 最终回答"}:
+            continue
+        match = re.match(r"^ {0,3}(#{1,6})(?:[ \t]+.*|[ \t]*)$", line.rstrip("\r\n"))
+        if match:
+            level = len(match.group(1))
+            min_level = level if min_level is None else min(min_level, level)
+
+    offset = max(0, 4 - min_level) if min_level is not None else 0
     output: list[str] = []
     fence: str | None = None
     for line in lines:
@@ -63,7 +83,7 @@ def _demote_turn_headings(text: str) -> str:
             continue
         match = re.match(r"^( {0,3})(#{1,6})([ \t]+.*|[ \t]*)$", line.rstrip("\r\n"))
         if match:
-            level = min(6, len(match.group(2)) + 3)
+            level = min(6, len(match.group(2)) + offset)
             ending = line[len(line.rstrip("\r\n")):]
             output.append(match.group(1) + ("#" * level) + match.group(3) + ending)
         else:

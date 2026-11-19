@@ -122,6 +122,111 @@ def test_snapshot_managed_defuddle_and_explicit_fallback(monkeypatch, tmp_path):
     assert any("未使用 Defuddle，正文抽取为简易回退" in note for note in fallback.source_notes)
 
 
+def test_xiaohongshu_loaded_snapshot_preserves_note_metadata_and_assets(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+    from openmd.core.sync_manifest import source_id_for
+    from openmd.adapters.registry import create_default_registry
+
+    url = "https://www.xiaohongshu.com/explore/6ad1a387000000000b007478"
+    html = """
+    <html><head><title>页面标题</title></head><body>
+      <article data-testid="note-detail">
+        <h1 data-testid="note-title">页面标题</h1>
+        <div data-testid="user-name">公开作者</div>
+        <time datetime="2026-11-19T09:30:00+08:00"></time>
+        <div data-testid="note-content"><p>这是笔记正文。</p><a class="tag">#效率</a><a class="tag">#工作流</a></div>
+        <img src="https://sns-img-bd.xhscdn.com/abc.jpg?xsec_token=secret" />
+        <img data-src="https://sns-img-bd.xhscdn.com/def.jpg?foo=bar" />
+        <video><source src="https://sns-video-bd.xhscdn.com/video.mp4?xsec_token=secret" /></video>
+      </article>
+    </body></html>
+    """
+    page = tmp_path / "xhs.html"
+    page.write_text(html, encoding="utf-8")
+    loaded = snapshot_item(page, url)
+    detail = create_default_registry().adapter_for(url).resolve_items(url)[0]
+    assert loaded.platform == "xiaohongshu" and loaded.source_type == "mixed"
+    assert source_id_for(loaded) == source_id_for(detail)
+    result = SnapshotProvider().extract(BackendExtractRequest(item=loaded, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "verified"
+    assert result.title == "页面标题" and result.author == "公开作者"
+    assert result.published_at == "2026-11-19T09:30:00+08:00"
+    assert "这是笔记正文" in result.text and "#效率" in result.text
+    assert result.metadata["images"] == ["https://sns-img-bd.xhscdn.com/abc.jpg", "https://sns-img-bd.xhscdn.com/def.jpg"]
+    assert result.metadata["video_url"] == "https://sns-video-bd.xhscdn.com/video.mp4"
+
+
+def test_xiaohongshu_snapshot_rejects_login_wall(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    url = "https://www.xiaohongshu.com/explore/fixture"
+    page = tmp_path / "login.html"
+    page.write_text('<html><body><button>登录</button></body></html>', encoding="utf-8")
+    item = snapshot_item(page, url)
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.error_code == "login_required"
+
+
+def test_ordinary_snapshot_with_login_button_and_full_body_is_verified(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "article.html"
+    page.write_text("""<html><head><title>完整文章</title></head><body>
+      <header><button>登录</button></header>
+      <main><article><p>这是一段完整且可保存的文章正文。</p></article></main>
+    </body></html>""", encoding="utf-8")
+    item = snapshot_item(page, "https://example.org/article")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "verified"
+    assert "完整且可保存" in result.text
+
+
+def test_xiaohongshu_snapshot_with_login_button_and_full_note_is_verified(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "note.html"
+    page.write_text("""<html><body>
+      <header><button>登录</button></header>
+      <article data-testid="note-detail">
+        <h1 data-testid="note-title">一篇完整笔记</h1>
+        <div data-testid="note-content"><p>这里是完整的笔记正文。</p></div>
+      </article>
+    </body></html>""", encoding="utf-8")
+    item = snapshot_item(page, "https://www.xiaohongshu.com/explore/fixture")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "verified"
+    assert result.title == "一篇完整笔记"
+    assert "完整的笔记正文" in result.text
+
+
+def test_douyin_snapshot_is_rejected_as_no_transcript(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    page = tmp_path / "douyin.html"
+    page.write_text("<html><body><main>视频标题和页面文案，不是逐字稿</main></body></html>", encoding="utf-8")
+    item = snapshot_item(page, "https://www.douyin.com/video/123456")
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.status == "failed"
+    assert result.error_code == "douyin_snapshot_no_transcript"
+    assert result.text == ""
+
+
+def test_xiaohongshu_snapshot_rejects_loaded_recommendation_feed(tmp_path):
+    from openmd.backends.loaded_chat import snapshot_item
+
+    url = "https://www.xiaohongshu.com/explore/fixture123"
+    page = tmp_path / "feed.html"
+    page.write_text("""
+    <html><body><main>
+      <a href="/explore/other1">一</a><a href="/explore/other2">二</a>
+      <a href="/explore/other3">三</a><a href="/explore/other4">四</a>
+    </main></body></html>
+    """, encoding="utf-8")
+    item = snapshot_item(page, url)
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert result.error_code == "xiaohongshu_loaded_page_mismatch"
+
+
 def test_snapshot_host_rejects_bad_and_oversized_messages(tmp_path):
     bad = handle({"type": "save_snapshot", "html": "<p>x</p>", "url": "file:///x", "save_to": str(tmp_path)})
     assert not bad["ok"]

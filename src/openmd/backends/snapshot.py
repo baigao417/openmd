@@ -14,7 +14,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
+
+from bs4 import BeautifulSoup, Tag
 
 from openmd.backends.base import BackendCapability, BackendDescriptor, BackendExtractRequest, BackendHealth
 from openmd.backends.executor import BackendProviderRegistry
@@ -77,6 +79,19 @@ class SnapshotProvider:
 
         if loaded_chat_site(item.url):
             return extract_loaded_chat(html, item, backend=self.name)
+        from openmd.backends.loaded_chat import loaded_snapshot_site
+
+        site = loaded_snapshot_site(item.url)
+        if site == "xiaohongshu":
+            title = item.title or _html_title(html) or "小红书笔记"
+            soup = BeautifulSoup(html, "html.parser")
+            has_note_title = soup.select_one("[data-testid='note-title'], .title, h1") is not None
+            has_note_body = soup.select_one("[data-testid='note-content'], .note-content, .desc") is not None
+            if _snapshot_login_wall(html) and not (has_note_title or has_note_body):
+                return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
+            return _extract_xiaohongshu_snapshot(html, item, path)
+        if site == "douyin":
+            return _failed("douyin_snapshot_no_transcript", "抖音视频快照不提供逐字稿，请改走媒体转写路线。")
         title = item.title or _html_title(html) or "当前页快照"
         if login_wall_reason(html, title):
             return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
@@ -215,3 +230,132 @@ def _html_title(html: str) -> str | None:
 
 def _failed(code: str, summary: str) -> TranscriptResult:
     return TranscriptResult(text="", status="failed", source_level="partial_extraction", backend=SNAPSHOT_BACKEND, error_code=code, error_summary=summary, source_notes=["browser snapshot provider returned a structured failure."])
+
+
+def _snapshot_login_wall(html: str) -> bool:
+    soup = BeautifulSoup(html, "html.parser")
+    for node in soup.select("button, a, [role='button']"):
+        if node.get_text(" ", strip=True).lower() in {"登录", "登录/注册", "log in", "login", "sign in"}:
+            return True
+    return False
+
+
+def _first_snapshot_text(soup: BeautifulSoup, selectors: tuple[str, ...]) -> str | None:
+    for selector in selectors:
+        for node in soup.select(selector):
+            if not isinstance(node, Tag) or node.get("aria-hidden") == "true":
+                continue
+            value = node.get("content") or node.get("datetime") or node.get_text(" ", strip=True)
+            if value and str(value).strip():
+                return str(value).strip()
+    return None
+
+
+def _public_asset_url(value: object) -> str | None:
+    raw = str(value or "").strip()
+    if not raw or raw.startswith(("data:", "blob:")):
+        return None
+    if raw.startswith("//"):
+        raw = "https:" + raw
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    # Snapshot metadata keeps a stable public locator only. Signed/query
+    # material is never persisted and no asset is downloaded here.
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
+
+def _snapshot_assets(soup: BeautifulSoup, *, kind: str) -> list[str]:
+    values: list[str] = []
+    selectors = "img[src], img[data-src], img[data-original]" if kind == "image" else "video[src], video[data-src], video source[src], video source[data-src]"
+    for node in soup.select(selectors):
+        candidate = node.get("src") or node.get("data-src") or node.get("data-original")
+        url = _public_asset_url(candidate)
+        if url and url not in values:
+            values.append(url)
+    return values
+
+
+def _extract_xiaohongshu_snapshot(html: str, item, path: Path) -> TranscriptResult:
+    soup = BeautifulSoup(html, "html.parser")
+    expected_id = str(item.raw_meta.get("snapshot_note_id") or "").strip()
+    note_root = soup.select_one("[data-testid='note-detail'], #noteContainer, .note-detail")
+    actual_node = note_root if note_root is not None and note_root.get("note-id") else soup.select_one("[note-id]")
+    actual_id = str(actual_node.get("note-id") if actual_node is not None else "").strip()
+    if expected_id and actual_id and expected_id != actual_id:
+        return _failed("xiaohongshu_loaded_page_mismatch", "当前已加载页面不是请求的小红书笔记。请返回目标笔记后重新保存。")
+    if note_root is None and expected_id:
+        note_root = next((article for article in soup.select("article") if expected_id in str(article)), None)
+    if note_root is None:
+        linked_ids = set(re.findall(r"/(?:explore|discovery/item|item)/([A-Za-z0-9]+)", html))
+        if expected_id and linked_ids and expected_id not in linked_ids:
+            return _failed("xiaohongshu_loaded_page_mismatch", "当前已加载页面不是请求的小红书笔记。请返回目标笔记后重新保存。")
+        if len(linked_ids) >= 3:
+            return _failed("xiaohongshu_loaded_page_mismatch", "当前已加载页面是小红书推荐流，不是目标笔记。请返回目标笔记后重新保存。")
+    root = note_root or soup.select_one("main") or soup.body or soup
+    title = _first_snapshot_text(soup, (
+        "[data-testid='note-title']", ".title", "h1", "meta[property='og:title']", "title",
+    )) or item.title or "小红书笔记"
+    author = _first_snapshot_text(soup, (
+        "[data-testid='user-name']", "[data-testid='author-name']", ".author-name", ".user-name", ".author",
+    )) or item.author
+    published_at = _first_snapshot_text(soup, (
+        "time[datetime]", "[data-publish-time]", "[data-published-at]", ".publish-time", ".date",
+    )) or item.published_at
+    images = _snapshot_assets(root, kind="image")
+    videos = _snapshot_assets(root, kind="video")
+    tags: list[str] = []
+    for node in root.select(".tag, [data-testid*='tag'], a[href*='hashtag']"):
+        value = node.get_text(" ", strip=True)
+        if value and value not in tags:
+            tags.append(value if value.startswith("#") else "#" + value)
+    for value in root.get_text(" ", strip=True).split():
+        if value.startswith("#") and value not in tags:
+            tags.append(value.rstrip("，。！？.,"))
+
+    body = BeautifulSoup(str(root), "html.parser")
+    for node in list(body.select("script, style, noscript, img, video, source, .tag, [data-testid*='tag'], a[href*='hashtag'], [data-testid='note-title'], [data-testid='user-name'], [data-testid='author-name'], time, .publish-time, .date")):
+        node.decompose()
+    text = html_to_markdown(str(body)).strip()
+    if text.startswith("# ") and text.splitlines()[0].strip().removeprefix("# ").strip() == title.strip():
+        text = "\n".join(text.splitlines()[1:]).lstrip()
+    sections = [text] if text else []
+    if tags:
+        sections.extend(["## 话题", "", *[f"- {tag}" for tag in tags]])
+    if images:
+        sections.extend(["## 图片", "", *[f"- {index}: {url}" for index, url in enumerate(images, start=1)]])
+    if videos:
+        sections.extend(["## 视频", "", *[f"- {index}: {url}" for index, url in enumerate(videos, start=1)]])
+    if not sections:
+        return _failed("snapshot_empty", "当前小红书笔记快照没有可保存的正文。")
+    media_kind = "mixed" if videos and images else "video" if videos else "image_text" if images else "text"
+    notes = [
+        "小红书快照只读取用户当前已加载页面的可见 DOM，不发起站点请求。",
+        "图片和视频仅保留去除查询参数后的公开地址，不下载媒体；图片 OCR 与视频转写未自动启用。",
+    ]
+    return TranscriptResult(
+        text="\n\n".join(sections).rstrip() + "\n",
+        status="verified" if text else "partial",
+        source_level="browser_rendered",
+        backend=SNAPSHOT_BACKEND,
+        title=title,
+        author=author,
+        published_at=published_at,
+        source_notes=notes,
+        metadata={
+            "captured_from": "browser_snapshot",
+            "coverage": "visible_only",
+            "snapshot_path": str(path),
+            "snapshot_site": "xiaohongshu",
+            "media_kind": media_kind,
+            "images": images,
+            "image_count": len(images),
+            "video_urls": videos,
+            "video_url": videos[0] if videos else None,
+            "ocr_available": bool(images),
+            "transcription_available": bool(videos),
+        },
+    )

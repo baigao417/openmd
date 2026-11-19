@@ -50,12 +50,18 @@ console.log(JSON.stringify(results));
 })().catch(error => { console.error(error);process.exitCode=1;});
 ''', encoding="utf-8")
     from openmd.backends.loaded_chat import HOSTS
-    urls = [f"https://{host}/chat/demo" for host in HOSTS] + ["https://example.org/article", "https://claude.ai/chat/demo"]
+    ai_urls = [f"https://{host}/chat/demo" for host in HOSTS]
+    xhs_urls = [
+        "https://www.xiaohongshu.com/explore/abc123",
+        "https://www.xiaohongshu.com/discovery/item/def456",
+    ]
+    urls = ai_urls + xhs_urls + ["https://www.douyin.com/video/123456", "https://example.org/article", "https://claude.ai/chat/demo"]
     result = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js"), json.dumps(urls)], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
     rows = json.loads(result.stdout)
     assert len(rows) == len(urls) * 4
+    loaded_pages = set(ai_urls + xhs_urls)
     for row in rows:
-        expect_snapshot = row["url"] not in urls[-2:] or row["entry"] == "snapshot"
+        expect_snapshot = row["url"] in loaded_pages or row["entry"] == "snapshot"
         assert row["calls"] == ([{"kind": "snapshot", "id": 41}] if expect_snapshot else [{"kind": "url", "urls": [row["url"]]}]), row
 
 
@@ -74,13 +80,14 @@ const store={settings:{locations:[{id:'default',path:'synthetic'}],defaultId:'de
 const chrome={runtime:{onInstalled:event,onMessage:event,onStartup:event,sendNativeMessage:(_h,_m,cb)=>cb({ok:true,protocol_version:1,extension_hash:'a'.repeat(64)})},alarms:{create:()=>{},onAlarm:event},notifications:{onButtonClicked:event,onClosed:event},contextMenus:{onClicked:event},storage:{local:{get:async()=>store,set:async()=>{}},onChanged:event},action:{onClicked:event,setPopup:async()=>{},setTitle:async()=>{}}};
 const ctx=vm.createContext({chrome,URL,setTimeout:()=>{}});
 vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
-vm.runInContext(`var sent=[];captureSnapshot=async()=>({html:'<p>Synthetic</p>',url:'https://chatgpt.com/c/demo'});native=async(message)=>{sent.push(message);return {ok:true,job:{id:'synthetic'}}};track=async()=>{};`,ctx);
-(async()=>{for(const value of [undefined,false,true]){store.settings.includeThinking=value;await vm.runInContext('saveSnapshot(42)',ctx);} for(const value of [false,true]){store.settings.allowFeedbackPackage=value;await vm.runInContext('saveSnapshot(42)',ctx);} console.log(JSON.stringify(ctx.sent));})().catch(e=>{console.error(e);process.exitCode=1;});
+vm.runInContext(`var sent=[],snapshotUrl='https://chatgpt.com/c/demo';captureSnapshot=async()=>({html:'<p>Synthetic</p>',url:snapshotUrl});native=async(message)=>{sent.push(message);return {ok:true,job:{id:'synthetic'}}};track=async()=>{};`,ctx);
+(async()=>{for(const value of [undefined,false,true]){store.settings.includeThinking=value;await vm.runInContext('saveSnapshot(42)',ctx);} for(const value of [false,true]){store.settings.allowFeedbackPackage=value;await vm.runInContext('saveSnapshot(42)',ctx);} store.settings.includeThinking=true; vm.runInContext(`snapshotUrl='https://www.xiaohongshu.com/explore/abc123'`,ctx); await vm.runInContext('saveSnapshot(42)',ctx); console.log(JSON.stringify(ctx.sent));})().catch(e=>{console.error(e);process.exitCode=1;});
 ''', encoding="utf-8")
     run = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
     messages = json.loads(run.stdout)
     assert [message["include_thinking"] for message in messages[:3]] == [False, False, True]
-    assert [message["feedback_opt_in"] for message in messages[3:]] == [False, True]
+    assert [message["feedback_opt_in"] for message in messages[3:5]] == [False, True]
+    assert messages[5]["include_thinking"] is False
     html = (ROOT / "src/openmd/browser_extension/options.html").read_text(encoding="utf-8")
     js = (ROOT / "src/openmd/browser_extension/options.js").read_text(encoding="utf-8")
     assert 'id="include-thinking"' in html

@@ -102,6 +102,15 @@ def load_local_config() -> dict[str, Any]:
         raise ValueError("local_config_model_roots_invalid")
     if "tools" in value and not isinstance(value["tools"], dict):
         raise ValueError("local_config_tools_invalid")
+    mineru = value.get("tools", {}).get("mineru")
+    if mineru is not None and (not isinstance(mineru, dict)
+            or set(mineru) - {"executable", "tier", "default"}
+            or ("executable" in mineru and not isinstance(mineru["executable"], str))
+            or not isinstance(mineru.get("tier", "basic"), str)
+            or mineru.get("tier", "basic") not in {"basic", "standard"}
+            or not isinstance(mineru.get("default", "auto"), str)
+            or mineru.get("default", "auto") not in {"auto", "mineru"}):
+        raise ValueError("local_config_mineru_invalid")
     if "wx" in value.get("tools", {}):
         setting = value["tools"]["wx"]
         if (not isinstance(setting, dict) or set(setting) - {"root"}

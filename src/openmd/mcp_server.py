@@ -64,14 +64,17 @@ def create_server():
         _progress_tasks.add(task)
         task.add_done_callback(_progress_tasks.discard)
 
-    @server.tool(description="Queue one URL/file or up to 20 sources to an absolute output directory; returns job IDs. Permissions default off.", annotations=writes, structured_output=True)
+    @server.tool(description="Queue one URL/file or up to 20 sources to an absolute output directory; returns job IDs. Permissions default off. Set ocr_engine='mineru' to use a user-installed local MinerU executable.", annotations=writes, structured_output=True)
     async def openmd_save(ctx: Context, source: str | None = None, output_directory: str = "",
                           sources: list[str] | None = None, network: bool = False, browser: bool = False,
-                          media: bool = False, asr: bool = False, cloud: bool = False) -> dict[str, object]:
+                          media: bool = False, asr: bool = False, cloud: bool = False,
+                          ocr_engine: str | None = None) -> dict[str, object]:
+        if ocr_engine not in {None, "auto", "mineru"}:
+            raise ValueError("unsupported_ocr_engine")
         if sources is not None:
-            result = mcp_jobs.save_batch(sources, output_directory, network=network, browser=browser, media=media, asr=asr, cloud=cloud)
+            result = mcp_jobs.save_batch(sources, output_directory, network=network, browser=browser, media=media, asr=asr, cloud=cloud, ocr_engine=ocr_engine)
         elif source is not None:
-            result = mcp_jobs.save(source, output_directory, network=network, browser=browser, media=media, asr=asr, cloud=cloud)
+            result = mcp_jobs.save(source, output_directory, network=network, browser=browser, media=media, asr=asr, cloud=cloud, ocr_engine=ocr_engine)
         else:
             raise ValueError("source_or_sources_required")
         await ctx.report_progress(0, len(result.get("jobs", [result])))

@@ -524,6 +524,21 @@
       "status_policy": "provider_defined"
     },
     {
+      "id": "ocr.mineru",
+      "provider": "ocr.mineru",
+      "sources": [
+        "pdf"
+      ],
+      "capability": "content",
+      "gates": [
+        "local_compute"
+      ],
+      "source_level": "ocr",
+      "requires_login": false,
+      "cost_class": "local_compute",
+      "status_policy": "provider_defined"
+    },
+    {
       "id": "pdf.textlayer",
       "provider": "pdf.textlayer",
       "sources": [

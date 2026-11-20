@@ -234,6 +234,8 @@ def _add_shared_options(
 
     parser.add_argument("--out", required=output_required, help="output directory")
     parser.add_argument("--backend", help="backend name override")
+    parser.add_argument("--ocr-engine", choices=("auto", "mineru"), default=None,
+        help="local PDF OCR engine; auto preserves the existing route")
     parser.add_argument("--fallback", dest="fallback", action="store_true", default=True)
     parser.add_argument("--no-fallback", dest="fallback", action="store_false")
     parser.add_argument("--limit", type=int, default=default_limit)

@@ -36,6 +36,7 @@ class BackendRuntimeOptions:
     """Safe runtime gates shared by extraction and discovery provider setup."""
 
     backend_override: str | None = None
+    ocr_engine: str = "auto"
     requested_discovery_provider: str | None = None
     enable_network_backends: bool = False
     enable_browser_backends: bool = False

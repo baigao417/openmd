@@ -12,6 +12,10 @@ Openmd turns what you can see but can't take out (links, local files, AI convers
 | You want a new platform or tool | Read [Adding a platform](docs/adding-a-platform.md) first; usually a **tool card** is enough | Real sample links and a snippet of the actual output |
 | You want to change core behavior (output format, permission switches, outbound network, credentials) | Open an issue to discuss, then send a PR | Motivation, scope of impact, compatibility |
 
+### Help wanted: the browser extension on macOS and Linux
+
+The CLI, MCP server and right-click menu run on all three systems, but the browser extension currently works only on Windows. If you use a Mac or Linux, you can port it yourself: [docs/browser-extension-platforms.md](docs/browser-extension-platforms.md) lists every Windows-only place, the per-OS host locations, the tests to add, and the on-machine checks to paste into your PR. No maintainer hardware is needed to merge it.
+
 ## The iteration loop
 
 Following yetone/magpie, every fix goes through the same chain:
@@ -119,6 +123,10 @@ Openmd 把看得到、拿不出的内容（链接、本地文件、AI 对话）�
 | 某个链接或文件没取到正文、取错了、取不全 | 提 [链接提取失败](.github/ISSUE_TEMPLATE/link-failure.yml) issue | 链接或文件类型、终端里 `提 issue 请附上：` 那一行、期望看到什么 |
 | 想支持一个新平台 / 接一个新工具 | 先看 [接入新平台](docs/adding-a-platform.md)，大多数情况只需加一张**工具卡** | 真实样本链接 + 实际产物片段 |
 | 想改核心行为（输出格式、权限开关、网络外发、凭证） | 先开 issue 讨论，再提 PR | 动机、影响范围、兼容性 |
+
+### 欢迎贡献：macOS 和 Linux 上的浏览器扩展
+
+命令行、MCP 和右键菜单支持三个系统，但浏览器扩展目前只支持 Windows。如果你用 Mac 或 Linux，可以自己完成移植：[docs/browser-extension-platforms.md](docs/browser-extension-platforms.md) 列出了所有只在 Windows 上实现的地方、各系统的宿主位置、需要补的测试，以及要贴进 PR 的本机验收步骤。合并不需要维护者有对应的机器。
 
 ## 迭代闭环
 

@@ -297,6 +297,8 @@ Every fix comes with a test that failed before it, and every "it works" claim co
 
 Openmd stands on the work of [OpenCLI](https://github.com/jackwener/opencli) (browser reading, built in), [trafilatura](https://github.com/adbar/trafilatura), [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api), Bilibili-Harvest (Lanbin07), [faster-whisper](https://github.com/SYSTRAN/faster-whisper) and [MarkItDown](https://github.com/microsoft/markitdown). Details and licenses: [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md).
 
+Community: thanks to [LINUX DO](https://linux.do) for the feedback and discussion.
+
 Openmd is released under the [MIT](https://github.com/baigao417/openmd/blob/main/LICENSE) license. Respect the copyright of what you save; Openmd is meant for personal archiving and research.
 
 **Everything to Markdown — just beginning.**

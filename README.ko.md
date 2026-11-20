@@ -296,6 +296,8 @@ python -m pytest
 
 Openmd는 [OpenCLI](https://github.com/jackwener/opencli)(브라우저 읽기, 내장), [trafilatura](https://github.com/adbar/trafilatura), [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api), Bilibili-Harvest(Lanbin07), [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [MarkItDown](https://github.com/microsoft/markitdown) 등의 오픈소스 프로젝트 위에 세워졌습니다. 자세한 내용과 라이선스는 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)를 참고하세요.
 
+커뮤니티: [LINUX DO](https://linux.do) 커뮤니티의 교류와 피드백에 감사드립니다.
+
 이 프로젝트는 [MIT](https://github.com/baigao417/openmd/blob/main/LICENSE) 라이선스로 공개됩니다. 저장하는 콘텐츠의 저작권을 존중해 주세요. Openmd는 개인 보관과 연구를 위한 도구입니다.
 
 **Everything to Markdown — just beginning.**

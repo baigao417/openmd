@@ -296,6 +296,8 @@ python -m pytest
 
 Openmd 建立在 [OpenCLI](https://github.com/jackwener/opencli)（浏览器读取，已内置）、[trafilatura](https://github.com/adbar/trafilatura)、[youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)、Bilibili-Harvest（Lanbin07）、[faster-whisper](https://github.com/SYSTRAN/faster-whisper) 和 [MarkItDown](https://github.com/microsoft/markitdown) 等开源项目之上。详细信息与许可证见 [THIRD_PARTY_NOTICES](https://github.com/baigao417/openmd/blob/main/THIRD_PARTY_NOTICES.md)。
 
+社区：感谢 [LINUX DO](https://linux.do) 社区的交流与反馈。
+
 本项目采用 [MIT](https://github.com/baigao417/openmd/blob/main/LICENSE) 许可证开源。请尊重你所保存内容的版权；Openmd 面向个人存档与研究使用。
 
 **Everything to Markdown — just beginning.**

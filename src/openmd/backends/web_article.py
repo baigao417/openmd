@@ -35,6 +35,12 @@ OPENCLI_WEB_READ_BACKEND = "opencli.web.read"
 CRAWL4AI_WEB_ARTICLE_BACKEND = "crawl4ai.web_article"
 DEFAULT_MIN_ARTICLE_CHARS = 40
 DEFAULT_MIN_COVERAGE_RATIO = 0.20
+# RFC 9110 calibration: the truncated Defuddle candidate was about 9 KB for an
+# estimated 410 KB body (~2%), while Trafilatura returned about 466 KB. Keep
+# Defuddle by default and switch only when it covers under half the estimated
+# body and another usable candidate offers at least 1.5x useful text.
+DEFAULT_PRIMARY_SWITCH_COVERAGE_RATIO = 0.50
+DEFAULT_ALTERNATE_COVERAGE_GAIN = 1.50
 
 CommandRunner = Callable[[list[str], int], tuple[int, str, str]]
 TrafilaturaFetcher = Callable[[str], object]
@@ -136,7 +142,7 @@ def apply_completeness_guard(
         return max(0, chars(result) - link_directory_chars(result))
 
     usable = [result for result in candidates if result.has_usable_text]
-    selected = max(
+    ranked = sorted(
         usable or candidates,
         key=lambda result: (
             useful_chars(result) - int(chars(result) * noise_ratio(result) * 0.25),
@@ -144,7 +150,29 @@ def apply_completeness_guard(
             -noise_ratio(result),
             chars(result),
         ),
+        reverse=True,
     )
+    primary = next((result for result in usable if "defuddle" in result.backend.lower()), None)
+    selected = primary or (ranked[0] if ranked else candidates[0])
+    selection_reasons: dict[str, str] = {
+        result.backend: "primary_defuddle_candidate" if result is primary else "primary_candidate_default"
+        for result in candidates
+    }
+    if primary is not None and estimate:
+        primary_coverage = useful_chars(primary) / estimate
+        alternative = next((result for result in ranked if result is not primary), None)
+        if (
+            alternative is not None
+            and primary_coverage < DEFAULT_PRIMARY_SWITCH_COVERAGE_RATIO
+            and useful_chars(alternative) >= max(1, useful_chars(primary)) * DEFAULT_ALTERNATE_COVERAGE_GAIN
+        ):
+            selected = alternative
+            selection_reasons[alternative.backend] = (
+                "defuddle_below_50_percent_and_alternative_at_least_1_5x_useful_text"
+            )
+    elif primary is None and ranked:
+        selected = ranked[0]
+        selection_reasons[selected.backend] = "highest_ranked_candidate_without_defuddle"
     selected_chars = chars(selected)
     records = [
         {
@@ -153,7 +181,7 @@ def apply_completeness_guard(
             "status": result.status,
             "noise_ratio": round(noise_ratio(result), 4),
             "noise_chars": link_directory_chars(result),
-            "selection_reason": "highest_article_text_after_link_directory_filter" if result is selected else "lower_article_text_or_tie_break",
+            "selection_reason": "selected:" + selection_reasons.get(result.backend, "alternate_candidate") if result is selected else selection_reasons.get(result.backend, "not_selected"),
             "selected": result is selected,
         }
         for result in candidates

@@ -30,6 +30,42 @@ def test_completeness_guard_selects_longer_non_shell_candidate() -> None:
     assert selected.metadata["coverage_estimate"]["selected_chars"] > 100
 
 
+def test_frozen_arxiv_abstract_keeps_complete_defuddle_primary_candidate() -> None:
+    # Frozen arXiv abstract-page structure with synthetic prose. The real page
+    # includes an information table (Comments, Subjects, Cite as, DOI) that
+    # Trafilatura omits; keep that structure without copying the paper text.
+    html = """<!doctype html><html><body>
+      <header>arXiv navigation and search</header>
+      <main><article id="abs">
+        <h1>Attention Is All You Need</h1>
+        <blockquote class="abstract">We introduce a model based entirely on attention.
+          It replaces recurrence with parallel processing and improves translation results.
+          Experiments confirm strong quality across two translation tasks.</blockquote>
+        <table class="metadata"><tr><th>Comments</th><td>15 pages, 5 figures</td></tr>
+          <tr><th>Subjects</th><td>Computation and Language</td></tr>
+          <tr><th>Cite as</th><td>arXiv:1706.03762</td></tr>
+          <tr><th>DOI</th><td>10.48550/arXiv.1706.03762</td></tr></table>
+      </article></main></body></html>"""
+    defuddle = _result(
+        "defuddle.web.content",
+        "# Attention Is All You Need\n\nAbstract: We introduce a model based entirely on attention. "
+        "It replaces recurrence with parallel processing and improves translation results. "
+        "Experiments confirm strong quality across two translation tasks.\n\n"
+        "Comments: 15 pages, 5 figures\nSubjects: Computation and Language\n"
+        "Cite as: arXiv:1706.03762\nDOI: 10.48550/arXiv.1706.03762",
+    )
+    trafilatura = _result(
+        "web_article.trafilatura",
+        "# Attention Is All You Need\n\n" + ("Abstract prose expanded by the alternate extractor. " * 9),
+    )
+
+    selected = apply_completeness_guard([defuddle, trafilatura], html=html)
+
+    assert selected.backend == "defuddle.web.content"
+    assert "Subjects: Computation and Language" in selected.text
+    assert selected.metadata["extraction_candidates"][0]["selected"] is True
+
+
 def test_completeness_guard_does_not_prefer_longer_navigation_tail() -> None:
     complete = _result(
         "defuddle.web.content",

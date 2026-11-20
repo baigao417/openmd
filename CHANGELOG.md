@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+### 修复 / Fixed
+- 网页文章不再静默截断：同时比较 Defuddle 与 trafilatura 的结果，主结果只截到页面正文一小部分时换用更完整的候选，仍截不全时标为 partial 并在回执中写明覆盖情况（例如 RFC 9110 由约 9 KB 片段恢复为完整正文）。 / Web articles are no longer silently truncated: Defuddle and trafilatura results are compared, a more complete candidate replaces a primary result that covers only a small part of the page, and a page that still cannot be captured fully is marked partial with coverage in the receipt (for example, RFC 9110 now comes out whole instead of a ~9 KB fragment).
+- 更多错误页与失效链接被拒收（软 404、挑战页外壳、Not Found、示例域名、公众号“参数错误/内容不存在”状态页），引用这些短语的正常文章仍然保留。 / More error pages and dead links are refused (soft 404s, challenge-page shells, Not Found, example domains, WeChat “参数错误/内容不存在” status screens), while articles that quote those phrases are kept.
+### 新增 / Added
+- 小宇宙单集在逐字稿前附上页面上的节目标题与简介。 / Xiaoyuzhou episodes include the page's episode title and show notes before the transcript.
+- CONTRIBUTING 改为中英双语，补充托管 OpenCLI、生成文件规则，并新增浏览器扩展 macOS / Linux 移植指南。 / CONTRIBUTING is now bilingual, covers the managed OpenCLI and generated-file rules, and links a new macOS / Linux browser-extension porting guide.
+
 ## [0.2.1]
 ### 新增 / Added
 - 右键转 Markdown 的菜单项使用 Openmd 仓鼠图标；进度窗口改为品牌暖色样式，显示当前文件与进度条，结束后按类别汇总结果并列出失败原因，可直接打开结果文件夹，全部成功时自动关闭。 / The right-click “Convert to Markdown” entry uses the Openmd hamster icon; the progress window adopts the warm brand style with the current file and a progress bar, then summarizes results by category, lists failure reasons, opens the result folder, and closes itself when everything succeeded.

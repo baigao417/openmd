@@ -1,6 +1,6 @@
 """One-command contributor setup for Windows, macOS and Linux.
 
-    python scripts/dev_setup.py            # create .venv, install openmd-cli[dev], check tools
+    python scripts/dev_setup.py            # create .venv, install openmd-cli[dev], check ffmpeg
     python scripts/dev_setup.py --check    # only report what is missing
     python scripts/dev_setup.py --no-venv  # install into the current interpreter (CI, devcontainer)
     python scripts/dev_setup.py --hooks    # also run full pytest before every git push (opt-in)
@@ -25,14 +25,16 @@ SYSTEM = platform.system()  # "Windows" | "Darwin" | "Linux"
 
 HINTS = {
     "ffmpeg": {"Windows": "winget install Gyan.FFmpeg", "Darwin": "brew install ffmpeg", "Linux": "sudo apt-get install ffmpeg  (或发行版对应包管理器)"},
-    "node": {"Windows": "winget install OpenJS.NodeJS.LTS", "Darwin": "brew install node", "Linux": "见 https://nodejs.org 或 nvm"},
-    "opencli": {"Windows": "npm install -g @jackwener/opencli", "Darwin": "npm install -g @jackwener/opencli", "Linux": "npm install -g @jackwener/opencli"},
 }
 PURPOSE = {
     "ffmpeg": "测试必需；音视频处理",
-    "node": "可选；opencli 的运行时",
-    "opencli": "可选；B 站字幕、公众号等浏览器路线，做这些平台时需要",
 }
+# Node.js ships with the nodejs-wheel-binaries dependency; OpenCLI is installed by
+# openmd.runtime.managed_tools at a pinned version on first need (PATH copies are ignored).
+MANAGED_NOTE = (
+    "  · Node.js  随 nodejs-wheel-binaries 依赖安装，不用单独装\n"
+    "  · OpenCLI  托管组件：首次需要时由 Openmd 自动安装固定版本，PATH 上的其他 opencli 会被忽略；不要 npm install -g"
+)
 
 
 def venv_python() -> Path:
@@ -53,11 +55,12 @@ def check_tools() -> int:
         print("  ✗ 需要 Python 3.10+")
         return 1
     missing_required = 0
-    for tool in ("ffmpeg", "node", "opencli"):
+    for tool in HINTS:
         found = shutil.which(tool)
-        mark = "✓" if found else ("✗" if tool == "ffmpeg" else "·")
+        mark = "✓" if found else "✗"
         print(f"  {mark} {tool:<8} {PURPOSE[tool]}" + ("" if found else f"\n      → {HINTS[tool][SYSTEM if SYSTEM in HINTS[tool] else 'Linux']}"))
-        missing_required += tool == "ffmpeg" and not found
+        missing_required += not found
+    print(MANAGED_NOTE)
     return 1 if missing_required else 0
 
 

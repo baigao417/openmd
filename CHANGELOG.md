@@ -6,6 +6,7 @@
 - 更多错误页与失效链接被拒收（软 404、挑战页外壳、Not Found、示例域名、公众号“参数错误/内容不存在”状态页），引用这些短语的正常文章仍然保留。 / More error pages and dead links are refused (soft 404s, challenge-page shells, Not Found, example domains, WeChat “参数错误/内容不存在” status screens), while articles that quote those phrases are kept.
 ### 新增 / Added
 - 小宇宙单集在逐字稿前附上页面上的节目标题与简介。 / Xiaoyuzhou episodes include the page's episode title and show notes before the transcript.
+- 可选 MinerU 引擎：自行安装 MinerU 后，用 `--ocr-engine mineru`（MCP 同名参数）把扫描 PDF 与图片交给它识别；在 `tools.mineru.executable` 或 `OPENMD_MINERU` 指定位置，`tools.mineru.tier` 选 basic / standard；未安装时明确报错并给出下一步，不加参数时行为不变。Openmd 不打包、不分发 MinerU 及其模型，使用时请遵守其许可。 / Optional MinerU engine: after installing MinerU yourself, `--ocr-engine mineru` (same MCP parameter) sends scanned PDFs and images to it; set its location with `tools.mineru.executable` or `OPENMD_MINERU` and pick `tools.mineru.tier` basic / standard. A missing install fails with a clear next step, and nothing changes without the flag. Openmd neither bundles nor redistributes MinerU or its models; follow its license when you use it.
 - CONTRIBUTING 改为中英双语，补充托管 OpenCLI、生成文件规则，并新增浏览器扩展 macOS / Linux 移植指南。 / CONTRIBUTING is now bilingual, covers the managed OpenCLI and generated-file rules, and links a new macOS / Linux browser-extension porting guide.
 
 ## [0.2.1]

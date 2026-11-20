@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import re
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
+
+from bs4 import BeautifulSoup
 
 from openmd.backends.base import (
     BackendCapability,
@@ -30,11 +34,186 @@ WEB_ARTICLE_TRAFILATURA_BACKEND = "web_article.trafilatura"
 OPENCLI_WEB_READ_BACKEND = "opencli.web.read"
 CRAWL4AI_WEB_ARTICLE_BACKEND = "crawl4ai.web_article"
 DEFAULT_MIN_ARTICLE_CHARS = 40
+DEFAULT_MIN_COVERAGE_RATIO = 0.20
+# RFC 9110 calibration: the truncated Defuddle candidate was about 9 KB for an
+# estimated 410 KB body (~2%), while Trafilatura returned about 466 KB. Keep
+# Defuddle by default and switch only when it covers under half the estimated
+# body and another usable candidate offers at least 1.5x useful text.
+DEFAULT_PRIMARY_SWITCH_COVERAGE_RATIO = 0.50
+DEFAULT_ALTERNATE_COVERAGE_GAIN = 1.50
 
 CommandRunner = Callable[[list[str], int], tuple[int, str, str]]
 TrafilaturaFetcher = Callable[[str], object]
 TrafilaturaExtractor = Callable[..., str | None]
 TrafilaturaMetadataExtractor = Callable[[object], object]
+
+
+def estimate_html_body_chars(html: str) -> int:
+    """Estimate visible article scale after removing common page chrome."""
+    if not html:
+        return 0
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        for node in soup(["script", "style", "noscript", "template", "nav", "header", "footer", "aside", "form"]):
+            node.decompose()
+        chrome_marker = re.compile(r"(?:nav|menu|sidebar|breadcrumb|footer|header|search|toolbar|actions|related|recommend|social|share|citation|download)", re.I)
+        for node in soup.find_all(True):
+            if node.parent is None:
+                continue
+            attrs = " ".join(str(value) for key, value in node.attrs.items() if key in {"id", "class", "role", "aria-label"})
+            if attrs and chrome_marker.search(attrs):
+                node.decompose()
+        roots = [node for node in (soup.find("article"), soup.find("main"), soup.body) if node is not None]
+        text = max((node.get_text(" ", strip=True) for node in roots), key=lambda value: len(value), default=soup.get_text(" ", strip=True))
+        return len("".join(text.split()))
+    except Exception:
+        return 0
+
+
+def apply_completeness_guard(
+    candidates: list[TranscriptResult],
+    *,
+    html: str | None = None,
+    title: str | None = None,
+    body_chars: int | None = None,
+    min_coverage_ratio: float = DEFAULT_MIN_COVERAGE_RATIO,
+) -> TranscriptResult:
+    """Choose the most complete candidate and make low coverage explicit."""
+    if not candidates:
+        return _failed("web_article.completeness", "no_candidate", "No extraction candidate was produced.")
+    estimate = body_chars if body_chars is not None else estimate_html_body_chars(html or "")
+
+    def chars(result: TranscriptResult) -> int:
+        return len("".join((result.text or "").split()))
+
+    def noise_ratio(result: TranscriptResult) -> float:
+        lines = [line.strip() for line in (result.text or "").splitlines() if line.strip()]
+        if not lines:
+            return 1.0
+        link_lines = sum(1 for line in lines if "](" in line or line.lower().startswith(("navigation", "related links", "recommended")))
+        return link_lines / len(lines)
+
+    def link_directory_chars(result: TranscriptResult) -> int:
+        """Count link-only sections after a heading as page chrome, not article text.
+
+        Extractors sometimes append recommendation/tool directories to an
+        otherwise good article. A section qualifies only when it has at least
+        three standalone links and no prose lines; normal paragraphs with
+        inline links and prose-bearing reference sections remain untouched.
+        """
+        lines = (result.text or "").splitlines()
+        noise_chars = 0
+        section_lines: list[str] = []
+        has_heading = False
+        current_heading: str | None = None
+
+        def count_if_directory(heading: str | None = None) -> int:
+            populated = [line.strip() for line in section_lines if line.strip()]
+            link_lines = [line for line in populated if re.fullmatch(r"(?:[-*+]\s*)?(?:\[[^\]]+\]\([^)]*\)|!\[[^\]]*\]\([^)]*\))\s*", line)]
+            standalone_directory = len(link_lines) >= 3 and len(link_lines) == len(populated)
+            heading_suggests_chrome = bool(
+                heading
+                and re.search(r"\b(?:tools?|features?|demos?|bookmark|more|related|recommended|recommenders?|explore|associated|share|popular|trending|follow)\b", heading, re.I)
+                and not re.search(r"\b(?:references?|bibliograph(?:y|ies)|works cited|history|versions?)\b", heading, re.I)
+            )
+            markdown_links = re.findall(r"(?<!!)\[[^\]]+\]\([^)]*\)|!\[[^\]]*\]\([^)]*\)", "\n".join(populated))
+            without_links = re.sub(r"(?<!!)\[([^\]]+)\]\([^)]*\)|!\[([^\]]*)\]\([^)]*\)", lambda match: match.group(1) or match.group(2) or "", "\n".join(populated))
+            residual = len(re.sub(r"[\s*_#>`~|-]+", "", without_links))
+            headed_link_module = heading_suggests_chrome and len(markdown_links) >= 3 and residual < 140
+            if has_heading and (standalone_directory or headed_link_module):
+                return len(re.sub(r"\s+", "", (heading or "") + "\n" + "\n".join(section_lines)))
+            return 0
+
+        for line in lines:
+            heading = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", line)
+            if heading:
+                noise_chars += count_if_directory(current_heading)
+                section_lines = []
+                has_heading = True
+                current_heading = heading.group(2)
+            elif has_heading:
+                section_lines.append(line)
+            else:
+                current_heading = None
+        noise_chars += count_if_directory(current_heading)
+        return noise_chars
+
+    def useful_chars(result: TranscriptResult) -> int:
+        return max(0, chars(result) - link_directory_chars(result))
+
+    usable = [result for result in candidates if result.has_usable_text]
+    ranked = sorted(
+        usable or candidates,
+        key=lambda result: (
+            useful_chars(result) - int(chars(result) * noise_ratio(result) * 0.25),
+            useful_chars(result),
+            -noise_ratio(result),
+            chars(result),
+        ),
+        reverse=True,
+    )
+    primary = next((result for result in usable if "defuddle" in result.backend.lower()), None)
+    selected = primary or (ranked[0] if ranked else candidates[0])
+    selection_reasons: dict[str, str] = {
+        result.backend: "primary_defuddle_candidate" if result is primary else "primary_candidate_default"
+        for result in candidates
+    }
+    if primary is not None and estimate:
+        primary_coverage = useful_chars(primary) / estimate
+        alternative = next((result for result in ranked if result is not primary), None)
+        if (
+            alternative is not None
+            and primary_coverage < DEFAULT_PRIMARY_SWITCH_COVERAGE_RATIO
+            and useful_chars(alternative) >= max(1, useful_chars(primary)) * DEFAULT_ALTERNATE_COVERAGE_GAIN
+        ):
+            selected = alternative
+            selection_reasons[alternative.backend] = (
+                "defuddle_below_50_percent_and_alternative_at_least_1_5x_useful_text"
+            )
+    elif primary is None and ranked:
+        selected = ranked[0]
+        selection_reasons[selected.backend] = "highest_ranked_candidate_without_defuddle"
+    selected_chars = chars(selected)
+    records = [
+        {
+            "engine": result.backend,
+            "characters": chars(result),
+            "status": result.status,
+            "noise_ratio": round(noise_ratio(result), 4),
+            "noise_chars": link_directory_chars(result),
+            "selection_reason": "selected:" + selection_reasons.get(result.backend, "alternate_candidate") if result is selected else selection_reasons.get(result.backend, "not_selected"),
+            "selected": result is selected,
+        }
+        for result in candidates
+    ]
+    coverage = {
+        "body_chars": estimate or None,
+        "selected_chars": selected_chars,
+        "ratio": round(selected_chars / estimate, 4) if estimate else None,
+        "threshold": min_coverage_ratio,
+    }
+    metadata = {
+        **selected.metadata,
+        "extraction_candidates": records,
+        "coverage_estimate": coverage,
+        "completeness": {
+            "status": "ok",
+            "coverage_estimate": coverage,
+            "extraction_candidates": records,
+        },
+    }
+    result = replace(selected, metadata=metadata, title=selected.title or title)
+    if estimate and selected.has_usable_text and selected_chars / estimate < min_coverage_ratio:
+        metadata["completeness"]["status"] = "downgrade"
+        return replace(
+            result,
+            status="partial",
+            source_level="partial_extraction",
+            error_code="partial_coverage",
+            error_summary=f"候选正文仅覆盖估算页面正文的 {selected_chars / estimate:.1%}。",
+            source_notes=[*result.source_notes, "可能只截取了部分正文，已按 partial 回执。"],
+        )
+    return result
 
 
 def register_backend_providers(

@@ -76,14 +76,14 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `twitter/article`: `src/openmd/backends/x.py:116`
 - `twitter/thread`: `src/openmd/backends/x.py:88`
 - `twitter/tweets`: `src/openmd/backends/x.py:102`
-- `web/read`: `src/openmd/backends/web_article.py:233`, `src/openmd/backends/xiaoyuzhou.py:158`
+- `web/read`: `src/openmd/backends/web_article.py:412`, `src/openmd/backends/xiaoyuzhou.py:158`
 - `weixin/download`: `src/openmd/backends/weixin.py:269`
 - `xiaoe/catalog`: `src/openmd/backends/xiaoe.py:134`
 - `xiaoe/content`: `src/openmd/backends/xiaoe.py:152`
 - `xiaoe/play-url`: `src/openmd/backends/xiaoe.py:129`
 - `xiaohongshu/note`: `src/openmd/backends/xiaohongshu.py:95`
 - `xiaohongshu/user`: `src/openmd/backends/xiaohongshu.py:100`
-- `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:268`
+- `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:273`
 - `xiaoyuzhou/podcast-episodes`: `src/openmd/backends/xiaoyuzhou.py:144`
 - `xiaoyuzhou/transcript`: `src/openmd/backends/xiaoyuzhou.py:123`
 - `youtube/channel`: `src/openmd/backends/youtube_discovery.py:178`

@@ -129,16 +129,31 @@ large scan does not count as a reliable text layer. These checks are heuristic;
 missing glyphs/odd hidden text layers still require source review. Mixed
 documents use `source_level=ocr`, with each page's route retained in metadata.
 
-User PDF text layers use a conservative whole-page policy. Any clip, invisible
-rendering, detected low-contrast character, overlapping image or later paint,
-annotation/widget overlap, out-of-page character or failed visibility probe
-forces OCR with per-page reasons. Even a thin or translucent cover counts.
+User PDF text layers use two reason classes. `HARD_HIDDEN_REASONS` identify
+glyphs that can be removed with confidence: invisible rendering (`Tr 3/7`),
+zero opacity, low contrast, tiny text, out-of-page/zero-width or control
+characters, optional-content text, and a later opaque rectangular fill or
+filled annotation that fully covers the glyph. These glyphs are filtered
+individually; a page with otherwise reliable text does not go to OCR just
+because some confirmed hidden characters were removed.
+
+`AMBIGUOUS_GEOMETRY_REASONS` include overlapping paint, raster-obscured glyphs,
+clip uncertainty, text/image overlap, trace mapping uncertainty and generic
+visibility uncertainty. They do not delete characters and do not by themselves
+discard a page. With OCR authorized, the page may be routed to OCR. Without OCR
+authorization or a ready OCR engine, the filtered native text is retained and
+the page/result is `partial` with `textlayer_unverified=true`; it is never
+reported `verified`. Empty/poor text layers and image coverage at or above
+`textlayer_image_coverage` still use the page OCR route. A narrow or partially
+intersecting drawing is not proof that the whole glyph is hidden; only a later,
+opaque, rectangular fill that encloses the complete glyph can establish that.
+
 Adjacent text is checked using nonspace character boxes; padded paint boxes or
 spaces cannot alone make neighboring words into occluders. Drawing inspection
 is supplemented by content-stream checks, including nested Form XObjects,
 because the drawing device omits text clipping modes (`Tr 4–7`). Unknown or
-malformed operators and inline-image payloads are conservatively unproven.
-This can route an otherwise readable user PDF through OCR.
+malformed operators and inline-image payloads are retained as unverified rather
+than silently treated as confirmed hidden text.
 
 Normal fill+stroke (`Tr2`) is one drawing even though MuPDF emits separate fill
 and stroke traces. Their mutual overlap is exempt only with the same retained
@@ -153,10 +168,20 @@ Ordinary adjacent kerning is preserved. Shared
 buffer identity only pairs fill/stroke and never authorizes internal overdraw.
 
 Image coverage at or above `textlayer_image_coverage` (default `0.5`) also forces
-OCR. At 72 DPI the final raster must contain contrasting ink inside each glyph
-box; surviving pixels do not waive a clip or occlusion. The old
+OCR. At 72 DPI glyph ink is checked; a failed check is repeated at 216 DPI in a
+bounded glyph region, preserving the same page coordinates. The old
 `textlayer_hidden_ratio` setting remains accepted for configuration compatibility
-and no longer permits any detected low-contrast characters through.
+and no longer permits any detected low-contrast characters through. PDF page
+text is reconstructed from the raw character stream after per-character checks;
+it is never returned directly from an unfiltered `get_text()` result. Invisible
+rendering, zero-opacity, control/zero-width and out-of-page glyphs are removed.
+Pixels that remain unproven after 216 DPI are reported as ambiguous. Soft
+overlap, annotation/widget overlays and malformed text-layer lines are reported
+separately; when OCR is not authorized, remaining filtered text is retained
+with a partial page and `textlayer_unverified=true`. A scan still routes to OCR
+according to image coverage.
+Page receipts include `hard_reasons`, `soft_reasons`,
+`hidden_text_removed_chars`, and positions only (no removed text content).
 
 Glyph/vector alternatives are accepted only for PDFs Openmd itself generated
 from DOCX/PPTX in this invocation. The converter passes a private in-process

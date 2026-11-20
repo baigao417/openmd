@@ -97,7 +97,7 @@ def test_multiple_source_text_shows_in_one_buffer_do_not_gain_same_paint_waiver(
         path = tmp_path / 'buffered-overlay.pdf'
         doc.save(path)
     result = extract_pdf(ContentItem(platform='pdf', input_type='single', url=path.as_uri()))
-    assert result.status == 'partial' and '12345' not in result.text
+    assert result.status == 'partial' and '12345' in result.text and '99999' in result.text
 
 
 def test_single_later_character_show_in_shared_combined_buffer_is_unproven():
@@ -154,7 +154,9 @@ def test_t1_clip_residual_ink_never_proves_visible_characters(clip, tmp_path):
         assert "clip_visibility_unproven" in probe["textlayer_rejected_reasons"]
         result = extract_pdf(ContentItem(platform="pdf", input_type="single", url=path.as_uri()))
         assert result.status == "partial"
-        assert "999" not in result.text
+        assert "999" in result.text
+        assert "clip_visibility_unproven" in result.metadata["pages"][0]["soft_reasons"]
+        assert "clip_visibility_unproven" not in result.metadata["pages"][0]["hard_reasons"]
     finally:
         doc.close()
 
@@ -279,7 +281,9 @@ def test_converter_ligature_continuation_requires_office_origin_not_borrowed_ink
         with patch.object(page, "get_texttrace", return_value=spans):
             untrusted = probe_page(page, settings())
             trusted = probe_page(page, settings(), _office_generated=True)
-        assert untrusted["route"] == "ocr"
+        assert untrusted["route"] == "textlayer"
+        assert untrusted["hidden_text_removed_chars"] == 1
+        assert "out_of_page_or_zero_width" in untrusted["hard_reasons"]
         assert trusted["route"] == "textlayer"
         assert trusted["office_glyph_alternative_text_chars"] == 1
         assert untrusted["office_glyph_alternative_text_chars"] == 0

@@ -172,7 +172,7 @@ Openmd 自体はナレッジベースでも RAG 検索システムでもあり�
 | ZIP | エントリごとの状態付きで一部対応 | 混在メディアは別途 ASR / OCR が必要。アーカイブ資源上限があります |
 | MOBI、AZW3 | Calibre が必要 | ツールがない場合は `engine_unavailable`。暗号化電子書籍は拒否し、復号しません |
 
-右クリック変換は `openmd shell-menu install` で現在のユーザーにインストールします。対応文書の隣に `.md` を作成し、フォルダーはサブフォルダー構造を保った `<folder>-md` ミラーに変換します。再実行では変更されていない入力をスキップし、編集済み Markdown を保護します。同じ名前で形式が異なるファイルは、Markdown のファイル名に元の拡張子を残します。Windows ではメニューを追加する前に `uv tool install openmd-cli` または `pipx install openmd-cli` で永続インストールしてください。一時的な `uvx` キャッシュからのインストールは拒否されます。スキャン PDF にはローカル OCR が必要です。Windows 11 では従来型 HKCU メニューが「その他のオプションを表示」に置かれる場合があります。軽量インストーラーはパッケージアプリが必要な最上位メニュー拡張を登録しません。削除は `openmd shell-menu uninstall` です。
+右クリック変換は `openmd shell-menu install` で現在のユーザーにインストールします。対応文書の隣に `.md` を作成し、フォルダーはサブフォルダー構造を保った `<folder>-md` ミラーに変換します。再実行では変更されていない入力をスキップし、編集済み Markdown を保護します。同じ名前で形式が異なるファイルは、Markdown のファイル名に元の拡張子を残します。Windows ではメニューを追加する前に `uv tool install openmd-cli` または `pipx install openmd-cli` で永続インストールしてください。一時的な `uvx` キャッシュからのインストールは拒否されます。スキャン PDF にはローカル OCR が必要です。オプションの MinerU を使うには、ユーザー自身でインストールし、`OPENMD_MINERU` または `tools.mineru.executable` を設定して `--ocr-engine mineru` を指定します。AGPL とモデルのライセンス条件が適用されます。Windows 11 では従来型 HKCU メニューが「その他のオプションを表示」に置かれる場合があります。軽量インストーラーはパッケージアプリが必要な最上位メニュー拡張を登録しません。削除は `openmd shell-menu uninstall` です。
 
 あなたのマシンで何が使えるかは `openmd doctor` で確認できます。リンクの処理に失敗すると、Openmd は理由と、[不具合報告](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)にそのまま貼り付けられる 1 行を表示します。
 

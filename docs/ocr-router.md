@@ -35,6 +35,16 @@ this dependency.** MarkItDown remains the default Office parser and uses the
 existing optional `document` extra. LibreOffice conversion is used only if its
 executable already exists; it is never installed by Openmd.
 
+MinerU is an optional, user-managed local OCR executable. Configure
+`tools.mineru.executable` in `openmd.local/v1` or set `OPENMD_MINERU`; Openmd
+does not install MinerU or download its weights. Select it only for a local
+PDF with `--ocr-engine mineru`; `auto` preserves the existing route. The
+optional `tools.mineru.tier` value is `basic` (default) or `standard`; set
+`tools.mineru.default` to `mineru` to select it by default. MinerU
+is AGPL licensed and its model weights have separate terms: install and use it
+under the applicable licenses. Openmd invokes the external CLI and does not
+bundle its code or weights.
+
 Start Ollama yourself and make the two required models available in advance.
 Openmd only reads model metadata/digests, performs explicitly enabled inference
 and unloads its own model after each page/tile. It never starts/stops the server,

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import base64
 import json
 import os
 import re
 from pathlib import Path
 import shutil
 import subprocess
+import time
 
 from openmd.core.local_config import load_local_config
 from openmd.runtime.interpreters import owned_popen, process_options, wait_interruptibly
@@ -214,6 +216,139 @@ class CalibreEngine(ExecutableEngine):
                 metadata={**result.metadata, 'source_format': path.suffix[1:].lower(), 'converted_by': self.id})
         except (EngineError, OSError, UnicodeError) as exc:
             return failure(self.id, path, getattr(exc, 'code', 'document_conversion_failed'), exc)
+
+
+class MinerUEngine(ExecutableEngine):
+    """Optional user-installed MinerU CLI. Never installs or downloads models."""
+    id = 'mineru'
+    formats = frozenset({'pdf', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'tif', 'tiff'})
+    install_hint = 'Install MinerU yourself and configure tools.mineru.executable or OPENMD_MINERU.'
+
+    def can_handle(self, path: Path, sniff: bytes) -> bool:
+        suffix = path.suffix.lower()
+        if suffix == '.pdf':
+            return sniff.startswith(b'%PDF-')
+        signatures = {'.png': b'\x89PNG\r\n\x1a\n', '.jpg': b'\xff\xd8\xff',
+            '.jpeg': b'\xff\xd8\xff', '.bmp': b'BM', '.tif': (b'II*\x00', b'MM\x00*'),
+            '.tiff': (b'II*\x00', b'MM\x00*')}
+        if suffix == '.webp':
+            return sniff.startswith(b'RIFF') and sniff[8:12] == b'WEBP'
+        signature = signatures.get(suffix)
+        return bool(signature and (sniff.startswith(signature) if isinstance(signature, bytes)
+                                   else any(sniff.startswith(value) for value in signature)))
+
+    def available(self):
+        command = executable(self.id)
+        # MinerU's stable CLI is `mineru`; the benchmark installs mineru-kit.exe
+        # as a compatibility launcher for the same `parse` interface.
+        if not command:
+            command = shutil.which('mineru-kit')
+        if not command:
+            return {'ok': False, 'reason': self.install_hint, 'version': None}
+        try:
+            with owned_temporary_directory(prefix='openmd-mineru-version-') as owned_root:
+                version = run_command([command, '--version'], Path(owned_root), EngineLimits(timeout_s=5))
+            version = version.splitlines()[0][:160] if version.strip() else 'unknown'
+        except (EngineError, OSError, UnicodeError):
+            return {'ok': False, 'reason': 'MinerU executable cannot be started.', 'version': None}
+        return {'ok': True, 'reason': 'User-installed MinerU executable detected.', 'version': version}
+
+    def convert(self, path: Path, limits: EngineLimits | None = None, *, tier: str = 'basic'):
+        limits = limits or EngineLimits()
+        started = time.monotonic()
+        if tier not in {'basic', 'standard'}:
+            return failure(self.id, path, 'mineru_setting_invalid')
+        try:
+            if path.suffix.lower() == '.pdf':
+                sniff = validate_document(path, limits)
+            else:
+                limits.remaining()
+                if not path.is_file() or path.stat().st_size > limits.max_file_bytes:
+                    raise EngineError('document_local_file_required' if not path.is_file() else 'document_size_limit')
+                with path.open('rb') as stream:
+                    sniff = stream.read(4096)
+            if not self.can_handle(path, sniff):
+                return failure(self.id, path, 'document_format_unsupported')
+            version_probe = self.available()
+            if not version_probe['ok']:
+                result = failure(self.id, path, 'engine_unavailable', version_probe['reason'])
+                result.metadata['next_action'] = self.install_hint
+                return result
+            command = executable(self.id) or shutil.which('mineru-kit')
+            if not command:
+                result = failure(self.id, path, 'engine_unavailable', self.install_hint)
+                result.metadata['next_action'] = self.install_hint
+                return result
+            from openmd.runtime.gpu_lock import gpu_lock
+            from openmd.core.models import TranscriptResult
+            from openmd.runtime.tempdirs import owned_temporary_directory
+            with owned_temporary_directory(prefix='openmd-mineru-') as owned_root:
+                root = Path(owned_root)
+                output = root / 'output'
+                output.mkdir()
+                try:
+                    with gpu_lock(timeout=limits.remaining()):
+                        run_command([command, 'parse', str(path.resolve()), '--output', str(output),
+                            '--pages', 'all', '--tier', tier], root, limits)
+                except TimeoutError as exc:
+                    raise EngineError('mineru_timeout', 'MinerU waited too long for the shared GPU lease.') from exc
+                except EngineError as exc:
+                    if exc.code == 'document_timeout':
+                        raise EngineError('mineru_timeout', 'MinerU exceeded its conversion time limit.') from exc
+                    raise EngineError('mineru_failed', 'MinerU conversion failed.') from exc
+                markdown = sorted(output.rglob('*.md'))
+                if not markdown:
+                    raise EngineError('mineru_failed', 'MinerU produced no Markdown output.')
+                texts = [p.read_text(encoding='utf-8-sig') for p in markdown]
+                text = '\n\n'.join(t.strip() for t in texts if t.strip())
+                if not text:
+                    raise EngineError('mineru_failed', 'MinerU produced empty Markdown output.')
+                image_files = sorted(p.relative_to(output).as_posix() for p in output.rglob('*')
+                    if p.is_file() and p.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'})
+                # MinerU Markdown refers to adjacent image files. Inline bounded
+                # images so temporary output cleanup cannot leave broken links.
+                for image_rel in image_files:
+                    image_path = output / Path(image_rel)
+                    if image_path.stat().st_size > limits.max_output_bytes:
+                        raise EngineError('mineru_failed', 'MinerU image output exceeded the bounded Markdown output size.')
+                    mime = {'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[image_path.suffix.lower()]
+                    uri = f'data:{mime};base64,' + base64.b64encode(image_path.read_bytes()).decode('ascii')
+                    image_name = Path(image_rel).name
+                    for i, _md_path in enumerate(markdown):
+                        texts[i] = re.sub(r'(!\[[^\]]*\]\([^)]*)' + re.escape(image_name) + r'(\))',
+                            lambda m: m.group(1) + uri + m.group(2), texts[i])
+                text = '\n\n'.join(t.strip() for t in texts if t.strip())
+                if len(text.encode('utf-8')) > limits.max_output_bytes:
+                    raise EngineError('document_output_limit')
+                page_count = max(1, len(texts))
+                if path.suffix.lower() == '.pdf':
+                    try:
+                        import pymupdf
+                        with pymupdf.open(path) as document:
+                            page_count = len(document)
+                    except (ImportError, OSError, ValueError, RuntimeError):
+                        pass
+                pages = [{'page': i + 1, 'route': 'ocr', 'status': 'verified', 'engine': 'mineru',
+                    'model': tier, 'fallback_used': False, 'reason': None,
+                    'seconds': None, 'peak_vram_mb': None}
+                    for i in range(page_count)]
+                return TranscriptResult(text=text, status='verified', source_level='ocr', backend=self.id,
+                    title=path.stem, source_notes=['MinerU was invoked as a user-installed local CLI; output requires source comparison.'],
+                    metadata={'profile': 'document', 'source_format': path.suffix[1:].lower(),
+                        'pages': pages, 'tool_run': {'tool_version': version_probe.get('version'), 'tool_version_verified': bool(version_probe.get('version'))},
+                        'images': image_files, 'mineru_tier': tier,
+                        'ocr_elapsed_seconds': round(time.monotonic() - started, 4)})
+        except EngineError as exc:
+            code = 'mineru_timeout' if exc.code in {'document_timeout', 'mineru_timeout'} else exc.code
+            result = failure(self.id, path, code if code in {'mineru_timeout', 'mineru_failed', 'engine_unavailable'} else 'mineru_failed', exc)
+            if result.error_code == 'engine_unavailable':
+                result.metadata['next_action'] = self.install_hint
+            return result
+        except (OSError, UnicodeError, ValueError) as exc:
+            return failure(self.id, path, 'mineru_failed', type(exc).__name__)
+        except RuntimeError as exc:
+            code = getattr(exc, 'code', 'mineru_failed')
+            return failure(self.id, path, code if code in {'mineru_timeout', 'engine_unavailable'} else 'mineru_failed', type(exc).__name__)
 
 
 class DefuddleEngine(DocumentEngine):

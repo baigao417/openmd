@@ -58,6 +58,7 @@ persistence, drawing geometry and layout are not certified; results are partial.
 | faster-whisper, RapidOCR, Pillow, PyMuPDF … | see each project | optional ASR/OCR extras or parser dependencies |
 | MarkItDown | MIT | optional `[pdf]` compatibility fallback; excluded from `[document]` |
 | pypandoc-binary / Pandoc | see wrapper and bundled executable licenses | optional `[pandoc]` structure fallback; no bundled copy in this repository |
+| MinerU | AGPL; model weights have separate terms | user-installed external CLI only; Openmd does not bundle its code or weights |
 
 FFmpeg, yt-dlp and other command-line tools are used only if you install them; their own licenses
 apply.

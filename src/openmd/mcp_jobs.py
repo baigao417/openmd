@@ -126,18 +126,26 @@ def _save_one(source: str, target: Path, *, batch_id: str | None = None) -> dict
 
 
 def save(source: str, output_directory: str, *, network: bool = False, browser: bool = False,
-         media: bool = False, asr: bool = False, cloud: bool = False) -> dict:
+         media: bool = False, asr: bool = False, cloud: bool = False,
+         ocr_engine: str | None = None) -> dict:
+    if ocr_engine not in {None, "auto", "mineru"}:
+        raise ValueError("unsupported_ocr_engine")
     target = destination(output_directory)
     with queue():
         status = _save_one(source, target)
         status["permissions"] = dict(network=network, browser=browser, media=media, asr=asr, cloud=cloud)
+        if ocr_engine is not None:
+            status["ocr_engine"] = ocr_engine
         host._write_status(host.jobs_root() / status["id"], status)
         _spawn()
     return _initial(status)
 
 
 def save_batch(sources: list[str], output_directory: str, *, network: bool = False, browser: bool = False,
-               media: bool = False, asr: bool = False, cloud: bool = False) -> dict:
+               media: bool = False, asr: bool = False, cloud: bool = False,
+               ocr_engine: str | None = None) -> dict:
+    if ocr_engine not in {None, "auto", "mineru"}:
+        raise ValueError("unsupported_ocr_engine")
     if not isinstance(sources, list) or not sources:
         raise ValueError("sources_required")
     if len(sources) > MAX_BATCH:
@@ -153,6 +161,8 @@ def save_batch(sources: list[str], output_directory: str, *, network: bool = Fal
         for source in normalized:
             status = _save_one(source, target, batch_id=batch_id)
             status["permissions"] = permissions.copy()
+            if ocr_engine is not None:
+                status["ocr_engine"] = ocr_engine
             host._write_status(host.jobs_root() / status["id"], status)
             statuses.append(status)
         _spawn()
@@ -195,6 +205,8 @@ def arguments(status: dict):
 
     source = status["snapshot_path"] if status.get("snapshot") else status["url"]
     argv = ["go", source, "--save-to", status["save_to"], "--json"]
+    if status.get("ocr_engine") in {"auto", "mineru"}:
+        argv += ["--ocr-engine", status["ocr_engine"]]
     if status.get("snapshot"):
         argv += ["--as-snapshot", "--url", status["url"]]
     argv += [flag for name, flag in GATES.items() if status["permissions"].get(name) is True]

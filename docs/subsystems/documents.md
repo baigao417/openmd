@@ -52,6 +52,11 @@ partial（不认证 95% 召回与版式）。XLS/ODF/FB2 可直接解析；MOBI/
 - Calibre：PATH 的 `ebook-convert`、`OPENMD_CALIBRE` 或 `tools.calibre.executable`。
   未安装返回 `engine_unavailable` 和安装提示。检测到 DRM 返回
   `ebook_drm_protected`；不解密、不尝试去除 DRM。
+- MinerU：用户自行安装的本地 CLI；配置 `OPENMD_MINERU` 或
+  `tools.mineru.executable`。PDF 可显式使用 `--ocr-engine mineru`，默认 `auto`
+  不改变既有路线；`tools.mineru.default` 可设为 `mineru`，`tools.mineru.tier`
+  可设 `basic` 或 `standard`。Openmd 不下载
+  权重或分发 MinerU；用户须遵守 AGPL 及独立模型权重许可。
 
 上述工具都不会自动安装。新文档解析子进程使用已有 owned-process 合同，Windows
 不显示控制台，超时或中断会终止本次创建的进程树。错误不回显工具原始 stderr。

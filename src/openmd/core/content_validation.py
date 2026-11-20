@@ -206,7 +206,9 @@ def weixin_error_page_reason(text: str) -> str | None:
     """
     visible = _outside_code(text)
     lines = [line.strip().strip("#*` ").rstrip("。.!！") for line in visible.splitlines() if line.strip()]
-    if re.search(r"参数错误|内容不存在|该内容已被发布者删除", visible) and len(re.sub(r"\s+", "", visible)) < 1200:
+    # A status screen shows the phrase as its own short line near the top; an
+    # article that quotes or explains the phrase keeps it inside sentences.
+    if any(line in {"参数错误", "内容不存在", "该内容已被发布者删除"} for line in lines[:8]) and len(re.sub(r"\s+", "", visible)) < 1200:
         return "error"
     if not lines or len(re.sub(r"\s+", "", text)) > 600:
         return None

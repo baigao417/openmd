@@ -198,6 +198,9 @@ def _process_items(
 def _process_input(input_url: str, args: argparse.Namespace, *, command: str) -> CliResult:
     from .cli import CliResult, OutputWriteResult, PackageValidationError, Path, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
 
+    if getattr(args, "ocr_engine", None) == "mineru":
+        args.fallback = False
+
     if getattr(args, "all", False):
         return _log_all_guard(input_url, args, command=command)
 

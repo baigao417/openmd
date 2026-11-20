@@ -167,6 +167,8 @@ def _allow_scoped_all_collect(input_url: str, args: argparse.Namespace) -> bool:
 def _build_backend_executor(args: argparse.Namespace, *, platform: str) -> BackendExecutor:
     from openmd.backends.video_metadata import enrich_video_result
 
+    if getattr(args, "ocr_engine", None) == "mineru":
+        args.fallback = False
     provider_registry = create_runtime_backend_provider_registry(
         platform,
         _backend_runtime_options(args),
@@ -190,8 +192,14 @@ def _build_discovery_executor(args: argparse.Namespace, *, platform: str) -> Dis
 
 def _backend_runtime_options(args: argparse.Namespace) -> BackendRuntimeOptions:
     keep_media_artifacts = getattr(args, "keep_media", False)
+    selected_ocr = getattr(args, "ocr_engine", None)
+    if selected_ocr is None:
+        from openmd.core.local_config import load_local_config
+        mineru = load_local_config().get("tools", {}).get("mineru", {})
+        selected_ocr = mineru.get("default", "auto") if isinstance(mineru, dict) else "auto"
     return BackendRuntimeOptions(
         backend_override=getattr(args, "backend", None),
+        ocr_engine=selected_ocr,
         requested_discovery_provider=getattr(args, "discovery_backend", None),
         enable_network_backends=getattr(args, "enable_network_backends", False),
         enable_browser_backends=getattr(args, "enable_browser_backends", False),

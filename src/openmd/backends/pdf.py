@@ -65,6 +65,13 @@ class PDFParserProvider:
 
         source = request.item.raw_meta.get("local_path") or request.item.url
         path = local_path_from_input(source)
+        if self.options.ocr_engine == "mineru" and path and path.is_file() and path.suffix.lower() == ".pdf":
+            from openmd.engines.tools import MinerUEngine
+            from openmd.engines.base import EngineLimits
+            from openmd.core.local_config import load_local_config
+            configured = load_local_config().get("tools", {}).get("mineru", {})
+            tier = configured.get("tier", "basic") if isinstance(configured, dict) else "basic"
+            return MinerUEngine().convert(path, EngineLimits(), tier=tier)
         if isinstance(self.parser, MarkItDownPDFParser) and path and path.is_file() and path.suffix.lower() in {'.docx', '.pptx', '.xlsx'}:
             from zipfile import ZipFile, BadZipFile
             from openmd.engines.base import EngineLimits

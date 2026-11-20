@@ -260,9 +260,14 @@ class OpenCliXiaoyuzhouTranscriptProvider:
                 )
 
             author = item.author or _reported_podcast(stdout)
+            description = _reported_description(stdout)
+            metadata_title = None
+            raw_description = item.raw_meta.get("description") or item.raw_meta.get("show_notes")
+            if not description and isinstance(raw_description, str) and raw_description.strip():
+                description = raw_description.strip()
             if not author:
                 # Transcript output omits podcast metadata in current OpenCLI.
-                # Public episode metadata uses no browser and never starts media/ASR.
+                # Public episode metadata also carries the page description.
                 try:
                     code, episode_stdout, _ = self._runner(
                         ["opencli", "xiaoyuzhou", "episode", episode_id, "-f", "json"],
@@ -270,15 +275,27 @@ class OpenCliXiaoyuzhouTranscriptProvider:
                     )
                     if code == 0:
                         author = _reported_podcast(episode_stdout)
+                        description = description or _reported_description(episode_stdout)
+                        metadata_title = _reported_title(episode_stdout)
                 except (OSError, ValueError, subprocess.SubprocessError):
-                    pass  # Metadata unavailability must not discard a usable transcript.
+                    pass  # Missing page metadata must not discard a usable transcript.
+
+            title = _reported_title(stdout) or metadata_title or item.title
+            transcript = text.rstrip() + "\n"
+            prefix = []
+            if title and description:
+                prefix.append(f"# {title}")
+            if description:
+                prefix.append(f"节目简介（来源：页面上的节目描述）：\n{description}")
+            if prefix:
+                transcript = "\n\n".join(prefix) + "\n\n" + transcript
 
             return TranscriptResult(
-                text=text.rstrip() + "\n",
+                text=transcript,
                 status="verified",
                 source_level="native_caption",
                 backend=self.name,
-                title=_reported_title(stdout) or item.title,
+                title=title,
                 author=author,
                 published_at=item.published_at,
                 source_notes=[
@@ -876,6 +893,23 @@ def _reported_podcast(stdout: str) -> str | None:
         value = row.get(key)
         if isinstance(value, dict):
             value = value.get("title")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _reported_description(stdout: str) -> str | None:
+    try:
+        payload = load_opencli_json(stdout)
+    except json.JSONDecodeError:
+        return None
+    row = payload[0] if isinstance(payload, list) and payload else payload
+    if not isinstance(row, dict):
+        return None
+    for key in ("description", "show_notes", "showNotes", "summary"):
+        value = row.get(key)
+        if isinstance(value, dict):
+            value = value.get("text") or value.get("description")
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None

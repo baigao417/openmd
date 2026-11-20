@@ -165,7 +165,7 @@ class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
             def runner(command, *, timeout):
                 calls.append(command)
                 if command[2] == "episode":
-                    return 0, json.dumps({"ok": True, "data": [{"podcast": "播客名称"}]}), ""
+                    return 0, json.dumps({"ok": True, "data": [{"podcast": "播客名称", "title": "节目标题", "description": "页面节目简介"}]}), ""
                 output = Path(command[command.index("--output") + 1])
                 (output / "transcript.txt").write_text("[00:00:00] original transcript", encoding="utf-8")
                 return 0, '{"ok":true}', ""
@@ -174,6 +174,7 @@ class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
             result = provider.extract(_request(_xiaoyuzhou_item(), provider.name))
             self.assertEqual(result.author, "播客名称")
             self.assertEqual(result.source_level, "native_caption")
+            self.assertTrue(result.text.startswith("# 节目标题\n\n节目简介（来源：页面上的节目描述）：\n页面节目简介\n\n"))
             self.assertEqual(len(calls), 2)
             self.assertEqual(calls[1][1:3], ["xiaoyuzhou", "episode"])
 

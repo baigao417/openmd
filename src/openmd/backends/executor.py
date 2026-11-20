@@ -361,13 +361,41 @@ class BackendExecutor:
         attempts: list[dict[str, str]] = []
         last_result: TranscriptResult | None = None
         current_item = request.item
+        guarded_web_candidates: set[str] = set()
+        web_candidates = {"defuddle.web.content", "web_article.trafilatura"}
 
         for backend in chain:
+            if backend in guarded_web_candidates:
+                continue
             provider = self._provider_for(backend)
-            if provider is None:
-                result = _failed_result(request.item, backend, "backend_not_registered")
+            if request.item.platform == "web_article" and backend in web_candidates:
+                from openmd.backends.web_article import apply_completeness_guard, _urllib_fetch
+
+                candidate_backends = [name for name in chain if name in web_candidates]
+                guarded_web_candidates.update(candidate_backends)
+                candidate_results: list[TranscriptResult] = []
+                for candidate_backend in candidate_backends:
+                    candidate_provider = self._provider_for(candidate_backend)
+                    if candidate_provider is None:
+                        candidate_results.append(_failed_result(request.item, candidate_backend, "backend_not_registered"))
+                    else:
+                        candidate_results.append(self._extract_one(candidate_provider, current_item, candidate_backend))
+                source_html = request.item.raw_meta.get("source_html")
+                if not isinstance(source_html, str) or not source_html:
+                    try:
+                        source_html = _urllib_fetch(request.item.url)
+                    except Exception:
+                        source_html = None
+                result = apply_completeness_guard(
+                    candidate_results,
+                    html=source_html.decode("utf-8", "replace") if isinstance(source_html, bytes) else source_html,
+                    title=request.item.title,
+                )
             else:
-                result = self._extract_one(provider, current_item, backend)
+                if provider is None:
+                    result = _failed_result(request.item, backend, "backend_not_registered")
+                else:
+                    result = self._extract_one(provider, current_item, backend)
 
             # Engine detection is evidence for every later fallback. Generic
             # article readers cannot replace a known missing forum body with UI.

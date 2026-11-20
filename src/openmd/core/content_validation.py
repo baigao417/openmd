@@ -166,6 +166,15 @@ def browser_error_page_reason(text: str, title: str | None = None) -> str | None
         for heading in headings[:4]
     ):
         return "browser_challenge_page"
+    zhihu_error = re.compile(r"你似乎来到了没有知识存在的荒原|4\s*秒后自动跳转至知乎首页|page error", re.I)
+    if page_title in {"你似乎来到了没有知识存在的荒原", "nowsecure.nl"} or any(zhihu_error.search(line) for line in headings[:8]):
+        return "browser_error_page" if "荒原" in " ".join(headings[:8]) or "page error" in " ".join(headings[:8]).lower() else "browser_challenge_page"
+    if "nowsecure.nl" in page_title and any("nodriver" in line.lower() for line in headings[:6]):
+        return "browser_challenge_page"
+    if page_title in {"not found", "page not found", "404 not found"} or ("page not found" in headings[:5] and len(plain) < 1200):
+        return "browser_network_error_page"
+    if page_title == "example domain" and "this domain is for use in documentation examples" in visible.lower():
+        return "browser_network_error_page"
     lines = [line.strip().strip("#*` ") for line in plain.splitlines() if line.strip()]
     headings = [*(lines[:8]), str(title or "").strip()]
     codes = [match.group(1) for line in lines[:12] if (match := _ERROR_CODE.fullmatch(line))]
@@ -195,7 +204,10 @@ def weixin_error_page_reason(text: str) -> str | None:
     These screens are short and lead with a standalone status line; an article
     that merely discusses such a phrase has body text around it.
     """
-    lines = [line.strip().strip("#*` ").rstrip("。.!！") for line in _outside_code(text).splitlines() if line.strip()]
+    visible = _outside_code(text)
+    lines = [line.strip().strip("#*` ").rstrip("。.!！") for line in visible.splitlines() if line.strip()]
+    if re.search(r"参数错误|内容不存在|该内容已被发布者删除", visible) and len(re.sub(r"\s+", "", visible)) < 1200:
+        return "error"
     if not lines or len(re.sub(r"\s+", "", text)) > 600:
         return None
     for line in lines[:3]:

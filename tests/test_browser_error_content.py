@@ -33,6 +33,24 @@ def test_technical_article_can_mention_browser_errors():
     assert browser_error_page_reason("# TLS troubleshooting\n\nERR_SSL_PROTOCOL_ERROR\n\nAfter fixing your certificate chain, reload the page.") is None
 
 
+@pytest.mark.parametrize(("platform", "body", "error_code"), [
+    ("weixin", "# 微信公众平台\n\n> 原文链接: https://mp.weixin.qq.com/s/missing\n\n---\n\n参数错误\n\n： ，视频 小程序 赞 分享 收藏", "weixin_error_page"),
+    ("web_article", "# 你似乎来到了没有知识存在的荒原\n\n4 秒后自动跳转至首页\n\n![page error](https://example.test/error.svg)\n\n登录后查看内容", "browser_error_page"),
+    ("web_article", "# NOWSECURE\n\n## by nodriver\n\n## NOWSECURE\n\n### by nodriver", "browser_challenge_page"),
+    ("web_article", "# Not Found\n\n## Page Not Found\n\n来自 iframe", "browser_error_page"),
+    ("web_article", "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. This is not a service.", "browser_error_page"),
+])
+def test_real_bench_status_screens_are_rejected(platform, body, error_code):
+    item = ContentItem(platform=platform, input_type="single", source_type="article", url="https://example.test/status")
+    rejected = validate_extraction_content(TranscriptResult(
+        text=body, status="verified", source_level="third_party_extractor", backend="fixture",
+        title=("nowsecure.nl" if "NOWSECURE" in body else "Example Domain" if "Example Domain" in body else "Not Found" if "Page Not Found" in body else None),
+    ), item)
+    assert rejected.status == "failed"
+    assert rejected.error_code == error_code
+    assert not rejected.has_usable_text
+
+
 def test_technical_article_can_use_a_browser_error_as_its_heading():
     body = "# Secure connection failed\n\n" + "A TLS handshake has several steps. " * 150
     assert browser_error_page_reason(body, "Secure connection failed") is None

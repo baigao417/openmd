@@ -24,6 +24,7 @@ from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.content_validation import html_to_markdown, login_wall_reason
 from openmd.core.login import normalize_login_result
 from openmd.core.models import TranscriptResult
+from openmd.backends.web_article import apply_completeness_guard, estimate_html_body_chars
 from openmd.runtime.interpreters import run_interruptibly
 
 
@@ -107,7 +108,7 @@ class SnapshotProvider:
         hint = snapshot_acceleration_hint(item.url)
         if hint:
             notes.append(hint)
-        return TranscriptResult(
+        result = TranscriptResult(
             text=text.rstrip() + "\n",
             status="verified",
             source_level="third_party_extractor" if used_managed else "partial_extraction",
@@ -116,6 +117,10 @@ class SnapshotProvider:
             source_notes=notes,
             metadata={"captured_from": "browser_snapshot", "coverage": "visible_only", "snapshot_path": str(path)},
         )
+        if item.platform == "page_snapshot":
+            body_chars = estimate_html_body_chars(html)
+            return apply_completeness_guard([result], body_chars=body_chars, title=title)
+        return result
 
     def _html_to_markdown(self, path: Path, html: str, url: str) -> tuple[str, bool]:
         if self.runner is not None:

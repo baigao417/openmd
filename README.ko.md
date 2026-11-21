@@ -56,6 +56,10 @@ openmd batch links.txt --out ./notes
 로컬 오피스 문서를 처리하거나 로컬에서 음성·영상을 전사하려면 필요에 따라 추가 의존성을 설치하세요.
 
 ```bash
+# 아래 전부를 한 번에 설치 (무엇이 필요한지 모를 때 권장)
+pip install "openmd-cli[all]"
+
+# 필요한 것만 고르려면:
 # 문서와 이미지 분석
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,12 @@ pip install "openmd-cli[asr]"
 
 # 영상·음성 파일 저장 (Openmd 관리 yt-dlp)
 pip install "openmd-cli[media]"
+
+# 네이티브 PDF 텍스트 레이어와 글자 단위 숨은 텍스트 제거 (PyMuPDF)
+pip install "openmd-cli[ocr-router]"
 ```
 
-> 참고: 문서 분석, OCR, 로컬 ASR에는 Python 패키지 외에 FFmpeg나 로컬 모델이 필요할 수 있습니다. 준비 상태는 `openmd doctor`로 확인할 수 있습니다.
+> 참고: `[all]`은 Python 패키지만 약 1 GB입니다(모델 제외). 문서 분석, OCR, 로컬 ASR에는 Python 패키지 외에 FFmpeg나 로컬 모델이 필요할 수 있습니다. 준비 상태는 `openmd doctor`로 확인할 수 있습니다.
 
 Openmd를 여러분의 에이전트나 자동화 도구 체인에 연결하려면 [도구 연동 가이드](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)를 참고하세요.
 

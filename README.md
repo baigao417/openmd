@@ -56,6 +56,10 @@ Each link becomes `Title.md` in the folder you choose. Run logs go to `~/.openmd
 For local office documents or local audio/video transcription, install the optional extras:
 
 ```bash
+# Everything below at once (recommended if you are not sure what you need)
+pip install "openmd-cli[all]"
+
+# Or pick only what you need:
 # Document and image parsing
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,12 @@ pip install "openmd-cli[asr]"
 
 # Save video/audio files (Openmd-managed yt-dlp)
 pip install "openmd-cli[media]"
+
+# Native PDF text layer with per-glyph hidden-text filtering (PyMuPDF)
+pip install "openmd-cli[ocr-router]"
 ```
 
-> Note: besides the Python packages, document parsing, OCR and local ASR may also need FFmpeg or local models. `openmd doctor` shows what is ready.
+> Note: `[all]` is about 1 GB of Python packages (models not included). Besides the Python packages, document parsing, OCR and local ASR may also need FFmpeg or local models. `openmd doctor` shows what is ready.
 
 To connect Openmd to your own agent or automation pipeline, see the [tool integration guide](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md).
 

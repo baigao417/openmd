@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+### 新增 / Added
+- 一次装齐全部可选功能：`pip install "openmd-cli[all]"`（约 1 GB Python 依赖，不含模型），包含文档、OCR、PDF 文字层（PyMuPDF）、Pandoc、音视频下载、本地转写与 MCP；README 同时补上此前缺失的 `[ocr-router]` 说明。 / Install every optional feature at once with `pip install "openmd-cli[all]"` (about 1 GB of Python packages, models not included): documents, OCR, the PDF text layer (PyMuPDF), Pandoc, media download, local transcription and MCP. The READMEs also document the previously missing `[ocr-router]` extra.
+
 ## [0.2.2]
 ### 修复 / Fixed
 - 原生文字 PDF（如论文）不再因为排版细节整页丢失：文字层改为逐字核查，不可见文字（不可见渲染、透明、低对比、极小字号、页外、被裁掉、被遮盖、隐藏图层）逐字删除，连字、字距等有歧义的排版保留文字并标为“文字层未核验”。未授权 OCR 时，10 篇冻结论文的文字召回由 0.16 提高到 0.995；回执写为“已输出 N/N 页，其中 M 页文字层未核验”。 / Native-text PDFs such as papers no longer lose whole pages to layout details: the text layer is checked per glyph, invisible text (invisible render mode, transparent, low contrast, tiny, off-page, clipped out, covered, hidden layers) is removed character by character, and ambiguous layout such as ligatures and kerning keeps its text marked “text layer unverified”. Without OCR permission, text recall on 10 frozen papers rose from 0.16 to 0.995, and the receipt reads “output N/N pages, M with an unverified text layer”.

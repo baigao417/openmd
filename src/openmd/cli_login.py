@@ -12,6 +12,14 @@ def paused_login(args, url):
 
 
 def recovery_fields(args):
+    qr_path = getattr(args, "_xiaoyuzhou_qr_path", None)
+    if qr_path:
+        return {"error_code": "login_required", "login": {"site": "小宇宙", "url": ""},
+                "qr_path": qr_path, "next_action": f"请用小宇宙 App 扫码：{qr_path}"}
+    auth_action = getattr(args, "_xiaoyuzhou_auth_next_action", None)
+    if auth_action:
+        return {"error_code": "login_required", "login": {"site": "小宇宙", "url": ""},
+                "next_action": auth_action}
     values = list(getattr(args, "_login_paused", {}).values())
     if not values:
         return {}
@@ -31,7 +39,17 @@ def source_next_action(error_code: str | None) -> str | None:
 def extract_with_login(executor, item, chain, args):
     from openmd.interactive import is_interactive
 
-    result = normalize_login_result(executor.extract(item, chain, allow_fallback=args.fallback), item)
+    raw = executor.extract(item, chain, allow_fallback=args.fallback)
+    if item.platform == "xiaoyuzhou" and raw.error_code == "login_required":
+        path = raw.metadata.get("qr_path")
+        action = raw.metadata.get("next_action")
+        if path:
+            args._xiaoyuzhou_qr_path = path
+            return raw
+        if isinstance(action, str):
+            args._xiaoyuzhou_auth_next_action = action
+            return raw
+    result = normalize_login_result(raw, item)
     if result.error_code != "login_required":
         return result
     login = result.metadata["login"]

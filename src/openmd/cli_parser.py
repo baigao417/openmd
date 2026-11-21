@@ -3,6 +3,7 @@ from __future__ import annotations
 
 def build_parser() -> argparse.ArgumentParser:
     from .cli import ADVANCED_COMMANDS, DOCTOR_PROFILES, GO_DAILY_OPTIONS, PLATFORM_IDS, _add_shared_options, argparse, cmd_batch, cmd_capabilities, cmd_collect, cmd_doctor, cmd_ingest, cmd_plan, cmd_report_feedback, cmd_report_weixin_author_batch, cmd_routes
+    from .cli_commands import cmd_xiaoyuzhou_auth
 
     parser = argparse.ArgumentParser(
         prog="openmd",
@@ -26,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     from .mcp_server import cmd_mcp
     mcp = subparsers.add_parser("mcp", description="Run the optional stdio MCP server")
     mcp.set_defaults(func=cmd_mcp)
+
+    for action in ("login", "logout"):
+        auth = subparsers.add_parser(action, description=f"{action.capitalize()} to a supported source account")
+        auth.add_argument("site", choices=("xiaoyuzhou",))
+        auth.set_defaults(auth_action=action, func=cmd_xiaoyuzhou_auth)
 
     from openmd.runtime.recommendations import cmd_models_install, matrix
     models = subparsers.add_parser('models', description='Local model installation plans; never downloads')

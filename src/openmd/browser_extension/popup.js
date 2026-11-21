@@ -21,6 +21,15 @@ async function init() {
   }
   $("label").textContent = tabs.length > 1 ? `把 ${tabs.length} 个标签页保存到` : "保存到";
   if (!tabs.length) message("这个页面不是普通网页，没法保存。");
+  const importButton = $("xiaoyuzhou-cookie-sync");
+  const currentHost = (() => { try { return new URL(tab?.url || "").hostname; } catch { return ""; } })();
+  importButton.hidden = !(currentHost === "xiaoyuzhoufm.com" || currentHost.endsWith(".xiaoyuzhoufm.com"));
+  importButton.onclick = async () => {
+    importButton.disabled = true;
+    const result = await chrome.runtime.sendMessage({ cmd: "import_xiaoyuzhou" });
+    message(result?.ok ? "小宇宙登录已导入 Openmd。" : (result?.error || "未能导入小宇宙登录，请确认网页已登录。"), result?.ok);
+    importButton.disabled = false;
+  };
   const list = $("locations");
   for (const loc of locations) {
     const li = document.createElement("li");

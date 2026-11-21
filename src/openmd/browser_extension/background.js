@@ -504,6 +504,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.cmd === "save") { saveTabs(msg.items, msg.locationId).then(reply); return true; }
   if (msg?.cmd === "snapshot") { saving(async () => { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return saveSnapshot(tab?.id, msg.locationId); }).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
+  if (msg?.cmd === "import_xiaoyuzhou") {
+    chrome.cookies.getAll({ domain: "xiaoyuzhoufm.com" }, (cookies) => {
+      const error = chrome.runtime.lastError;
+      if (error) { reply({ ok: false, error: "读取小宇宙登录状态失败，请确认扩展权限。" }); return; }
+      const selected = Object.fromEntries((cookies || [])
+        .filter((cookie) => ["x-jike-access-token", "x-jike-refresh-token"].includes(cookie.name))
+        .map((cookie) => [cookie.name, cookie.value]));
+      native({ type: "import_xiaoyuzhou", cookies: selected }).then((result) => {
+        reply(result?.ok ? { ok: true } : { ok: false, error: "没有找到可用的小宇宙登录凭证，请先在此浏览器登录后重试。" });
+      });
+    });
+    return true;
+  }
   if (msg?.cmd === "recent_feedback") {
     native({ type: "recent" }).then((result) => reply({
       ok: result?.ok === true,

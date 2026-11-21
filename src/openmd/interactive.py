@@ -345,6 +345,7 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
         "sync": row.get("sync") or getattr(result, "sync", {}) or {},
         "login": row.get("login") or getattr(result, "login", None),
         "next_action": getattr(result, "next_action", None),
+        "qr_path": getattr(result, "qr_path", None),
         "error_code": row.get("error_code") or getattr(result, "error_code", None),
     }
 

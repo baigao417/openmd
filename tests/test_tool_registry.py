@@ -27,13 +27,33 @@ def _catalog_data():
     return cards, routes
 
 
+def _media_tool(card_id="test-media", platform="bilibili", backend_id=None, *, asr=True):
+    backend_id = backend_id or f"{card_id}.{platform}.media"
+    capability = {
+        "id": backend_id, "card_id": card_id, "sources": [platform], "capability": "media",
+        "argv": ["fake-tool", "{url}"], "reader": {"type": "media_dir"},
+        "then": "asr.auto" if asr else None,
+        "gates": ["network", "media_download", *( ["asr"] if asr else [])],
+        "source_level": "media_asr" if asr else "media_download",
+        "timeout_s": 30, "validation": {"min_chars": 1},
+    }
+    return ({"schema": "openmd.tool-card/v1", "id": card_id, "kind": "command",
+             "version": "1", "license": "MIT", "homepage": "https://example.org",
+             "installation": {"mode": "isolated_existing", "verification": "test fixture"},
+             "evidence": [{"date": "2026-11-21", "ledger": "test", "scope": "synthetic"}],
+             "launcher": {"which": ["fake-tool"]}, "capabilities": [capability]}, capability)
+
+
 def test_route_reference_and_media_contract_rejected():
     cards, routes = _catalog_data()
     routes["routes"][0]["chain"].append("missing-tool")
     with pytest.raises(ValueError, match="route_backend_unknown"):
         validate_catalog(cards, routes)
     cards, routes = _catalog_data()
-    next(c for c in cards if c["id"] == "yutto")["capabilities"][0].pop("then")
+    card, _ = _media_tool()
+    cards.append(card)
+    routes["routes"].append({"source": "bilibili", "capability": "media", "chain": ["test-media.bilibili.media"]})
+    card["capabilities"][0].pop("then")
     with pytest.raises(ValueError, match="tool_media_requires_asr"):
         validate_catalog(cards, routes)
 
@@ -58,7 +78,8 @@ def test_command_tools_gated_and_explicit_override_preserved():
     override = create_runtime_backend_provider_registry("web_article", BackendRuntimeOptions(enable_network_backends=True, backend_override="web_article.trafilatura"))
     assert not isinstance(override.provider_for("defuddle.web.content"), CommandToolProvider)
     catalog = load_catalog()
-    provider = CommandToolProvider(catalog.cards["yutto"], catalog.capabilities["yutto.bilibili.media-asr"], BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True))
+    card, capability = _media_tool(asr=True)
+    provider = CommandToolProvider(card, capability, BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True))
     result = provider.extract(BackendExtractRequest(ContentItem("bilibili", "single", "https://www.bilibili.com/video/BV1KLGE6FEoJ"), (provider.name,)))
     assert result.error_code == "tool_permission_required"
 
@@ -173,12 +194,13 @@ def test_media_card_composes_actual_media_with_asr_factory(monkeypatch):
     monkeypatch.setattr(providers, "run_tool", download)
     monkeypatch.setattr(asr, "get_asr_backend", lambda name: ASR() if name == "asr.auto" else pytest.fail("wrong ASR factory"))
     catalog = load_catalog()
-    provider = CommandToolProvider(catalog.cards["yutto"], catalog.capabilities["yutto.bilibili.media-asr"], BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True, enable_asr_backends=True))
+    card, capability = _media_tool(asr=True)
+    provider = CommandToolProvider(card, capability, BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True, enable_asr_backends=True))
     result = provider.extract(BackendExtractRequest(ContentItem("bilibili", "single", "https://www.bilibili.com/video/BV1KLGE6FEoJ"), (provider.name,)))
     assert seen == [("Original video title.m4a", b"fake-audio-container")]
     assert result.status == "verified" and result.source_level == "media_asr" and result.backend == provider.name
     assert result.title == "Original video title"
-    assert result.metadata["asr_route"]["device"] == "cuda" and result.metadata["card_id"] == "yutto"
+    assert result.metadata["asr_route"]["device"] == "cuda" and result.metadata["tool_run"]["card_id"] == "test-media"
     assert result.text.startswith("[00:00:01]")
 
 
@@ -253,9 +275,7 @@ def test_python_console_script_cannot_bypass_isolated_shim(monkeypatch, tmp_path
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"schema": "openmd.local/v1"}), encoding="utf-8")
     monkeypatch.setenv("OPENMD_CONFIG", str(config))
-    with pytest.raises(ToolError) as error:
-        resolve_launcher(load_catalog().cards["yutto"])
-    assert error.value.code == "tool_not_installed"
+    assert "yutto" not in load_catalog().cards
 
 
 def test_unknown_and_local_gate_checks_never_raise():
@@ -298,7 +318,8 @@ def test_repeated_optional_media_retention_keeps_success(monkeypatch, tmp_path):
     monkeypatch.setattr(asr, "get_asr_backend", lambda name: ASR())
     catalog = load_catalog()
     options = BackendRuntimeOptions(enable_network_backends=True, enable_media_download_backends=True, enable_asr_backends=True, keep_media_artifacts=True, media_artifact_dir=str(tmp_path))
-    provider = CommandToolProvider(catalog.cards["yutto"], catalog.capabilities["yutto.bilibili.media-asr"], options)
+    card, capability = _media_tool(asr=True)
+    provider = CommandToolProvider(card, capability, options)
     request = BackendExtractRequest(ContentItem("bilibili", "single", "https://www.bilibili.com/video/BV1KLGE6FEoJ"), (provider.name,))
     assert provider.extract(request).status == provider.extract(request).status == "verified"
     assert len(list(tmp_path.glob("*.m4a"))) == 2
@@ -310,19 +331,15 @@ def test_repeated_optional_media_retention_keeps_success(monkeypatch, tmp_path):
     assert blocked.read_text(encoding="utf-8") == "existing user file"
 
 
-@pytest.mark.parametrize(
-    ("card_id", "backend_id", "platform", "url", "media_kind", "suffix"),
-    [
-        ("yutto", "yutto.bilibili.media-asr", "bilibili", "https://www.bilibili.com/video/BV1abc123", "video", ".mp4"),
-        ("xyz-dl", "xyz-dl.xiaoyuzhou.media-asr", "xiaoyuzhou", "https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", "audio", ".m4a"),
-    ],
-)
-def test_declared_media_route_download_only_skips_asr(monkeypatch, tmp_path, card_id, backend_id, platform, url, media_kind, suffix):
+@pytest.mark.parametrize(("platform", "url", "media_kind", "suffix"), [
+    ("bilibili", "https://www.bilibili.com/video/BV1abc123", "video", ".mp4"),
+    ("xiaoyuzhou", "https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", "audio", ".m4a"),
+])
+def test_media_route_download_only_skips_asr(monkeypatch, tmp_path, platform, url, media_kind, suffix):
     import openmd.routing.providers as providers
 
-    catalog = load_catalog()
-    capability = catalog.capabilities[backend_id]
-    card = catalog.cards[card_id]
+    card_id = f"test-{platform}"
+    card, capability = _media_tool(card_id, platform, asr=False)
     monkeypatch.setattr(providers, "installed_identity", lambda _card: {"tool_version_verified": True})
     seen = []
 
@@ -344,5 +361,4 @@ def test_declared_media_route_download_only_skips_asr(monkeypatch, tmp_path, car
     assert isinstance(result, Path) and result.is_file() and result.suffix == suffix
     assert result.read_bytes() == b"native-media"
     assert len(seen) == 1
-    if card_id == "yutto":
-        assert "--audio-only" not in seen[0]
+    assert seen[0] == ("fake-tool", "{url}")

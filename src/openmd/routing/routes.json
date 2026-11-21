@@ -22,14 +22,6 @@
       "last_verified": "2026-11-18"
     },
     {
-      "source": "bilibili",
-      "capability": "media",
-      "chain": [
-        "yutto.bilibili.media-asr"
-      ],
-      "last_verified": null
-    },
-    {
       "source": "youtube",
       "capability": "transcript",
       "chain": [
@@ -66,14 +58,6 @@
         "opencli.xiaoyuzhou.transcript"
       ],
       "last_verified": "2026-11-18"
-    },
-    {
-      "source": "xiaoyuzhou",
-      "capability": "media",
-      "chain": [
-        "xyz-dl.xiaoyuzhou.media-asr"
-      ],
-      "last_verified": null
     },
     {
       "source": "douyin",

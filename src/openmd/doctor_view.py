@@ -75,6 +75,9 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
 def render(payload: dict[str, Any]) -> str:
     rows = [row for row in capability_rows(payload) if row[0] is not None]
     lines = ["Openmd 体检", ""]
+    xiaoyuzhou = (payload.get("profile_diagnostics") or {}).get("xiaoyuzhou_login")
+    if xiaoyuzhou:
+        lines.append(f"  小宇宙：{xiaoyuzhou}")
     for ready, ability, how in rows:
         lines.append(f"  {'✓' if ready else '·'} {ability}" + ("" if ready else f"\n      → {how}"))
     missing = sum(1 for ready, *_ in rows if not ready)

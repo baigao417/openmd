@@ -90,6 +90,29 @@ def test_pdf_missing_pages_and_duplicate_page_ids():
     }
 
 
+def test_unverified_textlayer_pages_are_output_not_missing():
+    from openmd.core.completeness import check_completeness
+    from openmd.core.renderer import _completeness_frontmatter
+    item = ContentItem('pdf', 'single', 'https://example.test/doc.pdf', source_type='document')
+    pages = [{'page': 1, 'status': 'verified'}, {'page': 2, 'status': 'partial', 'textlayer_unverified': True},
+             {'page': 3, 'status': 'partial', 'textlayer_unverified': True}]
+    checked = check_completeness(item, transcript('pages', metadata={'pages': pages}), signals={'pdf_page_count': 3})
+    assert checked.status == 'partial'
+    gap = checked.metadata['completeness']['checks'][0]['gap']
+    assert gap == {'missing_pages': [], 'output_pages': 3, 'unverified_pages': 2, 'total_pages': 3}
+    assert '已输出 3/3 页，其中 2 页文字层未核验' in _completeness_frontmatter(checked)
+
+
+def test_missing_and_unverified_pages_are_reported_together():
+    from openmd.core.completeness import check_completeness
+    from openmd.core.renderer import _completeness_frontmatter
+    item = ContentItem('pdf', 'single', 'https://example.test/doc.pdf', source_type='document')
+    pages = [{'page': 1, 'status': 'partial', 'textlayer_unverified': True}, {'page': 2, 'status': 'partial', 'reason': 'ocr_permission_required'}]
+    checked = check_completeness(item, transcript('pages', metadata={'pages': pages}), signals={'pdf_page_count': 2})
+    assert checked.metadata['completeness']['checks'][0]['gap']['missing_pages'] == [2]
+    assert '输出 1/2 页，其中 1 页文字层未核验' in _completeness_frontmatter(checked)
+
+
 def test_frontmatter_and_runlog_retain_completeness(tmp_path):
     from openmd.core.completeness import check_completeness
     from openmd.core.output import write_item_result

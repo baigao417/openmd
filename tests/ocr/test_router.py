@@ -203,7 +203,10 @@ class PDFOfficeTests(unittest.TestCase):
             result = extract_pdf(item, allow_ocr=False)
             self.assertEqual(result.status, "partial")
             self.assertIn("First", result.text)
-            self.assertEqual(extract_pdf(item, backend="pdf.textlayer").error_code, "pdf_ocr_required")
+            native_only = extract_pdf(item, backend="pdf.textlayer", allow_ocr=False)
+            self.assertEqual(native_only.error_code, "pdf_partial")
+            self.assertIn("First", native_only.text)
+            self.assertEqual(native_only.metadata["pages"][1]["reason"], "ocr_permission_required")
 
     def test_missing_pymupdf_install_hint(self):
         with tempfile.TemporaryDirectory() as tmp:

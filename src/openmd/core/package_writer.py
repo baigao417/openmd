@@ -354,7 +354,7 @@ def build_package_metadata(
     if item.platform in {"pdf", "screenshot"}:
         from .secrets import sanitize_document_metadata
 
-        metadata["document_metadata"] = sanitize_document_metadata({key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata})
+        metadata["document_metadata"] = sanitize_document_metadata({key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial", "hidden_text_removed_chars") if key in result.metadata})
     if result.blocks:
         metadata["blocks"] = [block_as_dict(block) for block in result.blocks]
     if item.platform == "ai_chat" and result.metadata.get("anchor_response_id"):

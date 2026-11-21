@@ -43,14 +43,15 @@ class RenderConsistencyTests(unittest.TestCase):
         self.page.insert_text((20, 55), "Contradictory hidden invoice total 999 USD", fontsize=9)
         self.page.draw_rect((10, 30, 390, 70), color=None, fill=(1, 1, 1))
         probe = self.probe()
-        self.assertEqual(probe["route"], "ocr")
-        self.assertIn("rendered_text_obscured", probe["textlayer_rejected_reasons"])
+        self.assertEqual(probe["route"], "textlayer")
+        self.assertIn("opaque_fill_fully_covers_text", probe["hard_reasons"])
+        self.assertNotIn("999", probe["filtered_text"])
 
     def test_later_colored_cover_is_rejected(self):
         self.native()
         self.page.insert_text((20, 55), "Contradictory hidden invoice total 999 USD", fontsize=9)
         self.page.draw_rect((10, 30, 390, 70), color=None, fill=(0.15, 0.4, 0.7))
-        self.assertIn("rendered_text_obscured", self.probe()["textlayer_rejected_reasons"])
+        self.assertIn("opaque_fill_fully_covers_text", self.probe()["hard_reasons"])
 
     def test_partial_scan_with_hidden_layer_rejected_below_half_coverage(self):
         self.native()
@@ -68,7 +69,7 @@ class RenderConsistencyTests(unittest.TestCase):
         probe = self.probe()
         self.assertEqual(probe["image_area_ratio"], 0.3)
         self.assertEqual(probe["route"], "ocr")
-        self.assertIn("rendered_text_obscured", probe["textlayer_rejected_reasons"])
+        self.assertIn("opaque_fill_fully_covers_text", probe["hard_reasons"])
 
     def test_native_figure_and_nonoverlapping_caption_remain_native(self):
         self.native()
@@ -108,7 +109,7 @@ class RenderConsistencyTests(unittest.TestCase):
         self.native()
         self.vector_equal()
         probe = self.probe()
-        self.assertEqual(probe["route"], "ocr")
+        self.assertEqual(probe["route"], "textlayer")
         self.assertEqual(probe["invisible_text_chars"], 1)
         self.assertEqual(probe["vector_alternative_text_chars"], 0)
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,4 +146,4 @@ class RenderConsistencyTests(unittest.TestCase):
         span = self.page.get_texttrace()[-1]
         digit_boxes = [char[3] for char in span["chars"] if char[0] == ord("9")]
         self.page.draw_rect((digit_boxes[0][0] - 0.2, digit_boxes[0][1] - 0.2, digit_boxes[-1][2] + 0.2, digit_boxes[-1][3] + 0.2), color=None, fill=(1, 1, 1))
-        self.assertIn("rendered_text_obscured", self.probe()["textlayer_rejected_reasons"])
+        self.assertIn("opaque_fill_fully_covers_text", self.probe()["hard_reasons"])

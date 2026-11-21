@@ -112,7 +112,7 @@
       "source": "x",
       "capability": "content",
       "chain": [
-        "x-tweet-fetcher.x.content",
+        "openmd.x.public",
         "opencli.twitter.thread"
       ],
       "last_verified": "2026-11-18"

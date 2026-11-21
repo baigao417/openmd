@@ -19,6 +19,25 @@ from openmd.core.models import ContentItem
 
 
 class YouTubeOpenCliDiscoveryTests(unittest.TestCase):
+    def test_runner_keeps_usable_stdout_when_only_cleanup_changes_exit(self) -> None:
+        code, stdout, stderr = _run_opencli(
+            [sys.executable, "-c", "import sys; print('usable body'); sys.stderr.write('Owned-tab cleanup failed: Cannot close a tab while another command is using this session'); sys.exit(1)"],
+            timeout=5,
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout.strip(), "usable body")
+        self.assertIn("cleanup failed", stderr.lower())
+
+    def test_runner_preserves_original_error_when_cleanup_also_fails(self) -> None:
+        code, stdout, stderr = _run_opencli(
+            [sys.executable, "-c", "import sys; sys.stderr.write('login required\\nOwned-tab cleanup failed: cannot close a tab'); sys.exit(1)"],
+            timeout=5,
+        )
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout, "")
+        self.assertIn("login required", stderr)
+        self.assertNotIn("cleanup failed", stderr.lower())
+
     def test_run_opencli_timeout_returns_structured_failure_without_hanging(self) -> None:
         code, stdout, stderr = _run_opencli(
             [sys.executable, "-c", "import time; time.sleep(5)"],

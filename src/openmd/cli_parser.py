@@ -33,6 +33,14 @@ def build_parser() -> argparse.ArgumentParser:
         auth.add_argument("site", choices=("xiaoyuzhou",))
         auth.set_defaults(auth_action=action, func=cmd_xiaoyuzhou_auth)
 
+    from .installation import cmd_lifecycle
+    for action in ("update", "uninstall"):
+        lifecycle = subparsers.add_parser(action, description=f"{action.capitalize()} Openmd while preserving user data")
+        if action == "uninstall":
+            lifecycle.add_argument("--yes", action="store_true", help="skip the program-only uninstall confirmation")
+            lifecycle.add_argument("--purge-data", action="store_true", help="also delete Openmd user data after a second confirmation")
+        lifecycle.set_defaults(lifecycle_action=action, func=cmd_lifecycle)
+
     from openmd.runtime.recommendations import cmd_models_install, matrix
     models = subparsers.add_parser('models', description='Install optional local models')
     model_commands = models.add_subparsers(dest='models_command', required=True)

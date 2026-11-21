@@ -274,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_interactive():
             actual = ["go"]
-    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "shell-menu", "asr", "opencli", "models", "mcp", "login", "logout"} and not actual[0].startswith("-"):
+    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "shell-menu", "asr", "opencli", "models", "mcp", "login", "logout", "update", "uninstall"} and not actual[0].startswith("-"):
         actual.insert(0, "go")
     parser = build_parser()
     try:
@@ -285,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)  # stdio server startup must not mutate tool/cache state
     from openmd.runtime.managed_tools import activate as activate_managed_tools
 
-    if getattr(args, "command", None) != "doctor":
+    if getattr(args, "command", None) not in {"doctor", "update", "uninstall"}:
         from openmd.runtime.tempdirs import sweep_at_startup
 
         sweep_at_startup()
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     try:
-        if getattr(args, "command", None) != "doctor":
+        if getattr(args, "command", None) not in {"doctor", "update", "uninstall"}:
             activate_managed_tools()  # activate within the normal CLI error boundary
         return args.func(args)
     except (Exception, KeyboardInterrupt) as exc:

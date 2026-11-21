@@ -336,7 +336,7 @@ def run_benchmark(
         if result.metadata.get("pages"):
             from openmd.core.secrets import sanitize_document_metadata
 
-            summary["document_metadata"] = sanitize_document_metadata({"pages": result.metadata["pages"]})
+            summary["document_metadata"] = sanitize_document_metadata({key: result.metadata[key] for key in ("pages", "hidden_text_removed_chars") if key in result.metadata})
         evidence_files = _trial_artifacts(artifacts / trial_id, result, summary)
         row = {**summary, "card_id": cap["card_id"], "route_version": catalog.version, "sample_url": sanitize_url_text(sample["url"]), "argv_redacted": cap.get("argv", []), "exit_code": tool_run.get("exit_code"), "seconds": round(elapsed, 6), "files": tool_run.get("files", {}), "artifacts": evidence_files, "quality": quality, "quality_evidence": quality_evidence, "host_fingerprint": hashlib.sha256(f"{platform.system()}:{platform.machine()}:{platform.python_version()}".encode()).hexdigest()[:16]}
         rows.append(row)

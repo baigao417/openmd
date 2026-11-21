@@ -169,7 +169,7 @@ def build_item_runlog_entry(
         login=result.metadata.get("login"),
         original_error_code=result.metadata.get("original_error_code"),
         route_trace={key: result.metadata[key] for key in ("card_id", "route_version", "overlay_applied", "fallback_attempts") if key in result.metadata},
-        document_metadata={key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial") if key in result.metadata} if item.platform in {"screenshot", "pdf"} else {},
+        document_metadata={key: result.metadata[key] for key in ("pages", "office_loss_check", "office_recovery", "office_external_resources_fetched", "source_format", "mixed_routes", "pymupdf_version", "terminal_partial", "hidden_text_removed_chars") if key in result.metadata} if item.platform in {"screenshot", "pdf"} else {},
         output_path=output_path,
         package_id=package_id,
         package_operation=package_operation,

@@ -56,6 +56,10 @@ openmd batch links.txt --out ./notes
 ローカルのオフィス文書を処理したり、ローカルで音声・動画を文字起こししたりする場合は、必要に応じて追加の依存関係をインストールします。
 
 ```bash
+# 以下をまとめてインストール（必要なものが分からない場合におすすめ）
+pip install "openmd-cli[all]"
+
+# 必要なものだけを選ぶ場合：
 # 文書と画像の解析
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,12 @@ pip install "openmd-cli[asr]"
 
 # 動画・音声ファイルの保存（Openmd 管理の yt-dlp）
 pip install "openmd-cli[media]"
+
+# ネイティブ PDF テキスト層と文字単位の隠しテキスト除去（PyMuPDF）
+pip install "openmd-cli[ocr-router]"
 ```
 
-> 注：文書解析、OCR、ローカル ASR には、Python パッケージのほかに FFmpeg やローカルモデルが必要になる場合があります。準備状況は `openmd doctor` で確認できます。
+> 注：`[all]` は Python パッケージで約 1 GB です（モデルは含みません）。文書解析、OCR、ローカル ASR には、Python パッケージのほかに FFmpeg やローカルモデルが必要になる場合があります。準備状況は `openmd doctor` で確認できます。
 
 Openmd を自分のエージェントや自動化ツールチェーンに組み込みたい場合は、[ツール連携ガイド](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)をご覧ください。
 

@@ -56,6 +56,10 @@ openmd batch links.txt --out ./notes
 当你需要处理本地办公文档或启用本地音视频转写时，可按需安装扩展依赖：
 
 ```bash
+# 一次装齐下面全部（拿不准需要哪些时推荐）
+pip install "openmd-cli[all]"
+
+# 或者只装需要的：
 # 安装文档与图片解析依赖
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,12 @@ pip install "openmd-cli[asr]"
 
 # 保存视频/音频文件（Openmd 自带的 yt-dlp）
 pip install "openmd-cli[media]"
+
+# 原生 PDF 文字层与逐字隐藏文字过滤（PyMuPDF）
+pip install "openmd-cli[ocr-router]"
 ```
 
-> 注：文档解析、OCR 与本地 ASR 除安装 Python 依赖外，还可能需要准备 FFmpeg 或对应本地模型，可通过 `openmd doctor` 查看环境就绪情况。
+> 注：`[all]` 约 1 GB Python 依赖（不含模型）。文档解析、OCR 与本地 ASR 除安装 Python 依赖外，还可能需要准备 FFmpeg 或对应本地模型，可通过 `openmd doctor` 查看环境就绪情况。
 
 如果你想把 Openmd 接入自己的 Agent 或自动化工具链，可以阅读 [工具集成指南](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)。
 

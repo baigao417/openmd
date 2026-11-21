@@ -24,6 +24,7 @@ classifiers = [
 ]
 # Out-of-the-box: web/WeChat articles, YouTube captions; Node for the managed opencli.
 dependencies = ["trafilatura>=2,<3", "youtube-transcript-api>=1.2,<2", "beautifulsoup4>=4.12", "markdownify>=0.13",
+    "segno>=1.6,<2",
     # Bundled Node.js runtime for Openmd-managed opencli (browser-session routes).
     "nodejs-wheel-binaries>=22.12,<23"]
 

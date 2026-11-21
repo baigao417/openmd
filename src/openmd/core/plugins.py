@@ -38,6 +38,8 @@ class PlatformPlugin:
     resource_package: str
     routes_resource: str = "routes.json"
     card_resources: tuple[str, ...] = ("cards/builtin.json",)
+    extra_route_sources: frozenset[str] = frozenset()
+    route_only: bool = False
 
 
 @lru_cache(maxsize=1)
@@ -62,7 +64,10 @@ def load_plugins() -> tuple[PlatformPlugin, ...]:
         if not isinstance(plugin, PlatformPlugin):
             raise TypeError(f"plugin_descriptor_invalid: {entry.name}")
         ids = plugin.PLATFORM_IDS
-        if not ids or any(not isinstance(p, str) or not p or p in seen for p in ids) or len(ids) != len(set(ids)):
+        if plugin.route_only:
+            if ids or plugin.adapter_modules or plugin.backend_modules or plugin.collection_sources:
+                raise ValueError(f"plugin_route_only_descriptor_invalid: {entry.name}")
+        elif not ids or any(not isinstance(p, str) or not p or p in seen for p in ids) or len(ids) != len(set(ids)):
             raise ValueError(f"plugin_platform_invalid_or_duplicate: {entry.name}")
         if not callable(plugin.detect_platform) or not callable(plugin.collection_bindings):
             raise TypeError(f"plugin_callback_invalid: {entry.name}")
@@ -138,10 +143,11 @@ def routing_resources() -> tuple[tuple[PlatformPlugin, dict, list[dict]], ...]:
         routes = json.loads(root.joinpath(plugin.routes_resource).read_text(encoding="utf-8"))
         if routes.get("schema") != "openmd.plugin-routes/v1":
             raise ValueError("plugin_routes_schema_invalid")
-        if any(r.get("source") not in plugin.PLATFORM_IDS for r in routes.get("routes", [])):
+        allowed_routes = set(plugin.PLATFORM_IDS) | set(plugin.extra_route_sources)
+        if any(r.get("source") not in allowed_routes for r in routes.get("routes", [])):
             raise ValueError("plugin_route_source_undeclared")
         cards = [json.loads(root.joinpath(p).read_text(encoding="utf-8")) for p in plugin.card_resources]
-        if any(cap.get("source_id") not in plugin.PLATFORM_IDS for cap in routes.get("capabilities", [])):
+        if any(cap.get("source_id") not in allowed_routes for cap in routes.get("capabilities", [])):
             raise ValueError("plugin_capability_source_undeclared")
         resources.append((plugin, routes, cards))
     return tuple(resources)

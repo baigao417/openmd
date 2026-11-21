@@ -82,6 +82,9 @@ class CliResult:
     error_code: str | None = None
     login: dict[str, str] | None = None
     next_action: dict[str, str] | str | None = None
+    qr_path: str | None = None
+    qr_expires_at: int | None = None
+    qr_http_status: int | None = None
     status: str = "failed"
     source_level: str | None = None
     completeness: dict[str, object] = field(default_factory=dict)
@@ -96,7 +99,7 @@ class OutputWriteResult:
     renamed_from: str | None = None
 
 
-ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr", "mcp")
+ADVANCED_COMMANDS = ("ingest", "collect", "doctor", "probe", "routes", "report", "capabilities", "plan", "browser-setup", "asr", "mcp", "login", "logout")
 GO_DAILY_OPTIONS = {"help", "url", "save_to", "video", "raw", "json", "verbose", "include_thinking"}
 
 
@@ -106,6 +109,9 @@ def _runlog_path(args: argparse.Namespace) -> Path:
 
 def _print_result(result: CliResult) -> None:
     # Keep CLI status JSON ASCII-safe for Windows consoles with narrow encodings.
+    if result.qr_path and type(result.qr_expires_at) is not int:
+        from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
+        result.qr_expires_at = pending_qr_expiry(qr_path=result.qr_path)
     print(json.dumps(asdict(result), ensure_ascii=True, sort_keys=True))
 
 
@@ -268,7 +274,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if is_interactive():
             actual = ["go"]
-    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "shell-menu", "asr", "opencli", "models", "mcp"} and not actual[0].startswith("-"):
+    elif actual[0] not in {"ingest", "go", "batch", "collect", "capabilities", "plan", "doctor", "probe", "routes", "report", "browser-setup", "shell-menu", "asr", "opencli", "models", "mcp", "login", "logout"} and not actual[0].startswith("-"):
         actual.insert(0, "go")
     parser = build_parser()
     try:

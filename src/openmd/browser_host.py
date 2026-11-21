@@ -619,6 +619,17 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
                 reply.update(error_code="extension_protocol_mismatch",
                              error="扩展与本机 openmd 协议不兼容，请运行 openmd browser-setup 后重新加载扩展。")
             return reply
+        if kind == "import_xiaoyuzhou":
+            cookies = message.get("cookies")
+            if not isinstance(cookies, dict):
+                return {"ok": False, "error_code": "xiaoyuzhou_cookies_missing"}
+            access = cookies.get("x-jike-access-token")
+            refresh = cookies.get("x-jike-refresh-token")
+            if not isinstance(access, str) or not access or not isinstance(refresh, str) or not refresh:
+                return {"ok": False, "error_code": "xiaoyuzhou_cookies_missing"}
+            from openmd.platforms.xiaoyuzhou_auth import import_tokens
+            import_tokens(access, refresh)
+            return {"ok": True}
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "save_snapshot":

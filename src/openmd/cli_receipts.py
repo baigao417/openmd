@@ -161,7 +161,7 @@ def _emit_result(
     discovery_complete: bool = True,
     manifest_only: bool = False,
 ) -> int:
-    from .cli import CliResult, CompactReceiptRun, _print_compact_failure, _print_result, _sync_compact_rows, argparse, json
+    from .cli import CliResult, CompactReceiptRun, Path, _print_compact_failure, _print_result, _sync_compact_rows, argparse, json
 
     run = getattr(args, "_compact_receipt_run", None)
     if run is None:
@@ -194,6 +194,16 @@ def _emit_result(
         )
         if result.next_action:
             payload.update(error_code=result.error_code, login=result.login, next_action=result.next_action, paused_count=result.paused_count)
+        if result.qr_path and Path(result.qr_path).is_absolute():
+            payload["qr_path"] = result.qr_path
+            qr_expires_at = result.qr_expires_at
+            if type(qr_expires_at) is not int:
+                from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
+                qr_expires_at = pending_qr_expiry(qr_path=result.qr_path)
+            if type(qr_expires_at) is int:
+                payload["qr_expires_at"] = qr_expires_at
+        if type(result.qr_http_status) is int:
+            payload["qr_http_status"] = result.qr_http_status
         lock = getattr(args, "_compact_output_lock", None)
         if lock is not None:
             lock.release()

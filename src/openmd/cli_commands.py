@@ -2,6 +2,34 @@
 from __future__ import annotations
 
 
+def cmd_xiaoyuzhou_auth(args) -> int:
+    import sys
+    from openmd.platforms.xiaoyuzhou_auth import AuthError, CredentialStore, begin_login
+    from openmd.interactive import is_interactive
+
+    store = CredentialStore()
+    if args.auth_action == "logout":
+        store.delete()
+        store.pending_path.unlink(missing_ok=True)
+        print("小宇宙：未登录")
+        return 0
+    interactive = is_interactive()
+    try:
+        result = begin_login(store, wait=interactive, terminal=interactive)
+    except AuthError as exc:
+        print(str(exc), file=sys.stderr)
+        print("请检查网络后重试 openmd login xiaoyuzhou。", file=sys.stderr)
+        return 1
+    if result.status == "logged_in":
+        print("小宇宙：已登录")
+        return 0
+    if result.qr_path and not interactive:
+        print(f"二维码：{result.qr_path}\n请用小宇宙 App 扫码；完成后重试 openmd login xiaoyuzhou。")
+        return 0
+    print("小宇宙：需要重新扫码。运行 openmd login xiaoyuzhou 重试。", file=sys.stderr)
+    return 1
+
+
 def cmd_opencli(args) -> int:
     import argparse
     import json

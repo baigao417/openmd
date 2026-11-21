@@ -2503,7 +2503,6 @@ class RegistryAndBackendTests(unittest.TestCase):
                 "bilibili-harvest.core",
                 "yt-dlp.bilibili",
                 "asr.fallback",
-                "yutto.bilibili.media-asr",
             ),
         )
         self.assertEqual(
@@ -3432,7 +3431,7 @@ class RegistryAndBackendTests(unittest.TestCase):
         registry = create_default_registry()
         chain = registry.backend_chain("xiaoyuzhou")
         self.assertEqual(chain[0], "opencli.xiaoyuzhou.transcript")
-        self.assertIn("xyz-dl.xiaoyuzhou.media-asr", chain)
+        self.assertNotIn("xyz-dl.xiaoyuzhou.media-asr", chain)
         self.assertNotIn("podwise.transcript", chain)
 
     def test_registry_uses_opencli_xiaoe_adapter(self) -> None:

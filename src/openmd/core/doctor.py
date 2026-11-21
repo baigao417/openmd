@@ -88,6 +88,8 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
         "account_actions": "not_performed",
         "ready": manifest_valid,
     }
+    from openmd.platforms.xiaoyuzhou_auth import status as xiaoyuzhou_auth_status
+    diagnostics["xiaoyuzhou_login"] = xiaoyuzhou_auth_status()
     from openmd.engines.diagnostics import document_formats
     diagnostics['document_formats'] = document_formats()
     from openmd.browser_diagnostics import browser_host_diagnostics

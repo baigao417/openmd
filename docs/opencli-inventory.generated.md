@@ -73,9 +73,9 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:97`
 - `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
 - `qwen/status`: `src/openmd/backends/ai_chat.py:255`
-- `twitter/article`: `src/openmd/backends/x.py:116`
-- `twitter/thread`: `src/openmd/backends/x.py:88`
-- `twitter/tweets`: `src/openmd/backends/x.py:102`
+- `twitter/article`: `src/openmd/backends/x.py:121`
+- `twitter/thread`: `src/openmd/backends/x.py:93`
+- `twitter/tweets`: `src/openmd/backends/x.py:107`
 - `web/read`: `src/openmd/backends/web_article.py:412`, `src/openmd/backends/xiaoyuzhou.py:158`
 - `weixin/download`: `src/openmd/backends/weixin.py:269`
 - `xiaoe/catalog`: `src/openmd/backends/xiaoe.py:134`

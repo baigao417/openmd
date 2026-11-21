@@ -196,6 +196,21 @@
       "status_policy": "provider_defined"
     },
     {
+      "id": "openmd.x.public",
+      "provider": "openmd.x.public",
+      "sources": [
+        "x"
+      ],
+      "capability": "content",
+      "gates": [
+        "network"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": false,
+      "cost_class": "none",
+      "status_policy": "provider_defined"
+    },
+    {
       "id": "opencli.twitter.thread",
       "provider": "opencli.twitter.thread",
       "sources": [

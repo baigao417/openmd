@@ -8,10 +8,12 @@ from openmd.backends.base import BackendExtractRequest
 from openmd.backends.executor import SkeletonBackendProvider
 from openmd.backends.registry import BackendRuntimeOptions, create_runtime_backend_provider_registry
 from openmd.backends.x import (
+    FXTWITTER_BACKEND,
     OPENCLI_TWITTER_ARTICLE_BACKEND,
     OPENCLI_TWITTER_THREAD_BACKEND,
     OPENCLI_TWITTER_TWEETS_BACKEND,
     OpenCliTwitterTextProvider,
+    XPublicLayeredProvider,
     classify_twitter_failure,
 )
 from openmd.core.models import ContentItem
@@ -32,7 +34,7 @@ def test_table_thread_title_uses_requested_post_and_preserves_body(tmp_path):
     result = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, text, "")).extract(
         BackendExtractRequest(item=item, backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,))
     )
-    assert result.title == "@writer：第一行|原文 下一行"
+    assert result.title == "第一行|原文 下一行"
     assert result.author == "@writer"
     assert result.text == text
     document = render_markdown_document(item, result)
@@ -41,6 +43,18 @@ def test_table_thread_title_uses_requested_post_and_preserves_body(tmp_path):
     assert written.stem == filename_base_for_item(result.title, item_id=item.id, url=item.url)
     saved_title = next(line.removeprefix("title: ") for line in written.read_text(encoding="utf-8").splitlines() if line.startswith("title: "))
     assert json.loads(saved_title) == result.title
+
+
+def test_table_thread_title_drops_trailing_short_link():
+    text = (
+        "| id | author | text | url |\n| --- | --- | --- | --- |\n"
+        "| 123 | @writer | A clean first sentence https://t.co/abc123 | https://x.com/writer/status/123 |\n"
+    )
+    item = ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article")
+    result = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, text, "")).extract(
+        BackendExtractRequest(item=item, backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,))
+    )
+    assert result.title == "A clean first sentence"
 
 
 def test_thread_without_title_has_stable_post_fallback():
@@ -52,6 +66,109 @@ def test_thread_without_title_has_stable_post_fallback():
 
 
 class XOpenCliTextProviderTests(unittest.TestCase):
+    def test_opencli_title_does_not_use_author_plus_body_summary(self) -> None:
+        provider = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, "# 作者：正文前 56 字…\n\n正文实际首句。完整文本继续。", ""))
+        result = provider.extract(BackendExtractRequest(
+            item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,),
+        ))
+        self.assertEqual(result.title, "正文实际首句。完整文本继续。")
+
+    def test_opencli_usable_stdout_survives_cleanup_exit_warning(self) -> None:
+        provider = OpenCliTwitterTextProvider(
+            runner=lambda *a, **k: (1, "# Clean title\n\nValid public body", "Owned-tab cleanup failed")
+        )
+        result = provider.extract(BackendExtractRequest(
+            item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,),
+        ))
+        self.assertEqual(result.status, "verified")
+        self.assertIn("cleanup", " ".join(result.source_notes).lower())
+        self.assertEqual(result.text, "# Clean title\n\nValid public body\n")
+
+    def test_opencli_cleanup_warning_does_not_replace_original_failure(self) -> None:
+        provider = OpenCliTwitterTextProvider(
+            runner=lambda *a, **k: (1, "", "login required; Owned-tab cleanup failed")
+        )
+        result = provider.extract(BackendExtractRequest(
+            item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            backend_chain=(OPENCLI_TWITTER_THREAD_BACKEND,),
+        ))
+        self.assertEqual(result.error_code, "x_auth_required")
+
+    def test_syndication_truncated_result_falls_through_to_full_api(self) -> None:
+        responses = iter([
+            (200, {"id_str": "123", "text": "x" * 194, "user": {"screen_name": "writer", "name": "Writer"}}),
+            (200, {"tweet": {"text": "Complete long article body", "author": {"name": "Writer", "screen_name": "writer"}, "created_at": "2026-11-20T12:00:00Z", "media": {"photos": [{"url": "https://pbs.twimg.com/media/a.jpg"}]}}}),
+        ])
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: next(responses))
+        result = provider.extract(BackendExtractRequest(
+            item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            backend_chain=(FXTWITTER_BACKEND,),
+        ))
+        self.assertEqual(result.status, "verified")
+        self.assertIn("Complete long article body", result.text)
+        self.assertIn("https://pbs.twimg.com/media/a.jpg", result.text)
+        self.assertEqual(result.title, "Complete long article body")
+        self.assertEqual(result.author, "Writer")
+
+    def test_x_article_uses_article_title_and_full_blocks(self) -> None:
+        payload = {"tweet": {"text": "Short preview", "article": {"title": "The Article Title", "content": {"blocks": [{"type": "header-two", "text": "Section"}, {"type": "unstyled", "text": "Full article paragraph with link." , "entityRanges": [{"offset": 28, "length": 4, "key": 0}]}, {"type": "atomic", "text": "", "entityRanges": [{"offset": 0, "length": 1, "key": 1}]}], "entityMap": {"0": {"type": "LINK", "data": {"url": "https://example.test/source"}}, "1": {"type": "MEDIA", "data": {"mediaItems": [{"mediaId": "m1"}]}}}}, "media_entities": [{"media_id": "m1", "media_info": {"original_img_url": "https://pbs.twimg.com/media/article.jpg"}}]}, "author": {"name": "Writer"}}}
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (200, payload))
+        result = provider.extract(BackendExtractRequest(item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"), backend_chain=(FXTWITTER_BACKEND,)))
+        self.assertEqual(result.status, "verified")
+        self.assertEqual(result.title, "The Article Title")
+        self.assertIn("## Section\n\nFull article paragraph with [link](https://example.test/source).", result.text)
+        self.assertNotIn("Short preview", result.text)
+        self.assertIn("[link](https://example.test/source)", result.text)
+        self.assertIn("![](https://pbs.twimg.com/media/article.jpg)", result.text)
+
+    def test_all_public_layers_failed_falls_through_to_opencli(self) -> None:
+        from openmd.backends.executor import BackendExecutor
+        from openmd.core.models import TranscriptResult
+
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (503, {}))
+        class BrowserFallback:
+            def extract(self, request):
+                return TranscriptResult(text="# Browser title\n\nReadable text", status="verified", source_level="native_text", backend=request.primary_backend)
+        item = ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article")
+        result = BackendExecutor(providers={FXTWITTER_BACKEND: provider, OPENCLI_TWITTER_THREAD_BACKEND: BrowserFallback()}).extract(item, (FXTWITTER_BACKEND, OPENCLI_TWITTER_THREAD_BACKEND))
+        self.assertEqual(result.status, "verified")
+        self.assertEqual(result.backend, OPENCLI_TWITTER_THREAD_BACKEND)
+
+    def test_failed_public_layers_keep_attempts_and_actionable_next_step(self) -> None:
+        from openmd.backends.executor import BackendExecutor
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (503, {}))
+        browser = OpenCliTwitterTextProvider(runner=lambda *a, **k: (124, "", "OpenCLI command timed out after 60 seconds."))
+        result = BackendExecutor(providers={FXTWITTER_BACKEND: provider, OPENCLI_TWITTER_THREAD_BACKEND: browser}).extract(
+            ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            (FXTWITTER_BACKEND, OPENCLI_TWITTER_THREAD_BACKEND),
+        )
+        self.assertEqual(result.status, "failed")
+        self.assertIn(FXTWITTER_BACKEND, [a["backend"] for a in result.metadata["fallback_attempts"]])
+        self.assertIn("Next step:", result.error_summary or "")
+
+    def test_public_api_failure_categories_are_preserved(self) -> None:
+        cases = (
+            (404, {}, "x_not_found"),
+            (403, {}, "x_access_denied"),
+            (429, {}, "x_rate_limited"),
+            (503, {}, "x_network_failed"),
+            (200, {"code": 404, "message": "Tweet not found"}, "x_not_found"),
+            (200, {"code": 403, "message": "Protected post"}, "x_access_denied"),
+            (200, {"code": 429, "message": "Rate limited"}, "x_rate_limited"),
+        )
+        for status, payload, expected in cases:
+            with self.subTest(status=status, payload=payload):
+                provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (status, payload))
+                result = provider.extract(BackendExtractRequest(
+                    item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+                    backend_chain=(FXTWITTER_BACKEND,),
+                ))
+                self.assertEqual(result.status, "failed")
+                self.assertIn(expected, result.metadata["x_public_attempts"][-1])
+                self.assertIn("Next step:", result.error_summary or "")
+
     def test_thread_provider_uses_post_id_and_does_not_pass_query_tokens(self) -> None:
         calls: list[tuple[list[str], int]] = []
 
@@ -271,6 +388,12 @@ class XOpenCliTextProviderTests(unittest.TestCase):
         self.assertIsInstance(thread_provider, OpenCliTwitterTextProvider)
         self.assertIsInstance(tweets_provider, OpenCliTwitterTextProvider)
         self.assertIsInstance(article_provider, OpenCliTwitterTextProvider)
+
+        network_registry = create_runtime_backend_provider_registry(
+            "x",
+            BackendRuntimeOptions(enable_network_backends=True),
+        )
+        self.assertIsInstance(network_registry.provider_for(FXTWITTER_BACKEND), XPublicLayeredProvider)
 
     def test_requested_article_backend_still_requires_browser_gate(self) -> None:
         safe_registry = create_runtime_backend_provider_registry(

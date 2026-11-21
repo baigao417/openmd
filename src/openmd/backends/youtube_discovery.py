@@ -360,7 +360,20 @@ def _run_opencli(
         return 124, _to_text(stdout), f"OpenCLI command timed out after {timeout} seconds."
     except OSError as exc:
         return 127, "", sanitize_error_summary(exc)
-    return process.returncode or 0, stdout or "", stderr or ""
+    return _classify_opencli_completion(process.returncode or 0, stdout or "", stderr or "")
+
+
+def _classify_opencli_completion(exit_code: int, stdout: str, stderr: str) -> tuple[int, str, str]:
+    """Keep browser-tab cleanup diagnostics from changing extraction outcome."""
+    cleanup_prefixes = ("owned-tab cleanup", "owned tab cleanup", "cleanup failed", "cannot close a tab")
+    lines = stderr.splitlines()
+    has_cleanup = any(any(line.strip().lower().startswith(prefix) for prefix in cleanup_prefixes) for line in lines)
+    if not has_cleanup:
+        return exit_code, stdout, stderr
+    if stdout.strip():
+        return 0, stdout, stderr
+    preserved = [line for line in lines if not any(line.strip().lower().startswith(prefix) for prefix in cleanup_prefixes)]
+    return exit_code, stdout, "\n".join(preserved).strip()
 
 
 def _is_windows_batch_file(executable: str) -> bool:

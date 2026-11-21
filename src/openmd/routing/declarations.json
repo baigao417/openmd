@@ -133,7 +133,7 @@
         "source": "x",
         "capability": "content",
         "chain": [
-          "x-tweet-fetcher.x.content",
+          "openmd.x.public",
           "opencli.twitter.thread"
         ],
         "last_verified": "2026-11-18"
@@ -826,6 +826,21 @@
           "source_level": "provider_defined",
           "requires_login": false,
           "cost_class": "unknown",
+          "status_policy": "provider_defined"
+        },
+        {
+          "id": "openmd.x.public",
+          "provider": "openmd.x.public",
+          "sources": [
+            "x"
+          ],
+          "capability": "content",
+          "gates": [
+            "network"
+          ],
+          "source_level": "provider_defined",
+          "requires_login": false,
+          "cost_class": "none",
           "status_policy": "provider_defined"
         },
         {

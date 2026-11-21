@@ -68,6 +68,16 @@ apply.
 Committed fixtures and mock content are synthetic. No ownership or redistribution right is claimed
 over platform data or anything Openmd retrieves for you.
 
+## X public extraction compatibility
+
+The X public provider adapts public response formats, Article block
+reconstruction, and endpoint behavior studied from
+[FxEmbed/FxEmbed](https://github.com/FxEmbed/FxEmbed) (MIT) and
+[ythx-101/x-tweet-fetcher](https://github.com/ythx-101/x-tweet-fetcher) (MIT).
+No upstream source files are copied into Openmd. The upstream projects' MIT
+licenses apply to their own repositories and are not relicensed by this notice.
+Public API availability is not guaranteed by either project.
+
 
 ## imageio-ffmpeg
 

@@ -15,7 +15,7 @@ Generated from bundled cards and routes, version `2026-11-10.1`.
 | tiktok | content | opencli.tiktok.user | — |
 | xiaohongshu | content | xiaohongshu.composite | — |
 | xiaoe | transcript | opencli.xiaoe.transcript → opencli.xiaoe.content | 2026-11-18 |
-| x | content | x-tweet-fetcher.x.content → opencli.twitter.thread | 2026-11-18 |
+| x | content | openmd.x.public → opencli.twitter.thread | 2026-11-18 |
 | web_article | content | web_article.discourse → defuddle.web.content → web_article.trafilatura → opencli.web.read | 2026-11-18 |
 | feishu | content | lark-cli.docs.fetch → lark-cli.drive.export-markdown → lark-cli.markdown.fetch → manual.markdown-export | — |
 | generic_media | transcript | asr.fallback | — |

@@ -27,6 +27,7 @@ from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.backends.xiaohongshu import (
     classify_xiaohongshu_failure,
+    has_required_signed_query,
     normalize_xiaohongshu_url,
     xiaohongshu_user_id,
 )
@@ -141,7 +142,7 @@ class XiaohongshuCompositeProvider:
         image_ocr: ImageOcrExtractor | None = None,
         asr_client: AsrClient | None = None,
         hard_subtitle_ocr: HardSubtitleExtractor | None = None,
-        opencli_timeout: int = 900,
+        opencli_timeout: int = 60,
         ffmpeg_timeout: int = 600,
         asr_timeout: int = 300,
     ) -> None:
@@ -194,8 +195,15 @@ class XiaohongshuCompositeProvider:
         item = request.item
         if item.platform != "xiaohongshu":
             return _command_failure(item, "unsupported_platform", "Xiaohongshu composite provider only supports xiaohongshu.")
-        profile_id = _profile_id_for_item(item)
+        runtime_url = str(item.raw_meta.get("runtime_note_url") or "").strip()
         selector = _runtime_selector_for_item(item)
+        if not selector and not has_required_signed_query(runtime_url or item.url):
+            return _command_failure(
+                item,
+                "xiaohongshu_signed_url_required",
+                "请在浏览器里打开这条笔记再点扩展，或从分享按钮复制完整链接。",
+            )
+        profile_id = _profile_id_for_item(item)
         download = self._options.enable_media_download_backends
         with owned_temporary_directory(prefix="openmd-xiaohongshu-assets-") as temp_dir:
             temp_root = Path(temp_dir)
@@ -209,10 +217,19 @@ class XiaohongshuCompositeProvider:
             )
             exit_code, stdout, stderr = self._runner(command, self._opencli_timeout, selector)
             if exit_code != 0:
+                if exit_code == 124:
+                    try:
+                        from openmd.runtime.services import finish_openmd_bridge
+                        finish_openmd_bridge()
+                    except (ImportError, OSError, RuntimeError):
+                        pass
+                    summary = f"OpenCLI note-assets timed out after {self._opencli_timeout} seconds. 请在浏览器中打开笔记后点 Openmd 扩展。"
+                else:
+                    summary = stderr or stdout or f"OpenCLI exited with code {exit_code}."
                 return _command_failure(
                     item,
                     classify_xiaohongshu_failure(stderr or stdout),
-                    stderr or stdout or f"OpenCLI exited with code {exit_code}.",
+                    summary,
                 )
             try:
                 bundle = parse_opencli_xiaohongshu_note_assets(stdout, temp_root=temp_root)

@@ -67,6 +67,7 @@ def _item(*, source_type: str = "mixed", media_kind: str = "mixed") -> ContentIt
         source_type=source_type,
         raw_meta={
             "profile_id": PROFILE_ID,
+            "runtime_note_url": NOTE_URL + "?xsec_token=fixture&xsec_source=pc_share",
             "media_kind": media_kind,
             "extraction_contract_version": XIAOHONGSHU_EXTRACTION_CONTRACT_VERSION,
             "required_components": ["native_text", "image_ocr", "video_transcript"],
@@ -437,6 +438,46 @@ class XiaohongshuAdapterTests(unittest.TestCase):
 
 
 class XiaohongshuCompositeProviderTests(unittest.TestCase):
+    def test_default_opencli_timeout_is_bounded_to_about_one_minute(self) -> None:
+        provider = XiaohongshuCompositeProvider(BackendRuntimeOptions(enable_browser_backends=True))
+        self.assertLessEqual(provider._opencli_timeout, 60)
+
+    def test_unsigned_note_fails_before_opencli_with_user_next_step(self) -> None:
+        calls = []
+        provider = XiaohongshuCompositeProvider(
+            BackendRuntimeOptions(enable_browser_backends=True),
+            runner=lambda *args: (calls.append(args) or (1, "", "unexpected")),
+        )
+        item = _item()
+        raw_meta = {key: value for key, value in item.raw_meta.items() if key != "runtime_note_url"}
+        item = ContentItem(platform=item.platform, input_type=item.input_type,
+            url="https://www.xiaohongshu.com/discovery/item/6a0fc2060000000035039084",
+            source_type=item.source_type, raw_meta=raw_meta)
+
+        result = provider.extract(_request(item))
+
+        self.assertEqual(result.error_code, "xiaohongshu_signed_url_required")
+        self.assertIn("请在浏览器里打开这条笔记再点扩展", result.error_summary)
+        self.assertIn("分享按钮复制完整链接", result.error_summary)
+        self.assertEqual(calls, [])
+
+    def test_timeout_returns_guidance_and_closes_this_owned_browser_job(self) -> None:
+        from unittest.mock import patch
+
+        provider = XiaohongshuCompositeProvider(
+            BackendRuntimeOptions(enable_browser_backends=True),
+            runner=lambda *_args: (124, "", "timeout"),
+        )
+        item = _item()
+        item = ContentItem(platform=item.platform, input_type=item.input_type,
+            url="https://www.xiaohongshu.com/discovery/item/6a0fc2060000000035039084?xsec_token=fixture&xsec_source=share",
+            source_type=item.source_type, raw_meta=item.raw_meta)
+        with patch("openmd.runtime.services.finish_openmd_bridge") as cleanup:
+            result = provider.extract(_request(item))
+        cleanup.assert_called_once_with()
+        self.assertEqual(result.error_code, "opencli_xiaohongshu_timeout")
+        self.assertIn("请在浏览器中打开笔记后点 Openmd 扩展", result.error_summary)
+
     def test_note_not_found_is_durable_terminal_gap_not_retryable_failure(self) -> None:
         provider = XiaohongshuCompositeProvider(
             BackendRuntimeOptions(enable_browser_backends=True),

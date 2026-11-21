@@ -422,7 +422,7 @@ class OpenCliXiaoeContentProvider:
                 "content_selector": content_payload.content_selector,
             },
         )
-        return validate_extraction_content(result)
+        return validate_extraction_content(result, item)
 
 
 def _opencli_health(runner: OpenCliRunner) -> BackendHealth:

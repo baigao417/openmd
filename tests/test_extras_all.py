@@ -1,6 +1,5 @@
 """`pip install "openmd-cli[all]"` must keep covering every user-facing extra."""
 import re
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,8 +12,15 @@ EXCLUDED = {"pdf", "web", "dev", "all"}
 
 
 def _extras() -> dict[str, list[str]]:
-    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return data["project"]["optional-dependencies"]
+    # tomllib needs Python 3.11+; Openmd supports 3.10, so read the one-line entries directly.
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    section = text.split("[project.optional-dependencies]", 1)[1].split("\n[", 1)[0]
+    extras = {}
+    for line in section.splitlines():
+        match = re.match(r'^([a-z0-9][a-z0-9-]*)\s*=\s*\[(.*)\]', line)
+        if match:
+            extras[match.group(1)] = re.findall(r'"([^"]+)"', match.group(2))
+    return extras
 
 
 def test_all_extra_references_every_user_facing_extra():

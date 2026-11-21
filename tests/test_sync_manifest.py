@@ -128,3 +128,34 @@ def test_cross_process_writes(tmp_path):
     assert [p.wait(timeout=20) for p in processes] == [0] * 5
     data = json.loads((tmp_path / '.openmd/manifest.json').read_text(encoding='utf-8'))
     assert len(data['entries']) == 5
+
+
+def test_lock_open_retries_transient_permission_error(tmp_path, monkeypatch):
+    from pathlib import Path
+    from openmd.core import sync_manifest
+    real_open = Path.open
+    failures = {"left": 3}
+    def flaky_open(self, *args, **kwargs):
+        if self.name.endswith(".lock") and failures["left"]:
+            failures["left"] -= 1
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", flaky_open)
+    with sync_manifest._file_lock(tmp_path / "m.lock", timeout=5):
+        pass
+    assert failures["left"] == 0
+
+
+def test_lock_open_gives_up_at_deadline(tmp_path, monkeypatch):
+    import pytest
+    from pathlib import Path
+    from openmd.core import sync_manifest
+    real_open = Path.open
+    def always_denied(self, *args, **kwargs):
+        if self.name.endswith(".lock"):
+            raise PermissionError(13, "Permission denied")
+        return real_open(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", always_denied)
+    with pytest.raises(TimeoutError):
+        with sync_manifest._file_lock(tmp_path / "m.lock", timeout=0.1):
+            pass

@@ -338,6 +338,11 @@ def _emit_saved(args: argparse.Namespace, *, target: Path, outputs: list[str], r
 
 def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool) -> dict[str, object]:
     row = next((r for r in reversed(rows or []) if r.get("event_type") == "item"), {})
+    qr_path = getattr(result, "qr_path", None)
+    qr_expires_at = getattr(result, "qr_expires_at", None)
+    if qr_path and type(qr_expires_at) is not int:
+        from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
+        qr_expires_at = pending_qr_expiry(qr_path=qr_path)
     return {
         "status": row.get("status") or getattr(result, "status", None) or ("verified" if ok else "failed"),
         "source_level": row.get("source_level") or getattr(result, "source_level", None),
@@ -345,7 +350,9 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
         "sync": row.get("sync") or getattr(result, "sync", {}) or {},
         "login": row.get("login") or getattr(result, "login", None),
         "next_action": getattr(result, "next_action", None),
-        "qr_path": getattr(result, "qr_path", None),
+        "qr_path": qr_path,
+        "qr_expires_at": qr_expires_at,
+        "qr_http_status": getattr(result, "qr_http_status", None),
         "error_code": row.get("error_code") or getattr(result, "error_code", None),
     }
 

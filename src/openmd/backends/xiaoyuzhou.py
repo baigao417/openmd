@@ -222,7 +222,7 @@ class OpenCliXiaoyuzhouTranscriptProvider:
                 f"Xiaoyuzhou provider only supports xiaoyuzhou, got {item.platform}.",
             )
 
-        from openmd.platforms.xiaoyuzhou_auth import AuthError, CredentialStore, begin_login, ensure_fresh_credentials
+        from openmd.platforms.xiaoyuzhou_auth import AuthError, CredentialStore, begin_login, ensure_fresh_credentials, pending_qr_expiry
         from openmd.interactive import is_interactive
 
         store = CredentialStore(self.credential_path)
@@ -230,26 +230,30 @@ class OpenCliXiaoyuzhouTranscriptProvider:
         if credentials is None and is_interactive():
             try:
                 qr = begin_login(store, wait=True, terminal=True)
-            except AuthError:
+            except AuthError as exc:
                 return _failed(self.name, "login_required", "无法连接小宇宙扫码服务，请检查网络后运行 openmd login xiaoyuzhou。",
-                               metadata={"login": {"required": True}, "next_action": "检查网络后运行 openmd login xiaoyuzhou。"})
+                               metadata={"login": {"required": True}, "qr_http_status": exc.http_status,
+                                         "next_action": "检查网络后运行 openmd login xiaoyuzhou。"})
             credentials = ensure_fresh_credentials(store)
             if credentials is None:
                 return _failed(
                     self.name, "login_required", "小宇宙尚未完成扫码登录。",
                     metadata={"login": {"required": True}, "qr_path": qr.qr_path,
+                              "qr_expires_at": qr.qr_expires_at or pending_qr_expiry(store, qr.qr_path),
                               "next_action": f"请用小宇宙 App 扫码：{qr.qr_path}" if qr.qr_path else "请重新运行 openmd 登录。"},
                 )
         if credentials is None:
             try:
                 qr = begin_login(store, wait=False)
-            except AuthError:
+            except AuthError as exc:
                 return _failed(self.name, "login_required", "无法连接小宇宙扫码服务，请检查网络后重试。",
-                               metadata={"login": {"required": True}, "next_action": "检查网络后重新提交小宇宙链接。"})
+                               metadata={"login": {"required": True}, "qr_http_status": exc.http_status,
+                                         "next_action": "检查网络后重新提交小宇宙链接。"})
             if qr.status == "waiting_for_scan":
                 return _failed(
                     self.name, "login_required", "小宇宙尚未登录。",
                     metadata={"login": {"required": True}, "qr_path": qr.qr_path,
+                              "qr_expires_at": qr.qr_expires_at or pending_qr_expiry(store, qr.qr_path),
                               "next_action": f"请用小宇宙 App 扫码：{qr.qr_path}"},
                 )
         credential_check = check_xiaoyuzhou_credentials(self.credential_path)

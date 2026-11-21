@@ -28,6 +28,7 @@ CLIENT_ID = "podcaster-platform"
 WARNING = "此方法有可能导致小宇宙账号被风控或封号，建议使用丢了也不心疼的小号"
 REFRESH_SKEW_MS = 5 * 60 * 1000
 TOKEN_TTL_MS = 20 * 60 * 1000
+QR_TTL_SECONDS = 180
 DEVICE_ID = "81ADBFD6-6921-482B-9AB9-A29E7CC7BB55"
 _HTTP_OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
@@ -36,6 +37,7 @@ _HTTP_OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(ht
 class LoginResult:
     status: str
     qr_path: str | None = None
+    qr_expires_at: int | None = None
 
 
 class AuthError(RuntimeError):
@@ -164,16 +166,17 @@ def _start_qr(store: CredentialStore) -> LoginResult:
         f"{API}/v1/auth/qrcode/create", {"clientId": CLIENT_ID},
         headers={"x-midway-app-id": APP_ID, "Origin": "https://accounts.xiaoyuzhoufm.com",
                  "Referer": "https://accounts.xiaoyuzhoufm.com/",
-                 "User-Agent": "".join(map(chr, (77, 111, 122, 105, 108, 108, 97))) + "/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Safari/537.36"})
+                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0 Safari/537.36"})
     payload = _json_response(response)
     qr_id, url = payload.get("id"), payload.get("url")
     if not isinstance(qr_id, str) or not isinstance(url, str):
         raise AuthError("QR login could not be started.")
     path = _qr_path(store)
     _render_qr(url, path, terminal=False)
+    created_at = int(time.time())
     with store.locked():
-        store.pending_path.write_text(json.dumps({"id": qr_id, "url": url, "created_at": time.time()}), encoding="utf-8")
-    return LoginResult("waiting_for_scan", str(path.resolve()))
+        store.pending_path.write_text(json.dumps({"id": qr_id, "url": url, "created_at": created_at}), encoding="utf-8")
+    return LoginResult("waiting_for_scan", str(path.resolve()), created_at + QR_TTL_SECONDS)
 
 
 def _poll_pending(store: CredentialStore, *, wait: bool, terminal: bool = False) -> LoginResult:
@@ -185,6 +188,10 @@ def _poll_pending(store: CredentialStore, *, wait: bool, terminal: bool = False)
         if not wait:
             return created
         return _poll_pending(store, wait=wait, terminal=terminal)
+    try:
+        qr_expires_at = int(pending.get("created_at", time.time())) + QR_TTL_SECONDS
+    except (TypeError, ValueError):
+        qr_expires_at = int(time.time()) + QR_TTL_SECONDS
     if terminal:
         print(WARNING, file=sys.stderr)
         try:
@@ -227,13 +234,13 @@ def _poll_pending(store: CredentialStore, *, wait: bool, terminal: bool = False)
                 return LoginResult("expired")
             network_failures += 1
             if not wait or network_failures >= 3:
-                return LoginResult("network_error", str(_qr_path(store).resolve()))
+                return LoginResult("network_error", str(_qr_path(store).resolve()), qr_expires_at)
         except Exception:
             network_failures += 1
             if not wait or network_failures >= 3:
-                return LoginResult("network_error", str(_qr_path(store).resolve()))
+                return LoginResult("network_error", str(_qr_path(store).resolve()), qr_expires_at)
         if not wait:
-            return LoginResult("waiting_for_scan", str(_qr_path(store).resolve()))
+            return LoginResult("waiting_for_scan", str(_qr_path(store).resolve()), qr_expires_at)
         time.sleep(1)
 
 
@@ -303,3 +310,35 @@ def status(store: CredentialStore | None = None) -> str:
     if current:
         return "需要重新扫码"
     return "未登录"
+
+
+def import_tokens(access_token: str, refresh_token: str, *, store: CredentialStore | None = None) -> None:
+    """Validate and persist extension-imported cookies through the shared store."""
+    if not isinstance(access_token, str) or not access_token.strip():
+        raise ValueError("小宇宙 access token 缺失。")
+    if not isinstance(refresh_token, str) or not refresh_token.strip():
+        raise ValueError("小宇宙 refresh token 缺失。")
+    device_id = str(uuid.uuid4()).upper()
+    properties = json.dumps({"uuid": device_id, "android_id": uuid.uuid4().hex[:16],
+                             "oaid": "", "vaid": "", "aaid": ""})
+    (store or CredentialStore()).write({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": int(time.time() * 1000) + TOKEN_TTL_MS,
+        "device_id": device_id,
+        "device_properties": properties,
+    })
+
+
+def pending_qr_expiry(store: CredentialStore | None = None, qr_path: str | None = None) -> int | None:
+    """Return only the pending QR expiry, never its login URL or identifier."""
+    store = store or CredentialStore()
+    try:
+        pending = json.loads(store.pending_path.read_text(encoding="utf-8"))
+        created_at = int(pending["created_at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        try:
+            return int(Path(qr_path).stat().st_mtime) + QR_TTL_SECONDS if qr_path else None
+        except OSError:
+            return None
+    return created_at + QR_TTL_SECONDS

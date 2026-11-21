@@ -83,7 +83,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `xiaoe/play-url`: `src/openmd/backends/xiaoe.py:129`
 - `xiaohongshu/note`: `src/openmd/backends/xiaohongshu.py:95`
 - `xiaohongshu/user`: `src/openmd/backends/xiaohongshu.py:100`
-- `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:302`
+- `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:306`
 - `xiaoyuzhou/podcast-episodes`: `src/openmd/backends/xiaoyuzhou.py:143`
 - `xiaoyuzhou/transcript`: `src/openmd/backends/xiaoyuzhou.py:122`
 - `youtube/channel`: `src/openmd/backends/youtube_discovery.py:178`

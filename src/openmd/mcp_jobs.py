@@ -23,7 +23,7 @@ MAX_CONTENT_CHARS = 32_000
 MAX_BATCH = 20
 GATES = {"network": "--enable-network-backends", "browser": "--enable-browser-backends",
          "media": "--enable-media-download", "asr": "--enable-asr", "cloud": "--enable-cloud-backends"}
-RECEIPT_FIELDS = ("status", "source_level", "completeness", "sync", "login", "next_action", "error_code", "qr_path")
+RECEIPT_FIELDS = ("status", "source_level", "completeness", "sync", "login", "next_action", "error_code", "qr_path", "qr_expires_at", "qr_http_status")
 
 
 @contextmanager
@@ -81,10 +81,16 @@ def receipt(result: dict) -> dict:
     if code == "login_required":
         login_summary = {"required": True}
     qr_path = result.get("qr_path")
+    qr_expires_at = result.get("qr_expires_at")
+    if isinstance(qr_path, str) and Path(qr_path).is_absolute() and type(qr_expires_at) is not int:
+        from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
+        qr_expires_at = pending_qr_expiry(qr_path=qr_path)
     return {"status": status, "source_level": label(result.get("source_level")),
             "completeness": structure(result.get("completeness")), "sync": structure(result.get("sync")),
             "login": login_summary, "next_action": action, "error_code": code,
-            "qr_path": qr_path if isinstance(qr_path, str) and Path(qr_path).is_absolute() else None}
+            "qr_path": qr_path if isinstance(qr_path, str) and Path(qr_path).is_absolute() else None,
+            "qr_expires_at": qr_expires_at if type(qr_expires_at) is int else None,
+            "qr_http_status": result.get("qr_http_status") if type(result.get("qr_http_status")) is int else None}
 
 
 def _validate_source_url(value: str) -> str:
@@ -224,7 +230,7 @@ def _job_status(job_id: str, *, include_content: bool = False) -> dict:
     with queue():
         status = host.read_status(job_id)
     fields = dict(status.get("receipt", {}))
-    for key in ("login", "error_code", "qr_path", "next_action"):
+    for key in ("login", "error_code", "qr_path", "qr_expires_at", "qr_http_status", "next_action"):
         if key in status:
             fields[key] = status[key]
     result = {"id": job_id, "state": status["state"], **receipt(fields),

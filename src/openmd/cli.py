@@ -83,6 +83,8 @@ class CliResult:
     login: dict[str, str] | None = None
     next_action: dict[str, str] | str | None = None
     qr_path: str | None = None
+    qr_expires_at: int | None = None
+    qr_http_status: int | None = None
     status: str = "failed"
     source_level: str | None = None
     completeness: dict[str, object] = field(default_factory=dict)
@@ -107,6 +109,9 @@ def _runlog_path(args: argparse.Namespace) -> Path:
 
 def _print_result(result: CliResult) -> None:
     # Keep CLI status JSON ASCII-safe for Windows consoles with narrow encodings.
+    if result.qr_path and type(result.qr_expires_at) is not int:
+        from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
+        result.qr_expires_at = pending_qr_expiry(qr_path=result.qr_path)
     print(json.dumps(asdict(result), ensure_ascii=True, sort_keys=True))
 
 

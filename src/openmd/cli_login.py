@@ -14,11 +14,15 @@ def paused_login(args, url):
 def recovery_fields(args):
     qr_path = getattr(args, "_xiaoyuzhou_qr_path", None)
     if qr_path:
+        qr_expires_at = getattr(args, "_xiaoyuzhou_qr_expires_at", None)
         return {"error_code": "login_required", "login": {"site": "小宇宙", "url": ""},
-                "qr_path": qr_path, "next_action": f"请用小宇宙 App 扫码：{qr_path}"}
+                "qr_path": qr_path, "qr_expires_at": qr_expires_at,
+                "qr_http_status": getattr(args, "_xiaoyuzhou_qr_http_status", None),
+                "next_action": f"请用小宇宙 App 扫码：{qr_path}"}
     auth_action = getattr(args, "_xiaoyuzhou_auth_next_action", None)
     if auth_action:
         return {"error_code": "login_required", "login": {"site": "小宇宙", "url": ""},
+                "qr_http_status": getattr(args, "_xiaoyuzhou_qr_http_status", None),
                 "next_action": auth_action}
     values = list(getattr(args, "_login_paused", {}).values())
     if not values:
@@ -45,9 +49,17 @@ def extract_with_login(executor, item, chain, args):
         action = raw.metadata.get("next_action")
         if path:
             args._xiaoyuzhou_qr_path = path
+            expires_at = raw.metadata.get("qr_expires_at")
+            if type(expires_at) is not int:
+                from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
+                expires_at = pending_qr_expiry(qr_path=path)
+            args._xiaoyuzhou_qr_expires_at = expires_at
             return raw
         if isinstance(action, str):
             args._xiaoyuzhou_auth_next_action = action
+            status = raw.metadata.get("qr_http_status")
+            if type(status) is int:
+                args._xiaoyuzhou_qr_http_status = status
             return raw
     result = normalize_login_result(raw, item)
     if result.error_code != "login_required":

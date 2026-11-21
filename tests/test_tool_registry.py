@@ -129,7 +129,7 @@ def test_overlay_updates_registry_capability_binding_gates_and_trace(monkeypatch
     from openmd.core.capabilities import get_capability
 
     overlay = tmp_path / "overlay.jsonl"
-    overlay.write_text(json.dumps({"schema": "openmd.route-overlay/v1", "op": "demote", "source": "x", "capability_id": "x-tweet-fetcher.x.content", "ts": "2026-11-07T12:00:00+00:00"}) + "\n", encoding="utf-8")
+    overlay.write_text(json.dumps({"schema": "openmd.route-overlay/v1", "op": "demote", "source": "x", "capability_id": "openmd.x.public", "ts": "2026-11-07T12:00:00+00:00"}) + "\n", encoding="utf-8")
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"schema": "openmd.local/v1", "route_overlay": str(overlay)}), encoding="utf-8")
     monkeypatch.setenv("OPENMD_CONFIG", str(config))
@@ -139,11 +139,11 @@ def test_overlay_updates_registry_capability_binding_gates_and_trace(monkeypatch
     assert record.card_id == "builtin" and record.overlay_applied
     assert create_default_registry().backend_chain("x")[0] == record.runtime_provider
     assert route_trace("x", record.runtime_provider) == {"card_id": "builtin", "route_version": load_catalog().version, "overlay_applied": True}
-    assert "x-tweet-fetcher.x.content → opencli.twitter.thread" in render_routes_markdown()
-    assert "opencli.twitter.thread → x-tweet-fetcher.x.content" in render_routes_markdown(effective=True)
+    assert "openmd.x.public → opencli.twitter.thread" in render_routes_markdown()
+    assert "opencli.twitter.thread → openmd.x.public" in render_routes_markdown(effective=True)
     from openmd.routing.view import main as view_main
     assert view_main(["--bundled", "--format", "markdown"]) == 0
-    assert "x-tweet-fetcher.x.content → opencli.twitter.thread" in capsys.readouterr().out
+    assert "openmd.x.public → opencli.twitter.thread" in capsys.readouterr().out
 
 
 def test_tool_identity_mismatch_fails_before_execution(monkeypatch):

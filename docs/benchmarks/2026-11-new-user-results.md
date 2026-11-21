@@ -23,7 +23,7 @@
 | 公众号 | 经浏览器扩展约 95 秒 | 本地读取 5–20 秒 | 只用 1 篇公开文章验证 |
 | 语音转写 | 不可用（没有模型） | 首次使用询问后下载；HuggingFace 不通时自动换 ModelScope，空缓存实测下载与 SHA256 校验通过 | 真实转写因测试机可用内存不足未在本轮验证 |
 
-（收尾的全平台新用户验收结果见文末“附：发布前验收”。）
+（全平台发布前验收见下文“附：发布前验收”。）
 
 ## 网页正文完整度（英文网页与文档，14 个样本、112 个探针）
 
@@ -70,6 +70,24 @@
 
 评分脚本、样本清单和逐样本回执在维护者工作区保存；公开样本链接与计分规则可按需提供。欢迎用真实失败链接提 issue。
 
+## 附：发布前验收（2026-11-22 06:43–06:52）
+
+从 main 构建 wheel，经清华镜像装进全新虚拟环境的 `[all]`（166 秒），按上文的新用户环境逐个运行真实链接并读回产物：
+
+| 来源 | 结果 | 耗时 |
+|---|---|---:|
+| 普通网页 | verified | 15 s |
+| YouTube（有字幕） | verified | 53 s |
+| B 站（自动字幕） | verified | 8 s |
+| 公众号 | verified | 9 s |
+| X 长推文 + 图片 | verified | 10 s |
+| X 短推文 | verified | 8 s |
+| 小宇宙（扫码登录后） | verified（官方逐字稿） | 2 s |
+| 小鹅通课程（浏览器已登录） | verified | 124 s |
+| 小红书（缺分享参数的链接） | 立即失败并给出下一步 | 0.7 s |
+| 抖音（本机没有语音模型） | 失败并给出模型安装命令 | 20 s |
+| 本地论文 PDF | partial（少数页文字层无法核验，如实标注） | 21 s |
+
 ---
 
 <a id="english"></a>
@@ -90,3 +108,5 @@ Only numbers from real runs are reported, including where Openmd falls behind.
 **Install / uninstall (isolated).** uv (used by `scripts/install.ps1`): no Python needed, `[all]` first install about 408 s, program removed cleanly, data kept by default. pipx: needs Python, about 565 s, program removed cleanly. pip: removes only Openmd itself; about 100 shared dependencies (about 1.18 GB) stay.
 
 Scorers, sample lists and per-sample receipts are kept in the maintainer workspace; public sample links and scoring rules are available on request. Real failing links are welcome as issues.
+
+**Pre-release acceptance (2026-11-22 06:43–06:52).** A wheel built from main was installed with `[all]` into a fresh venv (166 s) and run in the new-user environment described above, reading back each output: web article verified 15 s; YouTube with captions verified 53 s; Bilibili auto-captions verified 8 s; WeChat article verified 9 s; X long post with images verified 10 s; X short post verified 8 s; Xiaoyuzhou after QR login verified with the official transcript 2 s; a Xiaoe-tech course with a logged-in browser verified 124 s; a Xiaohongshu link without share parameters failed immediately with a next step 0.7 s; Douyin without a local speech model failed with the model install command 20 s; a local paper PDF partial (a few pages with an unverifiable text layer, labelled as such) 21 s.

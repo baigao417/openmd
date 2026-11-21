@@ -16,6 +16,8 @@
 | Machine calls (`--json`, `--yes`, batch, MCP) never rewrite user preferences | `python -m pytest tests/test_save_preferences.py -q` | I078 |
 | Loaded AI chat pages: every role captured, TeX kept, oversized data images and thinking counted, titles cleaned | `python -m pytest tests/test_f_chat_quality.py tests/test_f_loaded_chat.py tests/test_f_loaded_chat_cli.py -q` | I079 |
 | Shared semantic surfaces have one owner: extension identity, OpenCLI patches, preferences, process startup, completeness summaries, AI chat titles and safe persisted job receipts | `python -m pytest tests/test_shared_surfaces.py tests/test_runtime_processes.py -q` | I080 |
+| Capability claims come from a fresh-user wheel, not the maintainer checkout: isolated HOME/USERPROFILE/OPENMD_DATA_DIR/OPENMD_CONFIG/model caches, narrow PATH, started outside the source tree, so `out/local-config.json`, hand-placed tokens and cached models cannot mask a broken public fallback | `python scripts/public_parity_check.py --repo <checkout> --output <dir>` before a release; README status follows its receipt | I081 |
+| Source-specific failures reach the user: one owner maps error codes to next steps, shared by the human line and JSON `next_action` | `python -m pytest tests/test_open_source_ux.py -q` | I082 |
 
 The gate wrapper validates a separately trusted user authority record and its
 hash. A worker or dispatcher cannot create new user authorization by relabeling

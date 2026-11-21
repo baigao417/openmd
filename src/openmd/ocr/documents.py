@@ -21,8 +21,11 @@ HARD_HIDDEN_REASONS = frozenset({
     "invisible_render_mode", "low_contrast_text", "tiny_text",
     "out_of_page_or_zero_width", "optional_content_layer",
     "annotation_or_widget_covered", "control_character",
-    "opaque_fill_fully_covers_text",
+    "opaque_fill_fully_covers_text", "clip_hides_text",
 })
+# A glyph is treated as clipped out when less than this share of its box lies
+# inside the clip that applies to it.
+CLIP_VISIBLE_FRACTION_MIN = 0.5
 AMBIGUOUS_GEOMETRY_REASONS = frozenset({
     "overlapping_paint", "rendered_text_obscured", "clip_visibility_unproven",
     "text_image_overlap", "text_visibility_unproven", "trace_mapping_unproven",
@@ -557,6 +560,14 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
             )
             clip_unmapped = bool(content_clip or clips) and not intersecting_clips
             if clip_partially_covers_glyph:
+                glyph_area = max(1e-6, (charbox[2] - charbox[0]) * (charbox[3] - charbox[1]))
+                visible = min(_intersection_area(charbox, rect) for rect in intersecting_clips) / glyph_area
+                if visible < CLIP_VISIBLE_FRACTION_MIN:
+                    # Most of the glyph lies outside its clip: a reader cannot see it.
+                    span_hard.add(char_key)
+                    span_soft.discard(char_key)
+                    hard_reasons.append("clip_hides_text")
+                    continue
                 span_soft.add(char_key)
                 soft_reasons.append("clip_visibility_unproven")
                 continue
@@ -613,7 +624,13 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                 elif span.get("layer"):
                     span_hard.add(char_key)
                     hard_reasons.append("optional_content_layer")
-                elif clip_covers_glyph_bounds or clip_unmapped:
+                elif clip_unmapped:
+                    # A clip is active, the glyph lies outside every clip box and
+                    # leaves no ink even at 216 DPI: it is clipped out.
+                    span_hard.add(char_key)
+                    span_soft.discard(char_key)
+                    hard_reasons.append("clip_hides_text")
+                elif clip_covers_glyph_bounds:
                     span_soft.add(char_key)
                     soft_reasons.append("clip_visibility_unproven")
                 elif any(_intersection_area(charbox, rect) > 0 for rect in overlays):

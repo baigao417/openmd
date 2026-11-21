@@ -156,6 +156,12 @@ def _completeness_frontmatter(result: TranscriptResult) -> str | None:
             if start and end:
                 return f"partial — 逐字稿止于 {start}，媒体时长 {end}"
         if check.get("signal") == "pdf_pages" and isinstance(gap, dict):
+            unverified = gap.get("unverified_pages")
+            unverified = unverified if isinstance(unverified, int) and unverified > 0 else 0
+            note = f"，其中 {unverified} 页文字层未核验" if unverified else ""
+            total = gap.get("total_pages")
+            if not gap.get("missing_pages") and unverified and isinstance(total, int) and total > 0:
+                return f"partial — 已输出 {total}/{total} 页{note}"
             missing = gap.get("missing_pages")
             if isinstance(missing, list) and missing:
                 numbers = [page for page in missing if isinstance(page, int) and page > 0]
@@ -164,7 +170,7 @@ def _completeness_frontmatter(result: TranscriptResult) -> str | None:
                     total = total if isinstance(total, int) and total > 0 else max(numbers)
                     output = gap.get("output_pages")
                     output = output if isinstance(output, int) and output >= 0 else max(0, total - len(numbers))
-                    return f"partial — 输出 {output}/{total} 页"
+                    return f"partial — 输出 {output}/{total} 页{note}"
         reason = str(check.get("reason") or "独立完整度核对发现缺口").strip()
         return f"partial — {reason}"
     return "partial — 独立完整度核对发现缺口"

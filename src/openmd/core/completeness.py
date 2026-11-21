@@ -129,14 +129,29 @@ def pdf_page_check(item: ContentItem, result: TranscriptResult, signals: Mapping
     pages = result.metadata.get("pages")
     if type(count) is not int or count <= 0 or not isinstance(pages, list) or result.metadata.get("page_mapping") == "not_available":
         return Check("pdf_pages", reason="page_count_or_mapping_unavailable")
-    present = {page.get("page") for page in pages if isinstance(page, dict) and type(page.get("page")) is int and page.get("status") == "verified"}
+    numbered = [page for page in pages if isinstance(page, dict) and type(page.get("page")) is int]
+    verified = {page["page"] for page in numbered if page.get("status") == "verified"}
+    # Text-layer pages whose visibility could not be proven are still output;
+    # they are reported as unverified, not as missing.
+    unverified = {page["page"] for page in numbered if page.get("textlayer_unverified") is True and page["page"] not in verified}
+    # A text-layer page that only had hidden characters removed is still output.
+    filtered = {page["page"] for page in numbered if page.get("route") == "textlayer" and page.get("status") in {"verified", "partial"}}
+    present = verified | unverified | filtered
     missing = sorted(set(range(1, count + 1)) - present)
     if missing:
         return Check(
             "pdf_pages",
             "downgrade",
             "pdf_pages_missing",
-            {"missing_pages": missing, "output_pages": len(present), "total_pages": count},
+            {"missing_pages": missing, "output_pages": len(present), "total_pages": count,
+             **({"unverified_pages": len(unverified)} if unverified else {})},
+        )
+    if unverified:
+        return Check(
+            "pdf_pages",
+            "downgrade",
+            "pdf_textlayer_unverified",
+            {"missing_pages": [], "output_pages": len(present), "unverified_pages": len(unverified), "total_pages": count},
         )
     return Check("pdf_pages", "ok")
 

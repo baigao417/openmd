@@ -150,13 +150,13 @@ def test_t1_clip_residual_ink_never_proves_visible_characters(clip, tmp_path):
         path = tmp_path / "clipped.pdf"
         doc.save(path)
         probe = inspect_pdf(path)[0]
-        assert probe["route"] == "ocr"
-        assert "clip_visibility_unproven" in probe["textlayer_rejected_reasons"]
+        assert "clip_hides_text" in probe["hard_reasons"]
+        assert "999" not in probe["filtered_text"]
         result = extract_pdf(ContentItem(platform="pdf", input_type="single", url=path.as_uri()))
-        assert result.status == "partial"
-        assert "999" in result.text
-        assert "clip_visibility_unproven" in result.metadata["pages"][0]["soft_reasons"]
-        assert "clip_visibility_unproven" not in result.metadata["pages"][0]["hard_reasons"]
+        # Text clipped out of view is hidden content: it must never reach the output.
+        assert "999" not in result.text and "HIDDEN" not in result.text
+        assert "clip_hides_text" in result.metadata["pages"][0]["hard_reasons"]
+        assert result.metadata["pages"][0]["hidden_text_removed_chars"] >= 9
     finally:
         doc.close()
 

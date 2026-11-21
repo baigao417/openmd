@@ -58,7 +58,7 @@ def receipt(result: dict) -> dict:
         if isinstance(value, dict):
             allowed = {"status", "checks", "signal", "reason", "gap", "operation", "required", "state",
                        "complete", "expected_count", "actual_count", "missing_count", "exported_count", "stats_count",
-                       "missing_pages", "output_pages", "total_pages", "start_seconds", "end_seconds", "limit"}
+                       "missing_pages", "output_pages", "unverified_pages", "total_pages", "start_seconds", "end_seconds", "limit"}
             return {key: structure(child, depth + 1) for key, child in value.items() if key in allowed}
         if isinstance(value, list):
             return [structure(child, depth + 1) for child in value[:20]]

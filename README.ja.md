@@ -79,7 +79,17 @@ pip install "openmd-cli[media]"
 pip install "openmd-cli[ocr-router]"
 ```
 
-> 注：`[all]` は Python パッケージで約 1 GB です（モデルは含みません）。文書解析、OCR、ローカル ASR には、Python パッケージのほかに FFmpeg やローカルモデルが必要になる場合があります。準備状況は `openmd doctor` で確認できます。
+> `[all]` は Python パッケージで約 1 GB です（モデルは含みません）。
+
+そのほかもすべてオプションです。pip では入らないプログラムがいくつかありますが、下の表のケースに当たったときだけ必要で、そのときは Openmd が知らせます（`openmd doctor`、またはそのファイルを処理するときに次の手順を表示）。
+
+| プログラム | 必要になる場面 | なくても |
+|---|---|---|
+| FFmpeg | 音声と動画 | `[media]` / `[asr]` に同梱。システムに FFmpeg があればそちらを優先 |
+| ローカルモデル（OCR / 音声） | スキャンした PDF、字幕のない音声・動画 | 画像とスクリーンショットは `[ocr]` で CPU のまま OCR 可能。字幕付きの動画もそのまま使えます。モデルの入手方法は `openmd doctor` が案内 |
+| LibreOffice | 旧形式の `.doc` / `.ppt` や画像だけの Office ファイルを最も忠実に変換 | 内蔵リーダーで本文は取得でき、partial と表示 |
+| Calibre | Kindle 電子書籍（MOBI / AZW3） | この 2 形式だけがインストール手順を示して停止し、ほかは影響なし |
+| MinerU | 中国語スキャン文書の最良のレイアウト（`--ocr-engine mineru`） | 既定の OCR 経路を使用 |
 
 Openmd を自分のエージェントや自動化ツールチェーンに組み込みたい場合は、[ツール連携ガイド](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)をご覧ください。
 

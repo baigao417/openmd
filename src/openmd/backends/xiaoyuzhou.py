@@ -48,7 +48,13 @@ XIAOYUZHOU_CREDENTIALS_PATH = Path.home() / ".opencli" / "xiaoyuzhou.json"
 
 def credential_file() -> Path:
     from openmd.platforms.xiaoyuzhou_auth import CredentialStore
-    return CredentialStore().path
+
+    configured = CredentialStore().path
+    if configured.is_file():
+        return configured
+    if XIAOYUZHOU_CREDENTIALS_PATH.is_file():
+        return XIAOYUZHOU_CREDENTIALS_PATH
+    return configured
 
 
 XIAOYUZHOU_ANDROID_DEVICE_PROPERTY_KEYS = frozenset(
@@ -226,7 +232,19 @@ class OpenCliXiaoyuzhouTranscriptProvider:
         from openmd.interactive import is_interactive
 
         store = CredentialStore(self.credential_path)
-        credentials = ensure_fresh_credentials(store)
+        credential_check = check_xiaoyuzhou_credentials(self.credential_path)
+        if not credential_check.ok and credential_check.code != "xiaoyuzhou_credentials_missing":
+            return _failed(
+                self.name,
+                credential_check.code,
+                credential_check.summary,
+                notes=[
+                    "Skipped OpenCLI xiaoyuzhou transcript before making an API request.",
+                    "No credential values or raw command streams were persisted by Openmd.",
+                ],
+            )
+
+        credentials = ensure_fresh_credentials(store) if credential_check.ok else None
         if credentials is None and is_interactive():
             try:
                 qr = begin_login(store, wait=True, terminal=True)

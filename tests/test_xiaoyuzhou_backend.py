@@ -67,6 +67,7 @@ def _write_android_credentials(path: Path, *, device_id: str = "device-fixture")
                 "access_token": "dummy-access",
                 "refresh_token": "dummy-refresh",
                 "device_id": device_id,
+                "expires_at": 4_000_000_000_000,
                 "device_properties": json.dumps(
                     {
                         "uuid": device_id,
@@ -89,6 +90,7 @@ def _write_opencli_ios_credentials(path: Path, *, device_id: str = "ios-device-f
                 "access_token": "dummy-access",
                 "refresh_token": "dummy-refresh",
                 "device_id": device_id,
+                "expires_at": 4_000_000_000_000,
                 "device_properties": json.dumps(
                     {
                         "idfa": "00000000-0000-0000-0000-000000000000",
@@ -156,6 +158,28 @@ class XiaoyuzhouRuntimeGateTests(unittest.TestCase):
 
 
 class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from unittest.mock import patch
+        from openmd.platforms import xiaoyuzhou_auth
+
+        self.qr_attempts = 0
+
+        def begin_login(*_args, **_kwargs):
+            self.qr_attempts += 1
+            return xiaoyuzhou_auth.LoginResult("waiting_for_scan", "synthetic-qr.png")
+
+        self._refresh_patch = patch(
+            "openmd.platforms.xiaoyuzhou_auth._refresh_credentials",
+            side_effect=xiaoyuzhou_auth.AuthError("synthetic refresh rejection", rejected=True),
+        )
+        self._qr_patch = patch(
+            "openmd.platforms.xiaoyuzhou_auth.begin_login", side_effect=begin_login
+        )
+        self._refresh_patch.start()
+        self._qr_patch.start()
+        self.addCleanup(self._qr_patch.stop)
+        self.addCleanup(self._refresh_patch.stop)
+
     def test_missing_author_fetches_public_episode_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             credentials_path = Path(tmpdir) / "xiaoyuzhou.json"
@@ -297,6 +321,7 @@ class OpenCliXiaoyuzhouTranscriptProviderTests(unittest.TestCase):
         self.assertFalse(result.has_usable_text)
         self.assertEqual(result.error_code, "xiaoyuzhou_credentials_incomplete")
         self.assertEqual(calls, [])
+        self.assertEqual(self.qr_attempts, 0)
         self._assert_no_sensitive_error_terms(result.error_summary)
 
     def test_opencli_transcript_accepts_opencli_ios_credentials_without_headers(self) -> None:
@@ -451,6 +476,23 @@ class OpenCliXiaoyuzhouPodcastEpisodesProviderTests(unittest.TestCase):
 
 
 class PodwiseXiaoyuzhouFallbackProviderTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from unittest.mock import patch
+        from openmd.platforms import xiaoyuzhou_auth
+
+        self._refresh_patch = patch(
+            "openmd.platforms.xiaoyuzhou_auth._refresh_credentials",
+            side_effect=xiaoyuzhou_auth.AuthError("synthetic refresh rejection", rejected=True),
+        )
+        self._qr_patch = patch(
+            "openmd.platforms.xiaoyuzhou_auth.begin_login",
+            return_value=xiaoyuzhou_auth.LoginResult("waiting_for_scan", "synthetic-qr.png"),
+        )
+        self._refresh_patch.start()
+        self._qr_patch.start()
+        self.addCleanup(self._qr_patch.stop)
+        self.addCleanup(self._refresh_patch.stop)
+
     def test_backend_executor_falls_back_to_already_processed_podwise_transcript(self) -> None:
         opencli_calls: list[tuple[list[str], int, str | None]] = []
         podwise_calls: list[tuple[list[str], int]] = []

@@ -72,8 +72,9 @@ def test_all_public_pages_apply_but_native_transcript_routes_skip_text():
     assert not post_video.should_process("https://www.youtube.com/watch?v=abc", "text")
     assert post_video.should_process("https://www.youtube.com/watch?v=abc", "file")
     assert post_video.should_process("https://www.bilibili.com/video/BV1abc123", "file")
-    assert post_video.native_media_source("https://www.bilibili.com/video/BV1abc123") == "bilibili"
+    assert post_video.native_media_source("https://www.bilibili.com/video/BV1abc123") is None
     assert post_video.native_media_source("https://www.youtube.com/watch?v=abc") is None
+    assert post_video.native_media_source("https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2") is None
 
 
 def test_note_mode_only_applies_to_x_status_pages():
@@ -150,6 +151,13 @@ def test_native_media_route_download_only_is_published(tmp_path, monkeypatch, ur
         path.write_bytes(b"media")
         return path
 
+    # Exercise the media path with an injected route; the public catalog no
+    # longer advertises these maintainer-only downloaders.
+    monkeypatch.setattr(
+        post_video,
+        "native_media_source",
+        lambda value: "bilibili" if "bilibili" in value else "xiaoyuzhou",
+    )
     monkeypatch.setattr(post_video, "download_native_media_only", download_only)
     monkeypatch.setattr(post_video, "append_video_section", lambda *a, **kw: pytest.fail("native route should run before generic fallback"))
     _attach_video(args, url, md, stage=stage)
@@ -163,6 +171,7 @@ def test_native_media_download_failure_falls_back_to_generic_once(tmp_path, monk
     md = _post(tmp_path)
     args = argparse.Namespace(video="file", enable_network_backends=True, enable_media_download=True, enable_asr=True, json=True)
     calls = []
+    monkeypatch.setattr(post_video, "native_media_source", lambda _url: "xiaoyuzhou")
     monkeypatch.setattr(post_video, "download_native_media_only", lambda *a, **kw: calls.append("native") or None)
     monkeypatch.setattr(post_video, "append_video_section", lambda _md, _url, _mode, **kw: calls.append(kw) or True)
     _attach_video(args, "https://www.xiaoyuzhoufm.com/episode/684c1c3c4abe6e29cb000fc2", md, stage=tmp_path / "stage")

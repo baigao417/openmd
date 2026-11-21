@@ -3639,9 +3639,11 @@ class ArticleProviderTests(unittest.TestCase):
         self.assertEqual(
             registry.backend_chain("weixin"),
             (
+                # round13-g: local parsing first (5-20 s vs ~95 s via the extension);
+                # challenge pages are rejected and fall back to the extension route.
+                WEIXIN_LOCAL_BACKEND,
                 OPENCLI_WEIXIN_DOWNLOAD_BACKEND,
                 "defuddle.web.content",
-                WEIXIN_LOCAL_BACKEND,
                 OPENCLI_WEB_READ_BACKEND,
             ),
         )

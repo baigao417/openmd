@@ -70,7 +70,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `grok/status`: `src/openmd/backends/ai_chat.py:255`
 - `openmd-douyin/creator-videos`: `src/openmd/backends/douyin.py:289`
 - `openmd-xiaohongshu/creator-notes`: `src/openmd/backends/xiaohongshu.py:124`
-- `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:97`
+- `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:98`
 - `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
 - `qwen/status`: `src/openmd/backends/ai_chat.py:255`
 - `twitter/article`: `src/openmd/backends/x.py:116`

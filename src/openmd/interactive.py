@@ -272,6 +272,14 @@ def _failure_hint(rows: list[dict[str, object]]) -> str:
         if is_login_code(row.get("error_code")):
             login = row.get("login") or login_for_url(str(row.get("input_url") or ""), str(row.get("platform") or ""))
             return login_hint(login)
+    from openmd.cli_login import source_next_action
+
+    # One owner for source-specific next steps: the same text reaches the
+    # human line and the JSON receipt's next_action.
+    for row in reversed(rows):
+        action = source_next_action(str(row.get("error_code") or ""))
+        if action:
+            return action
     codes = " ".join(str(row.get("error_code") or "") for row in rows).lower()
     if "browser_challenge_page" in codes:
         return "被站点验证页拦截，未取得目标正文；请在浏览器中确认原链接可访问后重试。"

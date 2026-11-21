@@ -37,6 +37,13 @@ def source_next_action(error_code: str | None) -> str | None:
         return "在浏览器打开这篇小红书笔记后，点击 Openmd 扩展保存；Openmd 将读取当前已加载页面。"
     if error_code == "douyin_snapshot_no_transcript":
         return "抖音视频需走媒体转写：openmd go <链接>（扩展点击会走链接路线）"
+    if error_code in {"xiaohongshu_signed_url_required", "opencli_xiaohongshu_timeout"}:
+        return ("在浏览器里打开这条小红书笔记后点 Openmd 扩展保存，或从分享按钮复制完整链接再试；"
+                "Agent 可把已加载的页面交给 openmd go <页面.html> --as-snapshot --url <链接>。")
+    if error_code in {"douyin_asr_unavailable", "asr_model_missing"}:
+        return "本机还没有语音模型：运行 openmd models install asr:baseline（约 1.6 GB，会先确认）后重试。"
+    if error_code == "douyin_detail_read_failed":
+        return "抖音需要借用浏览器读取：确认 Chrome / Edge 已登录抖音、Openmd 扩展已加载（openmd browser-setup）后重试。"
     return None
 
 

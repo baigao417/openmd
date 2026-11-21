@@ -407,3 +407,23 @@ def test_contributor_scripts_compile(script) -> None:
     import py_compile
 
     py_compile.compile(str(Path(__file__).resolve().parents[1] / "scripts" / script), doraise=True)
+
+
+def test_failure_hint_surfaces_provider_next_step_for_new_failure_codes() -> None:
+    # Round13 final acceptance: Xiaohongshu / Douyin providers wrote specific
+    # guidance, but users saw only the generic "no saveable body" line and the
+    # JSON receipt had next_action=null.
+    from openmd import interactive
+    from openmd.cli_login import source_next_action
+
+    for code in ("xiaohongshu_signed_url_required", "opencli_xiaohongshu_timeout"):
+        action = source_next_action(code)
+        assert action and "扩展" in action and "--as-snapshot" in action
+        assert interactive._failure_hint([{"error_code": code}]) == action
+    for code in ("douyin_asr_unavailable", "asr_model_missing"):
+        action = source_next_action(code)
+        assert action and "openmd models install asr:baseline" in action
+        assert interactive._failure_hint([{"error_code": code}]) == action
+    action = source_next_action("douyin_detail_read_failed")
+    assert action and "抖音" in action and "browser-setup" in action
+    assert interactive._failure_hint([{"error_code": "douyin_detail_read_failed"}]) == action

@@ -24,6 +24,7 @@ from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.ffmpeg_tools import ffmpeg_executable
 from openmd.runtime.interpreters import run_interruptibly
 
 
@@ -163,7 +164,7 @@ class DouyinTranscriptProvider:
     def health(self) -> BackendHealth:
         return BackendHealth(
             ok=True,
-            dependencies={"ffmpeg": "ok" if shutil.which("ffmpeg") else "missing", "asr.auto": "local_runtime_lazy"},
+            dependencies={"ffmpeg": "ok" if ffmpeg_executable() else "missing", "asr.auto": "local_runtime_lazy"},
             warnings=("Detail needs browser permission; local audio ASR needs media and ASR permissions.",),
         )
 
@@ -314,7 +315,7 @@ class DouyinTranscriptProvider:
                 metadata={"profile": "media", "content_id": item.id, "transcript_method": "ocr", "media_retention": "none", "scope": "sampled_hard_subtitles", "coverage": {"sample_interval_seconds": 2, "max_seconds": 300, "sampled_seconds": min(_safe_duration(item.raw_meta.get("duration")) or 60, 300), "crop": "lower_52_percent", "complete": False}})
 
     def _extract_audio(self, play_url: str, output_path: Path) -> None:
-        ffmpeg = shutil.which("ffmpeg")
+        ffmpeg = ffmpeg_executable()
         if not ffmpeg:
             raise RuntimeError("ffmpeg is not available")
         command = [
@@ -352,7 +353,7 @@ class DouyinTranscriptProvider:
         with owned_temporary_directory(prefix="openmd-douyin-ocr-") as temp_dir:
             frames_dir = Path(temp_dir)
             pattern = frames_dir / "frame_%05d.jpg"
-            ffmpeg = shutil.which("ffmpeg")
+            ffmpeg = ffmpeg_executable()
             if not ffmpeg:
                 raise RuntimeError("ffmpeg is not available")
             command = [

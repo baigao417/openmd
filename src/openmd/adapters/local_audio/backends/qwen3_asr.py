@@ -142,8 +142,12 @@ class Qwen3ASRBackend(ASRBackend):
 
         with owned_temporary_directory(prefix="openmd-qwen3-") as tmp:
             wav = Path(tmp) / "audio.wav"
+            from openmd.runtime.ffmpeg_tools import ffmpeg_executable
+            executable = ffmpeg_executable()
+            if not executable:
+                raise RuntimeError("ffmpeg_missing")
             run_interruptibly(
-                ["ffmpeg", "-v", "error", "-y", "-i", str(path), "-ar", str(SAMPLE_RATE), "-ac", "1", str(wav)],
+                [executable, "-v", "error", "-y", "-i", str(path), "-ar", str(SAMPLE_RATE), "-ac", "1", str(wav)],
                 check=True,
                 capture_output=True,
             )

@@ -662,7 +662,8 @@ class BilibiliMediaAsrFallbackProvider:
                 metadata={"bvid": bvid, "failure_class": "user_resolvable"},
             )
         output_template = media_dir / f"{bvid}.%(ext)s"
-        command = command_prefix + [
+        from openmd.runtime.ffmpeg_tools import ffmpeg_location_args
+        command = command_prefix + ffmpeg_location_args() + [
             "--no-playlist",
             "--extract-audio",
             "--audio-format",

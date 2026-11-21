@@ -197,7 +197,9 @@ class XiaohongshuCompositeProvider:
             return _command_failure(item, "unsupported_platform", "Xiaohongshu composite provider only supports xiaohongshu.")
         runtime_url = str(item.raw_meta.get("runtime_note_url") or "").strip()
         selector = _runtime_selector_for_item(item)
-        if not selector and not has_required_signed_query(runtime_url or item.url):
+        # Only a pasted single link needs its own share token; creator-profile
+        # collection items are read inside the profile browsing context.
+        if item.input_type != "collection" and not selector and not has_required_signed_query(runtime_url or item.url):
             return _command_failure(
                 item,
                 "xiaohongshu_signed_url_required",

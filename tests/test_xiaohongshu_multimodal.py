@@ -461,6 +461,23 @@ class XiaohongshuCompositeProviderTests(unittest.TestCase):
         self.assertIn("分享按钮复制完整链接", result.error_summary)
         self.assertEqual(calls, [])
 
+    def test_unsigned_collection_item_still_runs_in_creator_context(self) -> None:
+        # Round13 gate: creator-profile collection items come without xsec_token and
+        # rely on the profile browsing context; only pasted single links fail fast.
+        calls = []
+        provider = XiaohongshuCompositeProvider(
+            BackendRuntimeOptions(enable_browser_backends=True),
+            runner=lambda *args: (calls.append(args) or (1, "", "note not found 404")),
+        )
+        item = ContentItem(platform="xiaohongshu", input_type="collection",
+            url="https://www.xiaohongshu.com/discovery/item/6a0fc2060000000035039084",
+            source_type="mixed", raw_meta={"media_kind": "mixed"})
+
+        result = provider.extract(_request(item))
+
+        self.assertEqual(len(calls), 1)
+        self.assertNotEqual(result.error_code, "xiaohongshu_signed_url_required")
+
     def test_timeout_returns_guidance_and_closes_this_owned_browser_job(self) -> None:
         from unittest.mock import patch
 

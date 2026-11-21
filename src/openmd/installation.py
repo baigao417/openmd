@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from openmd.core.preferences import data_directory
+from openmd.runtime.interpreters import run_interruptibly
 
 
 def _install_record() -> dict:
@@ -151,7 +152,12 @@ def cmd_lifecycle(args) -> int:
             env = None
             if action == "update" and manager in {"pip", "pipx"}:
                 env = {**os.environ, "PIP_INDEX_URL": _update_indexes()[index]}
-            result = subprocess.run(command, check=False, capture_output=action == "update", text=action == "update", env=env)
+            # Hidden, interruptible child (process contract); output is relayed
+            # because a CREATE_NO_WINDOW child has no console of its own.
+            result = run_interruptibly(command, check=False, capture_output=True, text=True, env=env)
+            if action != "update":
+                sys.stdout.write(result.stdout or "")
+                sys.stderr.write(result.stderr or "")
             if result.returncode == 0:
                 break
     except OSError as exc:
@@ -163,7 +169,7 @@ def cmd_lifecycle(args) -> int:
         return code
     if action == "update":
         record = _install_record()
-        doctor = subprocess.run([sys.executable, "-m", "openmd", "doctor", "--profile", "core", "--json"], capture_output=True, text=True, check=False)
+        doctor = run_interruptibly([sys.executable, "-m", "openmd", "doctor", "--profile", "core", "--json"], capture_output=True, text=True, check=False)
         try:
             doctor_payload = parse_doctor_output(doctor.stdout)
         except ValueError:
@@ -178,7 +184,7 @@ def cmd_lifecycle(args) -> int:
             import json as _json
             target_literal = _json.dumps(str(extension_target))
             verify = "import json; from pathlib import Path; from openmd.browser_setup import EXTENSION_DIR; from openmd.browser_extension_sync import sync_extension; p,h=sync_extension(EXTENSION_DIR, Path(" + target_literal + ")); print(json.dumps({'path':str(p),'sha256':h}))"
-            sync = subprocess.run([sys.executable, "-c", verify], capture_output=True, text=True, check=False)
+            sync = run_interruptibly([sys.executable, "-c", verify], capture_output=True, text=True, check=False)
             if sync.returncode:
                 print(json.dumps(next_action("update_failed", "extension_sync_failed"), ensure_ascii=False), file=sys.stderr)
                 return 1

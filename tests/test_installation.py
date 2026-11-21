@@ -73,7 +73,7 @@ def test_uninstall_removes_only_managed_runtime_by_default(monkeypatch, tmp_path
     monkeypatch.setattr(installation, "manager_command", lambda *_: ["pip", "uninstall", "openmd-cli"])
     monkeypatch.setattr("openmd.browser_setup.uninstall", lambda: 0)
     monkeypatch.setattr("openmd.shell_menu.uninstall", lambda: {"removed": True})
-    monkeypatch.setattr(installation.subprocess, "run", lambda *a, **k: CompletedProcess(a[0], 0))
+    monkeypatch.setattr(installation, "run_interruptibly", lambda *a, **k: CompletedProcess(a[0], 0, "", ""))
     monkeypatch.setattr(installation.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _: "y")
 

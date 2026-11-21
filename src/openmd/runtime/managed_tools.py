@@ -188,22 +188,32 @@ def ensure_opencli(say: Callable[[str], None] | None = None) -> str:
     root = managed_root()
     root.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="opencli-", dir=root.parent))
-    command = [str(node / ("node.exe" if os.name == "nt" else "node")), str(npm), "install", "--prefix", str(staging),
-               f"{OPENCLI_PACKAGE}@{OPENCLI_VERSION}", "--no-audit", "--no-fund", "--loglevel=error", "--save-exact"]
-    registry = os.environ.get("OPENMD_NPM_REGISTRY")
-    if registry:
-        command += ["--registry", registry]
+    base_command = [str(node / ("node.exe" if os.name == "nt" else "node")), str(npm), "install", "--prefix", str(staging),
+                    f"{OPENCLI_PACKAGE}@{OPENCLI_VERSION}", "--no-audit", "--no-fund", "--loglevel=error", "--save-exact"]
+    primary_registry = os.environ.get("OPENMD_NPM_REGISTRY", "https://registry.npmmirror.com").rstrip("/")
+    registries = list(dict.fromkeys((primary_registry, "https://registry.npmjs.org")))
     env = {**os.environ, "PATH": os.pathsep.join([str(node), os.environ.get("PATH", "")])}
-    try:
-        completed = run_interruptibly(command, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False)
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    completed = None
+    for registry in registries:
+        for attempt in range(1, 4):
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+            staging.mkdir(parents=True, exist_ok=True)
+            try:
+                completed = run_interruptibly([*base_command, "--registry", registry], env=env,
+                                              capture_output=True, text=True, encoding="utf-8",
+                                              errors="replace", timeout=60, check=False)
+                if completed.returncode == 0:
+                    break
+            except (OSError, subprocess.TimeoutExpired):
+                completed = None
+        if completed is not None and completed.returncode == 0:
+            break
+        if registry != registries[-1]:
+            say("npm 镜像连接失败，正在切换备用 registry 重试。")
+    if completed is None or completed.returncode != 0:
         shutil.rmtree(staging, ignore_errors=True)
-        say(f"浏览器读取组件准备失败：{type(exc).__name__}；检查网络，或设置 OPENMD_NPM_REGISTRY 使用 npm 镜像后重试。")
-        return "missing"
-    if completed.returncode != 0:
-        shutil.rmtree(staging, ignore_errors=True)
-        tail = (completed.stderr or completed.stdout or "").strip().splitlines()[-1:] or [""]
-        say(f"浏览器读取组件准备失败（{tail[0][:120]}）；检查网络，或设置 OPENMD_NPM_REGISTRY 使用 npm 镜像后重试。")
+        say("浏览器读取组件准备失败：已重试 npm 镜像与官方 registry；检查网络或更换 OPENMD_NPM_REGISTRY 后重试。")
         return "missing"
     shutil.rmtree(root, ignore_errors=True)
     staging.rename(root)

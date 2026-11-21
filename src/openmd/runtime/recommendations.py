@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import platform
 from importlib.resources import files
@@ -93,9 +94,15 @@ def cmd_models_install(args) -> int:
         return 2
     total = sum(int(item.get("size_bytes", 0)) for item in plan["downloads"])
     print(f"将下载约 {total / 1024**3:.1f} GiB 到 {plan['root']}。模型会在本机处理音频。")
-    if not getattr(args, "_confirmed", False) and input("继续？[y/N] ").strip().lower() not in {"y", "yes"}:
-        print(f"以后可运行：openmd models install {args.tier}")
-        return 1
+    if not getattr(args, "_confirmed", False):
+        try:
+            answer = input("继续？[y/N] ")
+        except EOFError:
+            print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
+            return 2
+        if answer.strip().lower() not in {"y", "yes"}:
+            print(f"以后可运行：openmd models install {args.tier}")
+            return 1
     try:
         from huggingface_hub import snapshot_download
     except ImportError as exc:
@@ -110,19 +117,30 @@ def cmd_models_install(args) -> int:
         destination.mkdir(parents=True, exist_ok=True)
         last_error = None
         attempts = []
+        source = None
         for endpoint in ("https://huggingface.co", "https://hf-mirror.com"):
+            attempts.append(endpoint.removeprefix("https://"))
             try:
                 snapshot_download(repo_id=item["repository"], revision=item.get("revision"), local_dir=str(destination), endpoint=endpoint)
                 last_error = None
+                source = endpoint.removeprefix("https://")
                 break
             except Exception as exc:
-                attempts.append(endpoint.removeprefix("https://"))
                 last_error = exc
-        if last_error is not None and modelscope_snapshot_download is not None:
+        expected_sha256 = item.get("sha256")
+        modelscope_repository = item.get("modelscope_repository")
+        if (last_error is not None and modelscope_snapshot_download is not None
+                and isinstance(modelscope_repository, str)
+                and isinstance(expected_sha256, str)
+                and len(expected_sha256) == 64
+                and all(ch in "0123456789abcdefABCDEF" for ch in expected_sha256)):
             attempts.append("modelscope")
             try:
-                modelscope_snapshot_download(model_id=item.get("modelscope_repository", item["repository"]), revision=item.get("revision"), local_dir=str(destination))
+                modelscope_snapshot_download(model_id=modelscope_repository,
+                                             revision=item.get("modelscope_revision", item.get("revision")),
+                                             local_dir=str(destination))
                 last_error = None
+                source = "modelscope"
             except Exception as exc:
                 last_error = exc
         if last_error is not None:
@@ -133,6 +151,19 @@ def cmd_models_install(args) -> int:
         missing = _missing(destination, _spec_for(item["repository"], "whisper"))
         if missing:
             raise RuntimeError(f"model_integrity_check_failed: {item['repository']} missing {', '.join(missing)}")
-        receipts.append({"repository": item["repository"], "destination": str(destination), "verified": "required model files present"})
+        verified = "required model files present"
+        if isinstance(expected_sha256, str) and len(expected_sha256) == 64:
+            model_file = destination / "model.bin"
+            digest = hashlib.sha256()
+            with model_file.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            actual_sha256 = digest.hexdigest()
+            if actual_sha256.casefold() != expected_sha256.casefold():
+                raise RuntimeError(f"model_integrity_check_failed: {item['repository']} model.bin sha256 mismatch")
+            verified = "required model files and model.bin sha256"
+        receipts.append({"repository": item["repository"], "destination": str(destination), "verified": verified,
+                         "source": source, "attempts": attempts,
+                         **({"model_sha256": expected_sha256.lower()} if verified.endswith("sha256") else {})})
     print(json.dumps({"schema": "openmd.model-install-receipt/v1", "tier": args.tier, "downloads": receipts}, ensure_ascii=True, sort_keys=True))
     return 0

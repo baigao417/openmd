@@ -286,12 +286,32 @@ def sanitize_asr_execution(value: Any) -> dict[str, Any]:
     phases = value.get('cloud_phase_seconds')
     if isinstance(phases, dict):
         result['cloud_phase_seconds'] = {key:phases[key] for key in ('navigate','open_upload','upload_file','submit','poll') if number(phases.get(key))}
+    label_pattern = re.compile(r"[A-Za-z0-9_.-]{1,40}(?:/[A-Za-z0-9_.-]{1,80})?")
+    for key in ("selected_model", "language_probe_model"):
+        label = value.get(key)
+        if isinstance(label, str) and label_pattern.fullmatch(label):
+            result[key] = label
+    for key in ("selected_model_evaluation", "language_probe_model_evaluation"):
+        evaluation = value.get(key)
+        if isinstance(evaluation, str) and evaluation in {"evaluated", "unverified"}:
+            result[key] = evaluation
     route = value.get("asr_route")
     if isinstance(route, dict):
         result.update(sanitize_asr_execution({
             "asr_backend": route.get("selected_backend"),
             "detected_language": route.get("detected_language"),
         }))
+        # Keep only bounded model labels and the two public evaluation classes.
+        # Route metadata may include the resolved local model path, so never copy
+        # arbitrary strings or the route object wholesale into receipts.
+        for key in ("selected_model", "language_probe_model"):
+            label = route.get(key)
+            if isinstance(label, str) and label_pattern.fullmatch(label):
+                result[key] = label
+        for key in ("selected_model_evaluation", "language_probe_model_evaluation"):
+            evaluation = route.get(key)
+            if isinstance(evaluation, str) and evaluation in {"evaluated", "unverified"}:
+                result[key] = evaluation
     histogram = value.get("batch_size_histogram")
     if isinstance(histogram, dict):
         result["batch_size_histogram"] = {str(n): histogram[str(n)] for n in range(1, 33)

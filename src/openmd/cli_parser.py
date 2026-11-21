@@ -28,12 +28,13 @@ def build_parser() -> argparse.ArgumentParser:
     mcp.set_defaults(func=cmd_mcp)
 
     from openmd.runtime.recommendations import cmd_models_install, matrix
-    models = subparsers.add_parser('models', description='Local model installation plans; never downloads')
+    models = subparsers.add_parser('models', description='Install optional local models')
     model_commands = models.add_subparsers(dest='models_command', required=True)
-    install = model_commands.add_parser('install', description='Print downloads, estimated sizes and destinations only')
+    install = model_commands.add_parser('install', description='Download an optional model after interactive confirmation')
     install.add_argument('tier', choices=sorted(matrix()['tiers']))
     from pathlib import Path
-    install.add_argument('--root', type=Path, help='planned model destination; no directory is created')
+    install.add_argument('--root', type=Path, help='model destination')
+    install.add_argument('--dry-run', action='store_true', help='print the plan without downloading')
     install.set_defaults(func=cmd_models_install)
 
     from .cli_commands import cmd_opencli

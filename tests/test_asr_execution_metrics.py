@@ -22,11 +22,48 @@ def test_asr_receipt_keeps_selected_model_and_route_without_free_text():
     assert sanitize_asr_execution({"model": "Qwen/Qwen3-ASR-1.7B"}) == {"model": "Qwen/Qwen3-ASR-1.7B"}
 
 
+def test_asr_route_keeps_bounded_model_evaluation_without_paths():
+    receipt = sanitize_asr_execution({
+        "asr_route": {
+            "selected_backend": "asr.faster_whisper",
+            "detected_language": "en",
+            "selected_model": "small",
+            "selected_model_evaluation": "unverified",
+            "language_probe_model": "whisper-large-v3-turbo",
+            "language_probe_model_evaluation": "evaluated",
+            "private_path": "D:/private/model",
+        }
+    })
+    assert receipt["selected_model"] == "small"
+    assert receipt["selected_model_evaluation"] == "unverified"
+    assert receipt["language_probe_model"] == "whisper-large-v3-turbo"
+    assert receipt["language_probe_model_evaluation"] == "evaluated"
+    assert "private_path" not in receipt
+
+    unsafe = sanitize_asr_execution({
+        "asr_route": {
+            "selected_model": "D:/private/model",
+            "selected_model_evaluation": {"private": "metadata"},
+            "language_probe_model": "C:\\Users\\person\\weights",
+            "language_probe_model_evaluation": "unverified",
+        }
+    })
+    assert "selected_model" not in unsafe
+    assert "selected_model_evaluation" not in unsafe
+    assert "language_probe_model" not in unsafe
+    assert unsafe["language_probe_model_evaluation"] == "unverified"
+
+
 def test_asr_metrics_survive_package_and_actual_runlog(tmp_path):
     item = ContentItem(platform="generic_media", input_type="single", url="file:///speech.wav", source_type="audio")
     metadata = {"profile": "media", "batch_size_requested": 4, "batch_size_effective": 2,
                 "batch_size_histogram": {"2": 10, "1": 1}, "batch_oom_retries": 1,
                 "batch_oom_attempts": [4], "inference_seconds": 12.5, "elapsed_seconds": 18,
+                "asr_route": {"selected_backend": "asr.faster_whisper", "detected_language": "en",
+                              "selected_model": "small", "selected_model_evaluation": "unverified",
+                              "language_probe_model": "whisper-large-v3-turbo",
+                              "language_probe_model_evaluation": "evaluated",
+                              "private_path": "D:/private/model"},
                 "asr_execution": {"elapsed_seconds": 20, "torch_peak_allocated_bytes": 4000,
                                   "torch_peak_reserved_bytes": 5000, "python": "private/path", "text": "secret transcript"}}
     result = TranscriptResult(text="[00:00:00] hello\n", status="verified", source_level="asr", backend="asr.qwen3", metadata=metadata)
@@ -38,6 +75,10 @@ def test_asr_metrics_survive_package_and_actual_runlog(tmp_path):
     assert runlog["asr_execution"]["elapsed_seconds"] == 20
     assert runlog["asr_execution"]["batch_size_histogram"] == {"1": 1, "2": 10}
     assert runlog["asr_execution"]["torch_peak_reserved_bytes"] == 5000
+    assert runlog["asr_execution"]["selected_model"] == "small"
+    assert runlog["asr_execution"]["selected_model_evaluation"] == "unverified"
+    assert runlog["asr_execution"]["language_probe_model_evaluation"] == "evaluated"
+    assert "private_path" not in json.dumps(runlog)
     assert "private/path" not in json.dumps(package)
     assert "secret transcript" not in path.read_text(encoding="utf-8")
 

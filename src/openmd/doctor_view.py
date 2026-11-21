@@ -41,7 +41,8 @@ def _opencli_row() -> tuple[bool | None, str, str]:
 def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str]]:
     """Return (ready, ability, how-to-enable) rows; ready=None means not applicable."""
     diagnostics = payload.get("profile_diagnostics") or {}
-    asr_ready = bool((diagnostics.get("asr_runtime") or {}).get("probe", {}).get("ready"))
+    asr_probe = (diagnostics.get("asr_runtime") or {}).get("probe", {})
+    asr_ready = bool(asr_probe.get("ready") or asr_probe.get("fallback_available"))
     documents = ((diagnostics.get("optional_profiles") or {}).get("documents") or {})
     formats = diagnostics.get('document_formats') or {}
     native_ready = any(formats.get(suffix, {}).get('available') for suffix in ('pdf', 'docx', 'pptx', 'xlsx'))
@@ -85,7 +86,9 @@ def render(payload: dict[str, Any]) -> str:
     recommendation = (payload.get('profile_diagnostics') or {}).get('model_recommendation') or {}
     if recommendation:
         lines += ['', f"本机建议：OCR {recommendation['ocr']}；ASR {recommendation['asr']}（{recommendation['validation']}）",
-                  '查看下载计划：openmd models install ' + recommendation['ocr'] + '；不会自动下载。']
+                  '安装 ASR 模型：openmd models install ' + recommendation['asr'] + '；首次安装会询问确认。']
+        discovered = (payload.get('profile_diagnostics') or {}).get('discovered_models') or []
+        lines.append('已发现 ASR 模型：' + ('；'.join(f"{item.get('name')}（{'已评测' if item.get('evaluated') else '未经 Openmd 评测'}）" for item in discovered) if discovered else '无'))
     managed = payload.get("managed_tools") or {}
     if managed.get("executable"):
         lines += ["", f"OpenCLI: {managed['executable']}",

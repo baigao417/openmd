@@ -65,9 +65,9 @@
         "source": "weixin",
         "capability": "content",
         "chain": [
+          "weixin.article.local",
           "opencli.weixin.download",
           "defuddle.web.content",
-          "weixin.article.local",
           "opencli.web.read"
         ],
         "last_verified": "2026-11-18"

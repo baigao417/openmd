@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### 修复 / Fixed
+- 原生文字 PDF（如论文）不再因为排版细节整页丢失：文字层改为逐字核查，不可见文字（不可见渲染、透明、低对比、极小字号、页外、被裁掉、被遮盖、隐藏图层）逐字删除，连字、字距等有歧义的排版保留文字并标为“文字层未核验”。未授权 OCR 时，10 篇冻结论文的文字召回由 0.16 提高到 0.995；回执写为“已输出 N/N 页，其中 M 页文字层未核验”。 / Native-text PDFs such as papers no longer lose whole pages to layout details: the text layer is checked per glyph, invisible text (invisible render mode, transparent, low contrast, tiny, off-page, clipped out, covered, hidden layers) is removed character by character, and ambiguous layout such as ligatures and kerning keeps its text marked “text layer unverified”. Without OCR permission, text recall on 10 frozen papers rose from 0.16 to 0.995, and the receipt reads “output N/N pages, M with an unverified text layer”.
 - 网页文章不再静默截断：同时比较 Defuddle 与 trafilatura 的结果，主结果只截到页面正文一小部分时换用更完整的候选，仍截不全时标为 partial 并在回执中写明覆盖情况（例如 RFC 9110 由约 9 KB 片段恢复为完整正文）。 / Web articles are no longer silently truncated: Defuddle and trafilatura results are compared, a more complete candidate replaces a primary result that covers only a small part of the page, and a page that still cannot be captured fully is marked partial with coverage in the receipt (for example, RFC 9110 now comes out whole instead of a ~9 KB fragment).
 - 更多错误页与失效链接被拒收（软 404、挑战页外壳、Not Found、示例域名、公众号“参数错误/内容不存在”状态页），引用这些短语的正常文章仍然保留。 / More error pages and dead links are refused (soft 404s, challenge-page shells, Not Found, example domains, WeChat “参数错误/内容不存在” status screens), while articles that quote those phrases are kept.
 ### 新增 / Added

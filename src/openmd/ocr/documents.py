@@ -65,7 +65,7 @@ def _raw_text_chars(page):
     ]
 
 
-def _filtered_raw_text(raw, decisions):
+def _filtered_raw_text(raw, decisions, *, exclude_boxes=()):
     """Rebuild text from rawdict chars, never from get_text(full-page)."""
     decision_index = 0
     unmatched = 0
@@ -103,7 +103,9 @@ def _filtered_raw_text(raw, decisions):
                     if decision is None:
                         output.append(item.get("c", ""))
                         unmatched += 0 if item.get("c", "").isspace() else 1
-                    elif not decision.get("remove"):
+                    elif (not decision.get("remove")
+                          and not any(_intersection_area(raw_bbox, box) > 0
+                                      for box in exclude_boxes if raw_bbox is not None)):
                         output.append(item.get("c", ""))
             output_lines.append("".join(output))
         if output_lines:
@@ -167,7 +169,37 @@ def _pixels(pixmap, page, box):
     return [(x, y, pixmap.pixel(x, y)[:3]) for y in range(y0, y1) for x in range(x0, x1)]
 
 
+def _numpy_module():
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    return np
+
+
+def _pixmap_rgb_array(pixmap, np):
+    """Expose the existing RGB raster as a zero-copy array when NumPy is present."""
+    samples = np.frombuffer(pixmap.samples, dtype=np.uint8)
+    rows = samples.reshape(pixmap.height, pixmap.stride)
+    return rows[:, :pixmap.width * pixmap.n].reshape(pixmap.height, pixmap.width, pixmap.n)[:, :, :3]
+
+
 def _rendered_ink(pixmap, page, box, delta):
+    np = _numpy_module()
+    if np is not None:
+        rgb = _pixmap_rgb_array(pixmap, np)
+        scale_x, scale_y = pixmap.width / page.rect.width, pixmap.height / page.rect.height
+        x0 = max(0, math.floor((box[0] - page.rect.x0) * scale_x))
+        y0 = max(0, math.floor((box[1] - page.rect.y0) * scale_y))
+        x1 = min(pixmap.width, math.ceil((box[2] - page.rect.x0) * scale_x))
+        y1 = min(pixmap.height, math.ceil((box[3] - page.rect.y0) * scale_y))
+        pixels = rgb[y0:y1, x0:x1]
+        if pixels.size == 0:
+            return []
+        background = np.median(pixels.reshape(-1, 3), axis=0)
+        mask = np.max(np.abs(pixels.astype("int16") - background), axis=2) > delta * 255
+        ys, xs = np.nonzero(mask)
+        return [(int(x + x0), int(y + y0)) for y, x in zip(ys, xs)]
     pixels = _pixels(pixmap, page, box)
     if not pixels:
         return []
@@ -184,6 +216,14 @@ def _rendered_ink_region(page, box, dpi, delta):
     clip = module.Rect(max(page.rect.x0, box[0] - pad), max(page.rect.y0, box[1] - pad),
                        min(page.rect.x1, box[2] + pad), min(page.rect.y1, box[3] + pad))
     pixmap = page.get_pixmap(dpi=dpi, clip=clip, alpha=False, colorspace=module.csRGB)
+    np = _numpy_module()
+    if np is not None:
+        rgb = _pixmap_rgb_array(pixmap, np)
+        if rgb.size == 0:
+            return []
+        background = np.median(rgb.reshape(-1, 3), axis=0)
+        mask = np.max(np.abs(rgb.astype("int16") - background), axis=2) > delta * 255
+        return [tuple(pixel) for pixel in rgb[mask].tolist()]
     pixels = [pixmap.pixel(x, y)[:3] for y in range(pixmap.height) for x in range(pixmap.width)]
     if not pixels:
         return []
@@ -195,14 +235,55 @@ def _intersection_area(a, b):
     return max(0, min(a[2], b[2]) - max(a[0], b[0])) * max(0, min(a[3], b[3]) - max(a[1], b[1]))
 
 
+class _BBoxGrid:
+    """Small page-local index for exact overlap checks on nearby PDF objects."""
+
+    def __init__(self, boxes, *, cell_size=64):
+        self.cell_size = cell_size
+        self.bins = {}
+        self.boxes = boxes
+        self.large = []
+        for index, box in enumerate(boxes):
+            if box is None or len(box) != 4:
+                continue
+            keys = tuple(self._keys(box))
+            if keys == ((-1, -1),):
+                self.large.append(index)
+                continue
+            for key in keys:
+                self.bins.setdefault(key, []).append(index)
+
+    def _keys(self, box):
+        size = self.cell_size
+        x0, y0, x1, y1 = box
+        left, right = math.floor(x0 / size), math.floor(x1 / size)
+        top, bottom = math.floor(y0 / size), math.floor(y1 / size)
+        # Malformed giant boxes must not allocate a page-sized number of bins.
+        if (right - left + 1) * (bottom - top + 1) > 4096:
+            return ((-1, -1),)
+        return ((x, y) for x in range(left, right + 1) for y in range(top, bottom + 1))
+
+    def query(self, box):
+        keys = tuple(self._keys(box))
+        if keys == ((-1, -1),):
+            return range(len(self.boxes))
+        seen = set()
+        for key in keys:
+            seen.update(self.bins.get(key, ()))
+        seen.update(self.large)
+        return seen
+
+
 def _rect_contains(outer, inner, tolerance=0.01):
     return (outer[0] <= inner[0] + tolerance and outer[1] <= inner[1] + tolerance
             and outer[2] >= inner[2] - tolerance and outer[3] >= inner[3] - tolerance)
 
 
-def _opaque_fill_covers(drawings, charbox, seqno, opaque_overlays=()):
+def _opaque_fill_covers(drawings, charbox, seqno, opaque_overlays=(), *, drawing_grid=None):
     """Return true only for a later opaque rectangular fill enclosing a glyph."""
-    for drawing in drawings:
+    indices = drawing_grid.query(charbox) if drawing_grid is not None else range(len(drawings))
+    for index in indices:
+        drawing = drawings[index]
         if drawing.get("seqno", -1) <= seqno or drawing.get("fill") is None or drawing.get("rect") is None:
             continue
         if drawing.get("fill_opacity", 1) < 0.999 or not _rect_contains(drawing["rect"], charbox):
@@ -429,14 +510,26 @@ def _paint_self_overlap(chars):
     return False
 
 
+def _unique_rectangles(rectangles):
+    """Collapse duplicate clip/scissor bounds without changing overlap decisions."""
+    unique = {}
+    for rect in rectangles:
+        if rect is not None:
+            unique.setdefault(tuple(float(value) for value in rect), rect)
+    return list(unique.values())
+
+
 def _visibility(page, config: dict, images: list, *, office_generated: bool = False) -> dict:
     """Classify and filter individual glyphs while retaining native order."""
     spans = page.get_texttrace()
     paint_groups = _text_paint_groups(page, spans) if not office_generated else {}
     drawings = page.get_drawings(extended=True)
-    clip_rects = [drawing.get("scissor") for drawing in drawings
-                  if drawing.get("type") == "clip" and drawing.get("scissor") is not None]
+    clip_rects = _unique_rectangles(drawing.get("scissor") for drawing in drawings
+                                    if drawing.get("type") == "clip" and drawing.get("scissor") is not None)
+    clip_grid = _BBoxGrid([tuple(rect) for rect in clip_rects])
     paint = page.get_bboxlog()
+    drawing_grid = _BBoxGrid([tuple(drawing["rect"]) if drawing.get("rect") is not None else None
+                              for drawing in drawings])
     total = invisible = low_contrast = obscured = vector_alternatives = glyph_alternatives = image_overlap = unproven = paint_overlap = 0
     hard_reasons = []
     soft_reasons = []
@@ -453,7 +546,11 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                        and (getattr(entry, "opacity", 1) == -1
                             or getattr(entry, "opacity", 1) >= 0.999)]
     pixmap = page.get_pixmap(dpi=72, alpha=False, colorspace=pymupdf().csRGB)
-    for span in spans:
+    span_boxes = [span.get("bbox") for span in spans]
+    span_grid = _BBoxGrid(span_boxes)
+    paint_boxes = [entry[1] for entry in paint]
+    paint_grid = _BBoxGrid(paint_boxes)
+    for span_index, span in enumerate(spans):
         chars = list(span.get("chars", ()))
         visible_chars = [char for char in chars if char[0] > 32 and not chr(char[0]).isspace()]
         count = len(visible_chars)
@@ -502,9 +599,17 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
         # Every later overlapping paint can hide or alter a character.
         # This includes strokes, transparent fills, shades and images; do not
         # guess cover identity from shape, colour, or percentage of bbox area.
-        later_paint = any(kind not in {"ignore-text", "fill-text", "stroke-text"}
-                          and _intersection_area(box, bounds) > 0
-                          for kind, bounds in paint[span.get("seqno", -1) + 1:])
+        later_paint_indexes = [index for index in paint_grid.query(box)
+                               if index > span.get("seqno", -1)
+                               and paint[index][0] not in {"ignore-text", "fill-text", "stroke-text"}
+                               and _intersection_area(box, paint[index][1]) > 0]
+        later_paint = bool(later_paint_indexes)
+        later_span_indexes = [index for index in span_grid.query(box)
+                              if spans[index].get("seqno", -1) > span.get("seqno", -1)
+                              and not (span.get("seqno", -1) in paint_groups
+                                       and paint_groups.get(spans[index].get("seqno")) == paint_groups[span["seqno"]])
+                              and spans[index].get("type") != 3
+                              and _intersection_area(box, span_boxes[index]) > 0]
         if not office_generated:
             # bboxlog pads glyph paint boxes and span boxes include spaces;
             # those overlap ordinary adjacent words. Actual nonspace character
@@ -516,26 +621,31 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                 and later.get("type") != 3 and _intersection_area(box, later["bbox"]) > 0
                 and any(_intersection_area(char[3], other[3]) > 0 for char in chars
                         for other in later.get("chars", ()) if other[0] > 32 and not chr(other[0]).isspace())
-                for later in spans)
+                for later in (spans[index] for index in later_span_indexes))
             later_paint = later_paint or _paint_self_overlap(chars)
         if later_paint:
             paint_overlap += count
         span_seqno = span.get("seqno", -1)
-        later_span_chars = [
-            later["bbox"]
-            for later in spans
-            if later.get("seqno", -1) > span_seqno
-            and not (span_seqno in paint_groups and paint_groups.get(later.get("seqno")) == paint_groups[span_seqno])
-            and later.get("type") != 3
-        ]
-        later_paints = [bounds for index, (kind, bounds) in enumerate(paint)
-                        if index > span_seqno and kind not in {"ignore-text", "fill-text", "stroke-text"}
-                        and not any(_intersection_area(bounds, overlay) > 0 for overlay in overlays)]
+        later_span_chars = [span_boxes[index] for index in span_grid.query(box)
+                            if spans[index].get("seqno", -1) > span_seqno
+                            and not (span_seqno in paint_groups
+                                     and paint_groups.get(spans[index].get("seqno")) == paint_groups[span_seqno])
+                            and spans[index].get("type") != 3]
+        later_paints = [paint[index][1] for index in paint_grid.query(box)
+                        if index > span_seqno
+                        and paint[index][0] not in {"ignore-text", "fill-text", "stroke-text"}
+                        and _intersection_area(box, paint[index][1]) > 0
+                        and not any(_intersection_area(paint[index][1], overlay) > 0 for overlay in overlays)]
         self_overlap = _paint_self_overlap(chars)
         if any(_intersection_area(char[3], rect) > 0 for char in visible_chars for rect in overlays):
             unproven += sum(1 for char in visible_chars
                             if any(_intersection_area(char[3], rect) > 0 for rect in overlays))
-        ink = _rendered_ink(pixmap, page, box, config["textlayer_background_delta"])
+        # Span pixels are only an extraction alternative for our own Office
+        # conversion, where outlined glyphs may accompany the text trace. For
+        # arbitrary PDFs, keep clear vector text on the vector-evidence path;
+        # uncertain individual glyphs still use the shared page raster below.
+        ink = (_rendered_ink(pixmap, page, box, config["textlayer_background_delta"])
+               if office_generated else [])
         if office_generated and not later_paint and _office_vector_alternative(span, drawings, ink, page, pixmap):
             vector_alternatives += count
             decisions.extend({"remove": False, "hard": False, "soft": False,
@@ -547,7 +657,8 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
             char_key = id(char)
             if chr(char[0]).isspace():
                 continue
-            intersecting_clips = [rect for rect in clip_rects if _intersection_area(charbox, rect) > 0]
+            intersecting_clips = [clip_rects[index] for index in clip_grid.query(charbox)
+                                  if _intersection_area(charbox, clip_rects[index]) > 0]
             clip_partially_covers_glyph = any(
                 rect.x0 > charbox[0] + 0.01 or rect.y0 > charbox[1] + 0.01
                 or rect.x1 < charbox[2] - 0.01 or rect.y1 < charbox[3] - 0.01
@@ -590,7 +701,7 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                 span_soft.discard(char_key)
                 hard_reasons.append("annotation_or_widget_covered")
                 continue
-            if _opaque_fill_covers(drawings, charbox, span_seqno):
+            if _opaque_fill_covers(drawings, charbox, span_seqno, drawing_grid=drawing_grid):
                 span_hard.add(char_key)
                 span_soft.discard(char_key)
                 hard_reasons.append("opaque_fill_fully_covers_text")
@@ -618,7 +729,8 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                 visibility_dpi = 72
             if geometry_uncertain and not ink216:
                 obscured += 1
-                if _opaque_fill_covers(drawings, charbox, span_seqno, opaque_overlays):
+                if _opaque_fill_covers(drawings, charbox, span_seqno, opaque_overlays,
+                                       drawing_grid=drawing_grid):
                     span_hard.add(char_key)
                     hard_reasons.append("opaque_fill_fully_covers_text")
                 elif span.get("layer"):
@@ -634,7 +746,8 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                     span_soft.add(char_key)
                     soft_reasons.append("clip_visibility_unproven")
                 elif any(_intersection_area(charbox, rect) > 0 for rect in overlays):
-                    if _opaque_fill_covers(drawings, charbox, span_seqno, opaque_overlays):
+                    if _opaque_fill_covers(drawings, charbox, span_seqno, opaque_overlays,
+                                           drawing_grid=drawing_grid):
                         span_hard.add(char_key)
                         hard_reasons.append("annotation_or_widget_covered")
                     else:
@@ -829,6 +942,7 @@ def extract_pdf(item, *, backend: str = "ocr.chain", allow_ocr: bool = False, _o
                     continue
                 probe = probe_page(page, config, _office_generated=office_generated)
                 text = probe.pop("text")
+                table_blocks = []  # round13-e table detection not shipped: F1 0 and one malformed table on real papers
                 native_unverified = probe["route"] == "textlayer" and probe.get("textlayer_unverified")
                 if (probe["route"] == "ocr" and backend == "pdf.textlayer" and not allow_ocr
                         and probe.get("filtered_text", "").strip()):
@@ -867,6 +981,8 @@ def extract_pdf(item, *, backend: str = "ocr.chain", allow_ocr: bool = False, _o
                 pages.append(record)
                 if text.strip():
                     bodies.append(text.strip())
+                if table_blocks:
+                    bodies.extend(block.strip() for block in table_blocks if block.strip())
         if not pages:
             return document_failure(backend, title, "pdf_empty", "PDF has no pages.")
         has_ocr = any(p["route"] == "ocr" and p.get("engine") != "PyMuPDF" for p in pages)

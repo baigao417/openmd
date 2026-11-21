@@ -45,6 +45,12 @@ class PDFVisibilityTests(unittest.TestCase):
         self.assertEqual(probe["route"], "textlayer")
         self.assertIsNone(probe["textlayer_rejected_reason"])
 
+    def test_unambiguous_native_text_skips_span_raster_ink_scan(self):
+        self.add_text()
+        with patch("openmd.ocr.documents._rendered_ink", side_effect=AssertionError("clear vector text was raster-scanned")):
+            probe = probe_page(self.page, self.config)
+        self.assertEqual(probe["route"], "textlayer")
+
     def test_scan_with_dense_hidden_layer_uses_ocr_and_never_returns_hidden_text(self):
         self.add_image(self.page.rect)
         for y in range(30, 380, 16):

@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from openmd.runtime.interpreters import run_interruptibly
+
 
 def _bundled_ffmpeg() -> str | None:
     try:
@@ -39,9 +41,9 @@ def media_duration(path: str | Path) -> float | None:
     ffprobe = shutil.which("ffprobe")
     try:
         if ffprobe:
-            done = subprocess.run([ffprobe, "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", path], capture_output=True,
-                text=True, timeout=30, check=False)
+            done = run_interruptibly([ffprobe, "-v", "error", "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1", path], stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, check=False)
             if done.returncode == 0:
                 value = float(done.stdout.strip())
                 if math.isfinite(value) and value >= 0:
@@ -49,8 +51,9 @@ def media_duration(path: str | Path) -> float | None:
         executable = ffmpeg_executable()
         if not executable:
             return None
-        done = subprocess.run([executable, "-hide_banner", "-i", path], capture_output=True,
-            text=True, timeout=30, check=False)
+        # Owned, interruptible process; FFmpeg prints file names in UTF-8 whatever the console code page.
+        done = run_interruptibly([executable, "-hide_banner", "-i", path], stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, check=False)
         match = re.search(r"Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)", done.stderr or "")
         if not match:
             return None

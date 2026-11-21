@@ -37,3 +37,10 @@ def test_all_extra_only_names_existing_extras():
     extras = _extras()
     included = set(re.search(r"\[(.+)\]", extras["all"][0]).group(1).split(","))
     assert included <= set(extras)
+
+
+def test_all_installs_socks_support_only_through_proxy_extra():
+    extras = _extras()
+    assert any(dep.lower().startswith("pysocks") for dep in extras.get("proxy", []))
+    included = set(re.search(r"\[(.+)\]", extras["all"][0]).group(1).split(","))
+    assert "proxy" in included

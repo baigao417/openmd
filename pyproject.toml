@@ -43,8 +43,9 @@ pdf = ["markitdown[pdf]>=0.1.6"]
 ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
 ocr-router = ["Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]
 document = ["mammoth>=1.8,<2", "python-pptx>=1.0,<2", "openpyxl>=3.1,<4", "xlrd>=2,<3", "olefile>=0.47,<1", "pdfminer.six>=20231228"]
+proxy = ["PySocks>=1.7,<2"]  # Enable explicitly configured SOCKS proxies without urllib3's missing-dependency warning.
 # Everything a user can opt into, in one install. Keep in sync with tests/test_extras_all.py.
-all = ["openmd-cli[document,ocr,ocr-router,pandoc,media,asr,mcp]"]
+all = ["openmd-cli[document,ocr,ocr-router,pandoc,media,asr,mcp,proxy]"]
 # Contributors: pip install -e ".[dev]" then python -m pytest
 dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also need ffmpeg on PATH
 

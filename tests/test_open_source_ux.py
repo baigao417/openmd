@@ -189,6 +189,30 @@ def test_managed_opencli_installs_once_pinned_and_activates(tmp_path, monkeypatc
     assert managed_tools.ensure_opencli(messages.append) == "managed" and len(calls) == 1
 
 
+def test_managed_opencli_retries_then_falls_back_from_npm_mirror(tmp_path, monkeypatch) -> None:
+    import os
+    import subprocess
+
+    managed_tools, _ = _fake_node(tmp_path, monkeypatch)
+    monkeypatch.setenv("OPENMD_AUTO_INSTALL_TOOLS", "1")
+    monkeypatch.setenv("OPENMD_NPM_REGISTRY", "https://registry.npmmirror.com")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if len(calls) < 4:
+            return subprocess.CompletedProcess(command, 1, "", "network unavailable")
+        prefix = Path(command[command.index("--prefix") + 1])
+        (prefix / "node_modules" / ".bin").mkdir(parents=True)
+        (prefix / "node_modules" / ".bin" / ("opencli.cmd" if os.name == "nt" else "opencli")).write_text("", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(managed_tools, "run_interruptibly", fake_run)
+    assert managed_tools.ensure_opencli(lambda _m: None) == "managed"
+    registries = [command[command.index("--registry") + 1] for command in calls]
+    assert registries == ["https://registry.npmmirror.com"] * 3 + ["https://registry.npmjs.org"]
+
+
 def test_managed_opencli_respects_opt_out_and_failed_install(tmp_path, monkeypatch) -> None:
     import subprocess
 

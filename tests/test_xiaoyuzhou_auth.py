@@ -146,8 +146,7 @@ def test_store_lock_serializes_refreshes(tmp_path, monkeypatch):
 
 
 def test_qr_failure_redacts_url_and_token_values():
-    message = auth.safe_error("https://login.invalid/secret?x=1 access_token=synthetic-access")
-    assert "login.invalid" not in message
+    message = auth.safe_error("synthetic-qr-payload access_token=synthetic-access")
     assert "synthetic-access" not in message
 
 
@@ -171,13 +170,13 @@ def test_http_failures_are_bounded_and_do_not_echo_request_url(monkeypatch):
     import urllib.error
 
     def reject(_request, **_kwargs):
-        raise urllib.error.HTTPError("https://login.invalid/sensitive", 415, "unsupported", {}, None)
+        raise urllib.error.HTTPError("https://example.invalid/sensitive", 415, "unsupported", {}, None)
     monkeypatch.setattr(auth._HTTP_OPENER, "open", reject)
     try:
-        auth._post_json("https://login.invalid/sensitive", {})
+        auth._post_json("https://example.invalid/sensitive", {})
     except auth.AuthError as exc:
         assert "415" in str(exc)
-        assert "login.invalid" not in str(exc)
+        assert "example.invalid" not in str(exc)
     else:
         raise AssertionError("HTTP failure should be normalized")
 

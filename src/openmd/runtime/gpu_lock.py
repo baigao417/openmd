@@ -13,7 +13,9 @@ def gpu_lock_path() -> Path:
     from openmd.core.preferences import data_directory
 
     default = data_directory() / "runtime"
-    configured = os.environ.get("OPENMD_RUNTIME_DIR") if not os.environ.get("OPENMD_DATA_DIR") else None
+    # An explicit runtime override is more specific than the data root; without
+    # it, runtime state follows OPENMD_DATA_DIR (data_directory()).
+    configured = os.environ.get("OPENMD_RUNTIME_DIR")
     root = Path(configured or default).expanduser()
     return root.resolve() / "gpu.lock"
 

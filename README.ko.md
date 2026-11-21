@@ -32,11 +32,18 @@ Openmd가 지향하는 것은 하나의 주춧돌입니다. 이런 콘텐츠를 
 Openmd는 명령줄 도구와 Python 모듈 `openmd`를 제공합니다(패키지 이름은 `openmd-cli`). Python 3.10 이상이 필요하며 Windows, macOS, Linux에서 동작합니다.
 
 ```bash
-# 기본 패키지 설치 (pipx install openmd-cli / uv tool install openmd-cli 도 가능)
-pip install openmd-cli
+# Windows: 명령 한 줄로 전체 설치 (Python 사전 설치 불필요, 음성 모델은 처음 쓸 때 확인)
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/baigao417/openmd/main/scripts/install.ps1 | iex"
+
+# Python이 이미 있으면 pip도 가능 (uv tool install / pipx install도 가능)
+pip install "openmd-cli[all]"
 
 # 로컬 실행 환경과 선택 구성 요소 상태 확인
 openmd doctor
+
+# 업데이트 / 프로그램 제거 (데이터·설정·로그인 상태·모델은 기본적으로 유지)
+openmd update
+openmd uninstall
 
 # 링크를 붙여 넣고 Enter, 저장 위치 선택
 openmd
@@ -162,17 +169,17 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 | 분류 | 출처 | 상태 | 설명 |
 | :--- | :--- | :--- | :--- |
 | **웹과 커뮤니티** | 일반 웹 글 | 사용 가능 | 설치 후 바로 사용 |
-| | WeChat 공식 계정 글, X 게시물 | 사용 가능 | Openmd 브라우저 확장 프로그램과 이미 가진 접근 권한이 필요 |
+| | WeChat 공식 계정 글, X 게시물 | 사용 가능 | 공개 글과 게시물은 설치 직후 바로 사용 가능: WeChat 글은 먼저 로컬에서 읽고(보통 5–20초) X는 로그인 불필요. 읽지 못할 때만 브라우저 확장 프로그램과 기존 접근 권한 사용 |
 | | 현재 페이지 저장, 로그인 알림 | 사용 가능 | 브라우저 확장 프로그램 필요 |
-| **음성·영상과 전사본** | YouTube(자막 있음), 샤오위저우(Xiaoyuzhou) | 사용 가능 | 샤오위저우는 처음 사용할 때 약 20 MB의 읽기 구성 요소를 자동으로 준비합니다 |
-| | bilibili, 샤오어퉁(Xiaoe-tech) | 사용 가능 | 브라우저 확장 프로그램 필요. bilibili AI 자막은 로그인도 필요 |
-| | 자막 없는 음성·영상, 로컬 미디어 | 추가 의존성 필요 | `[asr]` 의존성, FFmpeg, 로컬 음성 모델 필요 |
+| **음성·영상과 전사본** | YouTube(자막 있음), 샤오위저우(Xiaoyuzhou) | 사용 가능 | 샤오위저우는 처음 사용할 때 터미널에 QR 코드를 표시합니다. 샤오위저우 앱(발견 → 스캔)으로 한 번 스캔하면 로그인되고 이후 자동 갱신. 계정이 제한되거나 정지될 수 있으니 버려도 되는 계정을 권장 |
+| | bilibili, 샤오어퉁(Xiaoe-tech) | 사용 가능 | 브라우저 확장 프로그램 필요. bilibili AI 자막은 로그인도 필요. 샤오어퉁은 브라우저에서 로그인하고 강좌를 열어야 하며, 로그인하지 않은 경우 로그인 페이지는 저장하지 않음 |
+| | 자막 없는 음성·영상, 로컬 미디어 | 추가 의존성 필요 | `[asr]` 의존성(`[all]`에 포함)과 로컬 음성 모델 필요: 처음 쓸 때 다운로드를 확인(HuggingFace 접속이 안 되면 ModelScope로 자동 전환)하고, 이미 있는 모델도 감지 |
 | **로컬 문서와 이미지** | PDF, DOCX, PPTX, XLSX, 이미지 | 추가 의존성 필요 | `[document]` 의존성 필요. 복잡한 레이아웃과 스캔 문서는 추가 OCR 경로를 거칠 수 있습니다 |
 | **업무 문서** | Feishu / Lark 문서 | 일부 지원 | 로컬에 `lark-cli`를 설치하고 로그인한 뒤, 명령에 `--enable-network-backends`를 붙여 네트워크 읽기를 명시적으로 허용해야 합니다 |
 | **AI 대화** | Doubao, Gemini, Qwen, Yuanbao, Grok, DeepSeek(열려 있는 대화 페이지) | 일부 지원 | 브라우저 확장 필요: 대화 페이지에서 클릭하면 이미 로드된 내용을 저장하고, 에이전트는 `--as-snapshot`으로 넘길 수 있습니다. 현재 보이는 분기만 포함하며 사고 과정은 기본 생략 |
 | | ChatGPT 대화 페이지; ChatGPT / Claude 공식 내보내기 ZIP 또는 JSON | 실험적 | 사용자 질문이 표시되지 않는 ChatGPT 페이지는 partial로 저장; 공식 내보내기는 브라우저 없이 로컬에서 가져옵니다 |
 | **채팅 기록** | QQ 그룹 내보내기 파일(JSON / HTML / TXT) | 일시 중지 | 내보내기 파일 분석은 구현되어 있지만 아직 안정 기능으로 공개하지 않았습니다. Openmd는 채팅 데이터베이스를 읽거나 복호화하지 않습니다 |
-| **실험적 지원** | 더우인(Douyin), 샤오훙수(Xiaohongshu) | 실험적 | 브라우저 확장 프로그램과 로그인 필요. 이 사이트들은 자동 읽기를 자주 차단하므로 안정성과 전체 수집을 약속하지 않습니다. 샤오훙수 노트는 브라우저에서 연 뒤 확장 프로그램을 클릭(로드된 페이지 읽기)하고, 더우인은 미디어 다운로드와 로컬 ASR을 사용합니다 |
+| **실험적 지원** | 더우인(Douyin), 샤오훙수(Xiaohongshu) | 실험적 | 브라우저 확장 프로그램과 로그인 필요. 이 사이트들은 자동 읽기를 자주 차단하므로 안정성과 전체 수집을 약속하지 않습니다. 샤오훙수 노트는 브라우저에서 연 뒤 확장 프로그램을 클릭하거나, 에이전트가 자체 브라우저로 연 페이지를 `--as-snapshot`에 넘기며(명령줄 백그라운드 읽기는 약 60초 후 중단),, 더우인은 미디어 다운로드와 로컬 ASR을 사용합니다 |
 
 ### 로컬 문서 형식
 
@@ -192,6 +199,8 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 우클릭 변환은 `openmd shell-menu install`로 현재 사용자에게 설치합니다. 지원 문서 옆에 `.md`를 만들고, 폴더는 하위 폴더 구조를 유지하는 `<folder>-md` 미러로 변환합니다. 다시 실행하면 변경되지 않은 입력은 건너뛰고 사용자가 편집한 Markdown을 보호합니다. 이름은 같고 형식이 다른 파일은 Markdown 파일명에 원래 확장자를 남깁니다. Windows에서는 메뉴를 설치하기 전에 `uv tool install openmd-cli` 또는 `pipx install openmd-cli`로 영구 설치해야 합니다. 임시 `uvx` 캐시 설치는 거부됩니다. 스캔 PDF에는 로컬 OCR이 필요합니다. 선택형 MinerU 경로는 사용자가 직접 설치하고 `OPENMD_MINERU` 또는 `tools.mineru.executable`을 설정한 뒤 `--ocr-engine mineru`를 지정합니다. AGPL 및 모델 라이선스 조건이 적용됩니다. Windows 11에서는 기존 HKCU 메뉴가 '더 많은 옵션 표시' 아래에 나타날 수 있습니다. 이 경량 설치 프로그램은 패키지 앱이 필요한 최상위 메뉴 확장을 등록하지 않습니다. `openmd shell-menu uninstall`로 제거합니다.
 
 여러분의 컴퓨터에서 무엇이 준비되었는지는 `openmd doctor`로 확인할 수 있습니다. 링크 처리에 실패하면 Openmd가 원인과 함께, [버그 리포트](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)에 그대로 붙여 넣을 수 있는 한 줄을 출력합니다.
+
+Firecrawl, Jina, MarkItDown, Docling, MinerU 등과 새 사용자 환경에서 실측 비교한 결과(Openmd가 뒤지는 항목 포함)는 [공개 벤치마크 보고서](https://github.com/baigao417/openmd/blob/main/docs/benchmarks/2026-11-new-user-results.md)에서 볼 수 있습니다.
 
 ---
 

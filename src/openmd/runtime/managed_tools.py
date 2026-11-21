@@ -29,6 +29,8 @@ from openmd.runtime.interpreters import run_interruptibly
 
 OPENCLI_PACKAGE = "@jackwener/opencli"
 OPENCLI_VERSION = "2.0.3"
+DEFUDDLE_PACKAGE = "defuddle"
+DEFUDDLE_VERSION = "0.19.6"
 OPENCLI_BRIDGE_STORE_URL = "https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk"
 _host_package_warning_shown = False
 
@@ -67,6 +69,17 @@ def managed_bin() -> Path:
 def managed_package_root() -> Path:
     """Package root used by plugins when the managed host is active."""
     return managed_root() / "node_modules" / "@jackwener" / "opencli"
+
+
+def managed_defuddle_root() -> Path:
+    """Private npm prefix used for the pinned Defuddle parser."""
+    return data_directory() / "tools" / "defuddle"
+
+
+def managed_defuddle_package_root() -> Path:
+    return managed_defuddle_root() / "node_modules" / DEFUDDLE_PACKAGE
+
+
 
 
 def _managed_ready() -> bool:
@@ -163,6 +176,54 @@ def activate() -> str:
 
 def auto_install_enabled() -> bool:
     return os.environ.get("OPENMD_AUTO_INSTALL_TOOLS", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def ensure_defuddle(say: Callable[[str], None] | None = None) -> str:
+    """Install pinned Defuddle on first use; report missing for safe fallback."""
+    package = managed_defuddle_package_root() / "package.json"
+    try:
+        if package.is_file() and json.loads(package.read_text(encoding="utf-8")).get("version") == DEFUDDLE_VERSION:
+            return "managed"
+    except (OSError, ValueError):
+        pass
+    if not auto_install_enabled():
+        return "missing"
+    node = node_dir()
+    npm = _npm_cli(node) if node else None
+    if node is None or npm is None:
+        return "missing"
+    say = say or (lambda message: print(message, file=sys.stderr))
+    say("首次使用网页正文抽取组件，正在准备 Defuddle（只需一次）…")
+    root = managed_defuddle_root()
+    root.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix="defuddle-", dir=root.parent))
+    command = [str(node / ("node.exe" if os.name == "nt" else "node")), str(npm), "install", "--prefix", str(staging),
+               f"{DEFUDDLE_PACKAGE}@{DEFUDDLE_VERSION}", "--no-audit", "--no-fund", "--loglevel=error", "--save-exact"]
+    registry = os.environ.get("OPENMD_NPM_REGISTRY")
+    if registry:
+        command += ["--registry", registry]
+    env = {**os.environ, "PATH": os.pathsep.join([str(node), os.environ.get("PATH", "")])}
+    try:
+        completed = run_interruptibly(command, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        shutil.rmtree(staging, ignore_errors=True)
+        say(f"Defuddle 准备失败：{type(exc).__name__}；将继续使用内置抽取路线。")
+        return "missing"
+    if completed.returncode != 0:
+        shutil.rmtree(staging, ignore_errors=True)
+        say("Defuddle 准备失败；将继续使用内置抽取路线。")
+        return "missing"
+    try:
+        installed = json.loads((staging / "node_modules" / DEFUDDLE_PACKAGE / "package.json").read_text(encoding="utf-8"))
+        if installed.get("version") != DEFUDDLE_VERSION or root.exists():
+            raise ValueError("defuddle_version_or_location_mismatch")
+        staging.rename(root)
+    except (OSError, ValueError):
+        shutil.rmtree(staging, ignore_errors=True)
+        say("Defuddle 安装版本或目录校验失败；将继续使用内置抽取路线。")
+        return "missing"
+    say("Defuddle 已就绪。")
+    return "managed"
 
 
 def ensure_opencli(say: Callable[[str], None] | None = None) -> str:

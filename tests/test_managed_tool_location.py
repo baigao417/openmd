@@ -1,6 +1,7 @@
 """Managed tools can move without relocating preferences or browser sessions."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +20,53 @@ def test_managed_root_preserves_default_data_location(tmp_path, monkeypatch):
     monkeypatch.setattr(managed_tools, "load_local_config", lambda: {}, raising=False)
     monkeypatch.setattr(managed_tools, "data_directory", lambda: tmp_path)
     assert managed_tools.managed_root() == tmp_path / "tools" / "opencli"
+
+
+def test_defuddle_first_use_installs_pinned_package_to_managed_tools(tmp_path, monkeypatch):
+    import subprocess
+
+    node = tmp_path / "node"
+    node.mkdir()
+    (node / "node.exe").touch()
+    npm = node / "npm-cli.js"
+    npm.touch()
+    monkeypatch.setattr(managed_tools, "node_dir", lambda: node)
+    monkeypatch.setattr(managed_tools, "_npm_cli", lambda _node: npm)
+    monkeypatch.setattr(managed_tools, "data_directory", lambda: tmp_path / "data")
+    monkeypatch.setenv("OPENMD_AUTO_INSTALL_TOOLS", "1")
+    monkeypatch.setenv("OPENMD_NPM_REGISTRY", "https://registry.example.invalid")
+    calls = []
+
+    def install(command, **kwargs):
+        calls.append(command)
+        prefix = Path(command[command.index("--prefix") + 1])
+        package = prefix / "node_modules" / "defuddle"
+        package.mkdir(parents=True)
+        (package / "package.json").write_text(json.dumps({"version": "0.19.6"}), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(managed_tools, "run_interruptibly", install)
+    assert managed_tools.ensure_defuddle(lambda _message: None) == "managed"
+    assert calls[0][calls[0].index("--registry") + 1] == "https://registry.example.invalid"
+    assert "defuddle@0.19.6" in calls[0]
+    assert (tmp_path / "data" / "tools" / "defuddle" / "node_modules" / "defuddle" / "package.json").is_file()
+
+
+def test_defuddle_auto_install_disabled_and_failure_fall_back(tmp_path, monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(managed_tools, "data_directory", lambda: tmp_path)
+    monkeypatch.setenv("OPENMD_AUTO_INSTALL_TOOLS", "0")
+    monkeypatch.setattr(managed_tools, "run_interruptibly", lambda *_a, **_k: pytest.fail("install must be disabled"))
+    assert managed_tools.ensure_defuddle(lambda _message: None) == "missing"
+    node = tmp_path / "node"
+    node.mkdir()
+    (node / "node.exe").touch()
+    monkeypatch.setattr(managed_tools, "node_dir", lambda: node)
+    monkeypatch.setattr(managed_tools, "_npm_cli", lambda _node: tmp_path / "npm-cli.js")
+    monkeypatch.setenv("OPENMD_AUTO_INSTALL_TOOLS", "1")
+    monkeypatch.setattr(managed_tools, "run_interruptibly", lambda command, **_kwargs: subprocess.CompletedProcess(command, 1, "", "network failure"))
+    assert managed_tools.ensure_defuddle(lambda _message: None) == "missing"
 
 
 @pytest.mark.parametrize("setting", [None, "folder", {"root": ""}, {"root": 42}, {"other": "folder"}])

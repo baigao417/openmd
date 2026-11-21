@@ -57,9 +57,9 @@
         "source": "weixin",
         "capability": "content",
         "chain": [
+          "weixin.article.local",
           "opencli.weixin.download",
           "defuddle.web.content",
-          "weixin.article.local",
           "opencli.web.read"
         ],
         "last_verified": "2026-11-18"
@@ -1399,9 +1399,10 @@
     "defuddle.json": {
       "schema": "openmd.tool-card/v1",
       "installation": {
-        "mode": "isolated_existing",
-        "sha256": "8bf10dfa15d7d303d1fb08a4fb83fcbdf7bbb0e50cc17bba07f37b448fc12b52",
-        "verification": "SHA256 of the installed entry file; dependency tree is isolated, not attested"
+        "mode": "managed_npm",
+        "package": "defuddle",
+        "version": "0.19.6",
+        "verification": "Pinned npm package version in the private Openmd tools directory"
       },
       "evidence": [
         {

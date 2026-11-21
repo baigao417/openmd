@@ -164,9 +164,16 @@ def _managed_defuddle_spec() -> tuple[str, str, str, dict[str, Any]] | None:
         spec = tools.get("defuddle") or {}
         node = str(spec.get("node") or "")
         root = str(spec.get("root") or "")
-        if not node or not root or not Path(node).is_file() or not Path(root).is_dir():
+        if node and root and Path(node).is_file() and Path(root).is_dir():
+            return node, root, module, options
+        from openmd.runtime.managed_tools import ensure_defuddle, managed_defuddle_root, node_dir
+
+        if ensure_defuddle() != "managed":
             return None
-        return node, root, module, options
+        bundled = node_dir()
+        if bundled is None:
+            return None
+        return str(bundled / ("node.exe" if os.name == "nt" else "node")), str(managed_defuddle_root()), module, options
     except (OSError, TypeError, ValueError, KeyError):
         return None
 

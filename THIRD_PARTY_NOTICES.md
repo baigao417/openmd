@@ -52,6 +52,7 @@ persistence, drawing geometry and layout are not certified; results are partial.
 | Component | License | How it arrives |
 |---|---|---|
 | opencli (`@jackwener/opencli` 2.0.3) | Apache-2.0 | Downloaded from npm on first need into `~/.openmd/tools/opencli` |
+| Defuddle (`defuddle` 0.19.6) | MIT | Downloaded from npm on first web extraction into `~/.openmd/tools/defuddle` |
 | Node.js via `nodejs-wheel-binaries` | MIT | `pip` dependency |
 | trafilatura | Apache-2.0 | `pip` dependency |
 | youtube-transcript-api, beautifulsoup4, markdownify | MIT | `pip` dependencies |

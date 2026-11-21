@@ -160,7 +160,8 @@ def prefetch_hls(url: str, directory: Path, *, referer: str, timeout: float) -> 
 
 def download_audio(url: str, target: Path, *, referer: str, timeout: int = 600) -> dict:
     _http_locator(url)
-    executable = shutil.which("ffmpeg")
+    from openmd.runtime.ffmpeg_tools import ffmpeg_executable
+    executable = ffmpeg_executable()
     if not executable:
         raise RuntimeError("ffmpeg_missing")
     if urlsplit(url).path.lower().endswith('.m3u8'):

@@ -67,3 +67,8 @@ apply.
 
 Committed fixtures and mock content are synthetic. No ownership or redistribution right is claimed
 over platform data or anything Openmd retrieves for you.
+
+
+## imageio-ffmpeg
+
+The imageio-ffmpeg Python wrapper is distributed under the BSD-2-Clause license. Its bundled FFmpeg executable is a GPLv3 build distributed by imageio on PyPI. Openmd invokes that executable as an external process and does not redistribute it. Users who install the optional `media` or `asr` extra receive it through imageio's PyPI distribution.

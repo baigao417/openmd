@@ -74,15 +74,27 @@ def _atomic_write(path: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _open_lock_file(path: Path, deadline: float):
+    # Windows can briefly refuse to open the lock file while another writer holds it
+    # (sharing violation); treat that like a busy lock and retry until the deadline.
+    while True:
+        try:
+            return path.open("a+b")
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise TimeoutError("sync_manifest_lock_timeout")
+            time.sleep(0.02)
+
+
 @contextmanager
 def _file_lock(path: Path, timeout: float = 30):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+b") as stream:
+    deadline = time.monotonic() + timeout
+    with _open_lock_file(path, deadline) as stream:
         if path.stat().st_size == 0:
             stream.write(b"\0")
             stream.flush()
         acquired = False
-        deadline = time.monotonic() + timeout
         try:
             while not acquired:
                 stream.seek(0)

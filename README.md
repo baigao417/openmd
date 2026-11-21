@@ -32,11 +32,18 @@ Everything to Markdown. This is just the beginning.
 Openmd is a command-line tool and a Python module, `openmd` (package name `openmd-cli`). It requires Python 3.10 or newer and runs on Windows, macOS and Linux.
 
 ```bash
-# Install the base package (or: pipx install openmd-cli / uv tool install openmd-cli)
-pip install openmd-cli
+# Windows: one command installs everything (no Python needed beforehand; speech models are offered on first use)
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/baigao417/openmd/main/scripts/install.ps1 | iex"
+
+# With Python already installed you can use pip (or uv tool install / pipx install)
+pip install "openmd-cli[all]"
 
 # Check your local environment and optional components
 openmd doctor
+
+# Update; uninstall the program (your data, settings, logins and models are kept by default)
+openmd update
+openmd uninstall
 
 # Paste a link, press Enter, choose where to save
 openmd
@@ -162,17 +169,17 @@ Openmd is not a knowledge base or a RAG retrieval system. It focuses on the foun
 | Category | Source | Status | Notes |
 | :--- | :--- | :--- | :--- |
 | **Web and social** | Web articles | Ready | Works right after install |
-| | WeChat Official Account posts, X posts | Ready | Needs the Openmd browser extension and your existing access |
+| | WeChat Official Account posts, X posts | Ready | Public posts work right after install: WeChat articles are read locally first (usually 5–20 s) and X needs no login; the browser extension and your existing access are used only when that fails |
 | | Save current page, login reminders | Ready | Requires the Openmd browser extension |
-| **Audio, video and transcripts** | YouTube (with captions), Xiaoyuzhou | Ready | Xiaoyuzhou sets up a ~20 MB reader component on first use |
-| | Bilibili, Xiaoe-tech | Ready | Needs the browser extension; Bilibili AI subtitles also need you to be logged in |
-| | Audio/video without subtitles, local media | Needs extras | Needs the `[asr]` extra, FFmpeg and a local speech model |
+| **Audio, video and transcripts** | YouTube (with captions), Xiaoyuzhou | Ready | Xiaoyuzhou shows a QR code in the terminal on first use; scan it once with the Xiaoyuzhou app (Discover → Scan) and the login then renews itself. This may get the account rate-limited or banned, so use a throwaway account |
+| | Bilibili, Xiaoe-tech | Ready | Needs the browser extension; Bilibili AI subtitles also need you to be logged in; Xiaoe-tech needs you to log in and open the course in the browser, and its login page is refused otherwise |
+| | Audio/video without subtitles, local media | Needs extras | Needs the `[asr]` extra (included in `[all]`) and a local speech model: Openmd offers to download one on first use (falling back to ModelScope when HuggingFace is unreachable) and detects models already on your machine |
 | **Local documents and images** | PDF, DOCX, PPTX, XLSX, images | Needs extras | Needs the `[document]` extra; complex layouts and scans may go through an extra OCR route |
 | **Workplace docs** | Feishu / Lark documents | Partial | Needs `lark-cli` installed and logged in on your machine, plus `--enable-network-backends` to allow network reads |
 | **AI chat** | Doubao, Gemini, Qwen, Yuanbao, Grok, DeepSeek (an open conversation page) | Partial | Needs the browser extension: click on the page to save what is already loaded, or let an agent hand the page over with `--as-snapshot`; covers the visible branch; model thinking is omitted by default |
 | | ChatGPT conversation pages; ChatGPT / Claude official export ZIP or JSON | Experimental | A ChatGPT page that does not render the user's prompts is saved as partial; official exports import locally, without a browser |
 | **Chat history** | QQ group export files (JSON / HTML / TXT) | Paused | Export parsing exists but is not yet offered as a stable feature; Openmd never reads or decrypts chat databases |
-| **Experimental** | Douyin, Xiaohongshu | Experimental | Needs the browser extension and login; these sites often block automated reads, so stability and full coverage are not promised. For a Xiaohongshu note, open it in the browser and click the extension (reads the loaded page); Douyin uses media download plus local ASR |
+| **Experimental** | Douyin, Xiaohongshu | Experimental | Needs the browser extension and login; these sites often block automated reads, so stability and full coverage are not promised. For a Xiaohongshu note, open it in the browser and click the extension, or let an agent open it in its own browser and pass the page to `--as-snapshot`; the background CLI read gives up after about 60 s; Douyin uses media download plus local ASR |
 
 ### Local document formats
 
@@ -192,6 +199,8 @@ The `[document]` extra is the baseline for local document parsing. This matrix w
 The Explorer / Finder / file-manager action is installed per user with `openmd shell-menu install`. Right-click a supported document to create a neighboring `.md`; right-click a folder to create a `<folder>-md` mirror that preserves subfolders. Repeated runs skip unchanged inputs and preserve edited Markdown. Same-name files in different formats keep their extensions in the Markdown filename. On Windows, install Openmd persistently with `uv tool install openmd-cli` or `pipx install openmd-cli` before adding the menu; temporary `uvx` cache installs are rejected. Scanned PDFs still need local OCR. For an optional MinerU route, install it yourself, configure `OPENMD_MINERU` or `tools.mineru.executable`, and use `--ocr-engine mineru`; AGPL and model terms apply. Windows 11 may show the classic HKCU menu under **Show more options**; a first-level packaged Explorer command is outside this lightweight installer. Use `openmd shell-menu uninstall` to remove it.
 
 Run `openmd doctor` to see what is ready on your machine. If a link fails, Openmd prints the reason and one line to paste into a [bug report](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml).
+
+Measured comparisons with Firecrawl, Jina, MarkItDown, Docling, MinerU and others in a fresh new-user environment, including where Openmd falls behind, are in the [public benchmark report](https://github.com/baigao417/openmd/blob/main/docs/benchmarks/2026-11-new-user-results.md).
 
 ---
 

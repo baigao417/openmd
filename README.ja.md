@@ -32,11 +32,18 @@ Openmd が目指すのは、ひとつの礎（いしずえ）です。こうし�
 Openmd はコマンドラインツールと Python モジュール `openmd` を提供します（パッケージ名は `openmd-cli`）。Python 3.10 以降が必要で、Windows・macOS・Linux で動作します。
 
 ```bash
-# 基本パッケージをインストール（pipx install openmd-cli / uv tool install openmd-cli でも可）
-pip install openmd-cli
+# Windows：1 行で全部入り（Python の事前インストール不要。音声モデルは初回利用時に確認）
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/baigao417/openmd/main/scripts/install.ps1 | iex"
+
+# Python がすでにあれば pip でも可（uv tool install / pipx install も可）
+pip install "openmd-cli[all]"
 
 # ローカル環境とオプション機能の状態を確認
 openmd doctor
+
+# アップデート／プログラムのアンインストール（データ・設定・ログイン状態・モデルは既定で残ります）
+openmd update
+openmd uninstall
 
 # リンクを貼り付けて Enter、保存先を選ぶ
 openmd
@@ -162,17 +169,17 @@ Openmd 自体はナレッジベースでも RAG 検索システムでもあり�
 | カテゴリ | ソース | 状態 | 説明 |
 | :--- | :--- | :--- | :--- |
 | **Web とコミュニティ** | 一般的な Web 記事 | 利用可 | インストール後すぐに使えます |
-| | WeChat 公式アカウント記事、X の投稿 | 利用可 | Openmd ブラウザ拡張機能と、あなたが既に持っているアクセス権が必要 |
+| | WeChat 公式アカウント記事、X の投稿 | 利用可 | 公開記事と投稿はインストール直後から利用可：WeChat 記事はまずローカルで読み取り（通常 5〜20 秒）、X はログイン不要。読めないときだけブラウザ拡張機能と既存のアクセス権を使用 |
 | | 現在のページ保存、ログイン通知 | 利用可 | ブラウザ拡張機能が必要 |
-| **音声・動画と文字起こし** | YouTube（字幕あり）、小宇宙（Xiaoyuzhou） | 利用可 | 小宇宙は初回利用時に約 20 MB の読み取りコンポーネントを自動で準備します |
-| | bilibili、小鵝通（Xiaoe-tech） | 利用可 | ブラウザ拡張機能が必要。bilibili の AI 字幕はログインも必要 |
-| | 字幕のない音声・動画、ローカルメディア | 追加依存が必要 | `[asr]` 依存、FFmpeg、ローカル音声モデルが必要 |
+| **音声・動画と文字起こし** | YouTube（字幕あり）、小宇宙（Xiaoyuzhou） | 利用可 | 小宇宙は初回利用時にターミナルへ QR コードを表示します。小宇宙アプリ（発見 → スキャン）で一度読み取ればログインし、その後は自動更新。アカウントが制限・凍結される可能性があるため、捨てアカウントの利用を推奨 |
+| | bilibili、小鵝通（Xiaoe-tech） | 利用可 | ブラウザ拡張機能が必要。bilibili の AI 字幕はログインも必要。小鵝通はブラウザでログインして講座を開く必要があり、未ログインのログインページは保存しません |
+| | 字幕のない音声・動画、ローカルメディア | 追加依存が必要 | `[asr]` 依存関係（`[all]` に含まれる）とローカル音声モデルが必要：初回利用時にダウンロードを確認（HuggingFace に届かなければ ModelScope に自動切替）、手元の既存モデルも検出 |
 | **ローカル文書と画像** | PDF、DOCX、PPTX、XLSX、画像 | 追加依存が必要 | `[document]` 依存が必要。複雑なレイアウトやスキャン文書は追加の OCR ルートを通る場合があります |
 | **業務ドキュメント** | Feishu / Lark ドキュメント | 一部対応 | ローカルに `lark-cli` をインストールしてログインし、コマンドに `--enable-network-backends` を付けてネットワーク読み取りを明示的に許可する必要があります |
 | **AI チャット** | 豆包、Gemini、千問、元宝、Grok、DeepSeek（開いている会話ページ） | 一部対応 | ブラウザ拡張が必要：会話ページでクリックすると読み込み済みの内容を保存。エージェントは `--as-snapshot` で渡せます。現在表示中のブランチのみ。思考過程は既定で省略 |
 | | ChatGPT の会話ページ；ChatGPT / Claude 公式エクスポート ZIP または JSON | 実験的 | ユーザーの質問が表示されない ChatGPT ページは partial として保存。公式エクスポートはブラウザなしでローカル取込 |
 | **チャット履歴** | QQ グループのエクスポートファイル（JSON / HTML / TXT） | 一時停止中 | エクスポートファイルの解析は実装済みですが、安定機能としてはまだ公開していません。Openmd がチャットのデータベースを読み取ったり復号したりすることはありません |
-| **実験的サポート** | 抖音（Douyin）、小紅書（Xiaohongshu） | 実験的 | ブラウザ拡張機能とログインが必要。これらのサイトは自動読み取りをよくブロックするため、安定性や網羅性は約束できません。小紅書のノートはブラウザで開いて拡張機能をクリック（読み込み済みページを読む）。抖音はメディアのダウンロードとローカル ASR を使います |
+| **実験的サポート** | 抖音（Douyin）、小紅書（Xiaohongshu） | 実験的 | ブラウザ拡張機能とログインが必要。これらのサイトは自動読み取りをよくブロックするため、安定性や網羅性は約束できません。小紅書のノートはブラウザで開いて拡張機能をクリックするか、Agent が自分のブラウザで開いたページを `--as-snapshot` に渡します。コマンドラインのバックグラウンド読み取りは約 60 秒で打ち切り。抖音はメディアのダウンロードとローカル ASR を使います |
 
 ### ローカル文書形式
 
@@ -192,6 +199,8 @@ Openmd 自体はナレッジベースでも RAG 検索システムでもあり�
 右クリック変換は `openmd shell-menu install` で現在のユーザーにインストールします。対応文書の隣に `.md` を作成し、フォルダーはサブフォルダー構造を保った `<folder>-md` ミラーに変換します。再実行では変更されていない入力をスキップし、編集済み Markdown を保護します。同じ名前で形式が異なるファイルは、Markdown のファイル名に元の拡張子を残します。Windows ではメニューを追加する前に `uv tool install openmd-cli` または `pipx install openmd-cli` で永続インストールしてください。一時的な `uvx` キャッシュからのインストールは拒否されます。スキャン PDF にはローカル OCR が必要です。オプションの MinerU を使うには、ユーザー自身でインストールし、`OPENMD_MINERU` または `tools.mineru.executable` を設定して `--ocr-engine mineru` を指定します。AGPL とモデルのライセンス条件が適用されます。Windows 11 では従来型 HKCU メニューが「その他のオプションを表示」に置かれる場合があります。軽量インストーラーはパッケージアプリが必要な最上位メニュー拡張を登録しません。削除は `openmd shell-menu uninstall` です。
 
 あなたのマシンで何が使えるかは `openmd doctor` で確認できます。リンクの処理に失敗すると、Openmd は理由と、[不具合報告](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)にそのまま貼り付けられる 1 行を表示します。
+
+Firecrawl、Jina、MarkItDown、Docling、MinerU などとの新規ユーザー環境での実測比較（Openmd が劣る項目を含む）は [公開ベンチマークレポート](https://github.com/baigao417/openmd/blob/main/docs/benchmarks/2026-11-new-user-results.md) を参照してください。
 
 ---
 

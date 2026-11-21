@@ -28,7 +28,7 @@ from openmd.adapters.local_audio.backends.faster_whisper import (
 )
 from openmd.adapters.local_audio.backends.qwen3_asr import Qwen3ASRBackend
 from openmd.core.models import TranscriptResult
-from openmd.runtime.models import ModelNotFoundError, model_label, offline_model_loading, require_model, resolve_model
+from openmd.runtime.models import ModelNotFoundError, _runnable_whisper_paths, configured_models, model_label, offline_model_loading, require_model, resolve_model
 from openmd.runtime.asr_memory import InsufficientASRMemory, check_memory, memory_warning_notes
 
 DEFAULT_ENGLISH_MODEL = "large-v3-turbo"
@@ -44,6 +44,8 @@ class AutoASRBackend(ASRBackend):
         self.chinese_engine = os.getenv("OPENMD_ASR_AUTO_ZH_ENGINE") or "qwen3"
         self._qwen3 = qwen3
         self._probe_memory: dict[str, Any] = {}
+        self._probe_model: Path | None = None
+        self._selected_model: str | None = None
 
     def execution_config(self) -> dict[str, Any]:
         return {
@@ -83,6 +85,7 @@ class AutoASRBackend(ASRBackend):
             return self._annotate(result, None, None, f"language detection failed ({type(exc).__name__}); used Whisper {model_label(self.general_model)}")
 
         backend, reason = self.choose(language)
+        self._selected_model = getattr(backend, "model_size", None)
         result = backend.transcribe(source_path)
         if result.status != "verified" and result.error_code != "asr_insufficient_memory" and isinstance(backend, Qwen3ASRBackend):
             fallback = FasterWhisperASRBackend(model_size=self.general_model, language="zh", **self._whisper_device())
@@ -92,24 +95,48 @@ class AutoASRBackend(ASRBackend):
 
     def choose(self, language: str | None) -> tuple[ASRBackend, str]:
         device = self._whisper_device()
+        models = configured_models()
+        available = {key for key, model in models.items() if model.path is not None}
+
+        def select_whisper(preferred: str) -> str:
+            if resolve_model(preferred, family="whisper").path is not None:
+                return preferred
+            for key in ("whisper-large-v3-turbo", "whisper-large-v3"):
+                if key in available:
+                    return str(models[key].path)
+            unknown = [path for path, _, evaluated in _runnable_whisper_paths() if not evaluated]
+            if unknown:
+                return str(unknown[0])
+            return preferred
+
         if language == "zh":
             qwen3 = self._qwen3 or Qwen3ASRBackend()
             if self.chinese_engine == "qwen3" and qwen3.is_available() and self._device()[0] == "cuda":
                 return qwen3, "Mandarin: Qwen3-ASR scored the lowest CER"
             reason = "Mandarin: Qwen3-ASR needs its GPU stack, which is unavailable" if self.chinese_engine == "qwen3" else "Mandarin: Whisper requested"
-            return FasterWhisperASRBackend(model_size=self.general_model, language="zh", **device), reason
+            selected = select_whisper(self.general_model)
+            reason += self._evaluation_note(selected)
+            return FasterWhisperASRBackend(model_size=selected, language="zh", **device), reason + (f"; downgraded to available {model_label(selected)}" if selected != self.general_model else "")
         if language == "en":
+            selected = select_whisper(self.english_model)
             return (
-                FasterWhisperASRBackend(model_size=self.english_model, language="en", **device),
-                f"English: Whisper {model_label(self.english_model)} had the best quality/speed score",
+                FasterWhisperASRBackend(model_size=selected, language="en", **device),
+                f"English: Whisper {model_label(selected)} selected" + self._evaluation_note(selected),
             )
+        selected = select_whisper(self.general_model)
         return (
-            FasterWhisperASRBackend(model_size=self.general_model, language=language, **device),
-            f"Language {language or 'unknown'}: Whisper {model_label(self.general_model)} is the general model",
+            FasterWhisperASRBackend(model_size=selected, language=language, **device),
+            f"Language {language or 'unknown'}: Whisper {model_label(selected)} selected" + self._evaluation_note(selected),
         )
 
     def detect_language(self, path: Path) -> tuple[str | None, float | None]:
-        model_path = require_model(self.english_model, family="whisper")
+        probe_model = self.english_model if resolve_model(self.english_model, family="whisper").path else self.general_model
+        if resolve_model(probe_model, family="whisper").path is None:
+            unknown = [path for path, _, evaluated in _runnable_whisper_paths() if not evaluated]
+            if unknown:
+                probe_model = str(unknown[0])
+        model_path = require_model(probe_model, family="whisper")
+        self._probe_model = model_path
         largest = max((p.stat().st_size for p in model_path.glob("model.bin")), default=0)
         self._probe_memory = check_memory("language_probe", largest_shard_bytes=largest)
         _load_torch_first()
@@ -146,6 +173,10 @@ class AutoASRBackend(ASRBackend):
             "language_probability": round(probability, 3) if probability is not None else None,
             "selected_backend": result.backend,
             "reason": reason,
+            "selected_model": model_label(self._selected_model) if self._selected_model else None,
+            "selected_model_evaluation": self._evaluation(self._selected_model) if self._selected_model else None,
+            "language_probe_model": model_label(str(self._probe_model)) if self._probe_model else None,
+            "language_probe_model_evaluation": self._evaluation(str(self._probe_model)) if self._probe_model else None,
         }
         return replace(
             result,
@@ -153,6 +184,23 @@ class AutoASRBackend(ASRBackend):
                           f"asr.auto routed this audio: {reason}."],
             metadata={**result.metadata, "asr_route": route, "language_probe_memory": self._probe_memory},
         )
+
+    @staticmethod
+    def _evaluation(value: str | None) -> str | None:
+        if not value:
+            return None
+        resolved = resolve_model(value, family="whisper").path
+        if resolved is None:
+            return "unavailable"
+        target = resolved.resolve()
+        for path, _, evaluated in _runnable_whisper_paths():
+            if path.resolve() == target:
+                return "evaluated" if evaluated else "unverified"
+        return "unverified"
+
+    @classmethod
+    def _evaluation_note(cls, value: str) -> str:
+        return "; 未经 Openmd 评测" if cls._evaluation(value) == "unverified" else ""
 
 
 def _load_torch_first() -> None:

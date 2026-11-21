@@ -112,6 +112,16 @@ def _process_items(
             else selection
         )
         result = extract_with_login(executor, item, item_selection.chain, args)
+        if result.error_code == "asr_model_missing":
+            from openmd.runtime.recommendations import cmd_models_install
+            import sys
+            install_command = "openmd models install asr:baseline"
+            if sys.stdin.isatty() and item.url and input("未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？[y/N] ").strip().lower() in {"y", "yes"}:
+                install_args = argparse.Namespace(tier="asr:baseline", root=None, dry_run=False, _confirmed=True)
+                if cmd_models_install(install_args) == 0:
+                    result = extract_with_login(executor, item, item_selection.chain, args)
+            elif not sys.stdin.isatty():
+                result.source_notes.append(f"Install a local model and retry: {install_command}")
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)

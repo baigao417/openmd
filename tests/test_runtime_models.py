@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import hashlib
 import json
 import os
 import subprocess
@@ -371,3 +372,228 @@ def test_worker_resolves_relative_locations_before_changing_cwd(monkeypatch, tmp
     assert env["OPENMD_QWEN3_MODEL"] == str(model)
     assert env["OPENMD_ASR_AUTO_EN_MODEL"] == "large-v3-turbo"
     assert env["OPENMD_MODEL_ROOTS"] == str(tmp_path / "model-root")
+
+def test_gpu_lock_uses_openmd_data_directory(monkeypatch, tmp_path):
+    from openmd.runtime.gpu_lock import gpu_lock_path
+
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.delenv("OPENMD_RUNTIME_DIR", raising=False)
+    assert gpu_lock_path() == (tmp_path / "data" / "runtime" / "gpu.lock").resolve()
+
+
+def test_models_install_plan_defaults_under_data_directory(monkeypatch, tmp_path):
+    from openmd.runtime.recommendations import install_plan
+
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    plan = install_plan("asr:baseline")
+    assert Path(plan["root"]) == (tmp_path / "data" / "models")
+
+
+def test_auto_runtime_accepts_only_baseline_model(monkeypatch, tmp_path):
+    import openmd.runtime.interpreters as module
+    from openmd.runtime.models import ResolvedModel
+
+    monkeypatch.delenv("OPENMD_ASR_WORKER", raising=False)
+    monkeypatch.delenv("OPENMD_ASR_PYTHON", raising=False)
+    monkeypatch.setattr(module, "load_local_config", lambda: {})
+    monkeypatch.setattr(module.importlib.util, "find_spec", lambda name: object() if name == "faster_whisper" else None)
+    monkeypatch.setattr(module, "probe_asr_runtime", lambda *a, **k: {"ready": False})
+    turbo = ResolvedModel("whisper-large-v3-turbo", tmp_path / "turbo", "configured_root")
+    missing = ResolvedModel("whisper-large-v3", None, "missing", ("model.bin",))
+    monkeypatch.setattr("openmd.runtime.models.configured_models", lambda: {
+        "whisper-large-v3": missing, "whisper-large-v3-turbo": turbo,
+    })
+    runtime = module.select_asr_runtime(refresh=True)
+    assert runtime.mode == "in_process"
+    assert runtime.probe["fallback_available"] is True
+    assert runtime.probe["available_models"] == ["whisper-large-v3-turbo"]
+
+
+def test_discovery_marks_unknown_ctranslate_model_unverified(monkeypatch, tmp_path):
+    _isolated_models(monkeypatch, tmp_path)
+    root = tmp_path / "models"
+    model = _model(root / "custom-small")
+    monkeypatch.setenv("OPENMD_MODEL_ROOTS", str(root))
+    results = models.discover_models()
+    assert {"name": "custom-small", "origin": "unverified", "evaluated": False, "runnable": True} in results
+
+
+def test_discovery_ignores_incomplete_unverified_model(monkeypatch, tmp_path):
+    _isolated_models(monkeypatch, tmp_path)
+    root = tmp_path / "models"
+    _model(root / "incomplete", ("model.bin", "config.json"))
+    monkeypatch.setenv("OPENMD_MODEL_ROOTS", str(root))
+    assert models.discover_models() == []
+
+
+def test_auto_selects_unverified_runnable_whisper_directory(monkeypatch, tmp_path):
+    from openmd.adapters.local_audio.backends.auto import AutoASRBackend
+
+    _isolated_models(monkeypatch, tmp_path)
+    model = _model(tmp_path / "small-unreviewed")
+    monkeypatch.setenv("OPENMD_MODEL_ROOTS", str(tmp_path))
+    backend = AutoASRBackend()
+    monkeypatch.setattr(backend, "_whisper_device", lambda: {"device": "cpu", "compute_type": "int8"})
+    monkeypatch.setattr(backend, "_device", lambda: ("cpu", "int8"))
+    selected, reason = backend.choose("en")
+    assert selected.model_size == str(model)
+    assert "small-unreviewed" in reason
+
+
+def test_model_install_noninteractive_returns_action_without_download(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from openmd.runtime import recommendations
+
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: False)
+    assert recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=None, dry_run=False)) == 2
+    assert "openmd models install asr:baseline" in capsys.readouterr().out
+    assert not (tmp_path / "data" / "models").exists()
+
+
+def test_model_install_handles_eof_without_traceback_or_download(monkeypatch, capsys, tmp_path):
+    from argparse import Namespace
+    from openmd.runtime import recommendations
+
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: (_ for _ in ()).throw(EOFError()))
+    result = recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=None, dry_run=False))
+    captured = capsys.readouterr()
+    assert result == 2
+    assert "EOF" not in captured.out
+    assert "openmd models install asr:baseline" in captured.out
+    assert not (tmp_path / "data" / "models").exists()
+
+
+def test_model_install_uses_huggingface_mirror_after_primary_failure(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    root = tmp_path / "models"
+    fixture_sha = hashlib.sha256(b"fixture").hexdigest()
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"asr:baseline": [{
+        "artifact": "fixture", "repository": "org/repo", "directory": "fixture", "size_bytes": 1,
+        "sha256": fixture_sha,
+    }]}})
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    endpoints = []
+
+    def download(*, repo_id, revision, local_dir, endpoint):
+        endpoints.append(endpoint)
+        if endpoint == "https://huggingface.co":
+            raise OSError("primary unavailable")
+        directory = Path(local_dir)
+        for name in ("model.bin", "config.json", "tokenizer.json"):
+            (directory / name).write_bytes(b"fixture")
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=download))
+    assert recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=root, dry_run=False)) == 0
+    assert endpoints == ["https://huggingface.co", "https://hf-mirror.com"]
+    receipt = json.loads(capsys.readouterr().out.splitlines()[-1])["downloads"][0]
+    assert receipt["verified"] == "required model files and model.bin sha256"
+    assert receipt["source"] == "hf-mirror.com"
+    assert receipt["attempts"] == ["huggingface.co", "hf-mirror.com"]
+
+
+def test_model_install_uses_modelscope_after_huggingface_routes_fail(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from types import ModuleType, SimpleNamespace
+    from openmd.runtime import recommendations
+
+    fixture_sha = hashlib.sha256(b"fixture").hexdigest()
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"asr:baseline": [{
+        "artifact": "fixture", "repository": "org/repo", "modelscope_repository": "org/repo",
+        "directory": "fixture", "size_bytes": 1, "sha256": fixture_sha,
+    }]}})
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    attempts = []
+
+    def hf_download(**kwargs):
+        attempts.append(kwargs["endpoint"])
+        raise OSError("mirror unavailable")
+
+    def modelscope_download(*, model_id, revision, local_dir):
+        attempts.append("modelscope")
+        directory = Path(local_dir)
+        for name in ("model.bin", "config.json", "tokenizer.json"):
+            (directory / name).write_bytes(b"fixture")
+
+    ms_download = ModuleType("modelscope_hub.compat")
+    ms_download.snapshot_download = modelscope_download
+    monkeypatch.setitem(sys.modules, "modelscope_hub", ModuleType("modelscope_hub"))
+    monkeypatch.setitem(sys.modules, "modelscope_hub.compat", ms_download)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=hf_download))
+    assert recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=None, dry_run=False)) == 0
+    assert attempts == ["https://huggingface.co", "https://hf-mirror.com", "modelscope"]
+    receipt = json.loads(capsys.readouterr().out.splitlines()[-1])["downloads"][0]
+    assert receipt["verified"] == "required model files and model.bin sha256"
+    assert receipt["source"] == "modelscope"
+    assert receipt["attempts"] == ["huggingface.co", "hf-mirror.com", "modelscope"]
+
+
+def test_modelscope_fallback_rejects_missing_or_mismatched_sha256(monkeypatch, tmp_path):
+    from argparse import Namespace
+    from types import ModuleType, SimpleNamespace
+    from openmd.runtime import recommendations
+
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"asr:test": [{
+        "artifact": "fixture", "repository": "org/repo", "modelscope_repository": "org/repo",
+        "directory": "fixture", "size_bytes": 1, "sha256": "a" * 64,
+    }]}})
+    def hf_download(**kwargs):
+        raise OSError("endpoint unavailable")
+    def modelscope_download(*, model_id, revision, local_dir):
+        directory = Path(local_dir)
+        for name in ("model.bin", "config.json", "tokenizer.json"):
+            (directory / name).write_bytes(b"wrong fixture hash")
+    ms_download = ModuleType("modelscope_hub.compat")
+    ms_download.snapshot_download = modelscope_download
+    monkeypatch.setitem(sys.modules, "modelscope_hub", ModuleType("modelscope_hub"))
+    monkeypatch.setitem(sys.modules, "modelscope_hub.compat", ms_download)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=hf_download))
+    with pytest.raises(RuntimeError, match="sha256 mismatch"):
+        recommendations.cmd_models_install(Namespace(tier="asr:test", root=None, dry_run=False))
+
+
+def test_modelscope_fallback_is_skipped_without_pinned_sha256(monkeypatch, tmp_path):
+    from argparse import Namespace
+    from types import ModuleType, SimpleNamespace
+    from openmd.runtime import recommendations
+
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"asr:test": [{
+        "artifact": "fixture", "repository": "org/repo", "modelscope_repository": "org/repo",
+        "directory": "fixture", "size_bytes": 1,
+    }]}})
+    called = []
+    def hf_download(**kwargs):
+        raise OSError("endpoint unavailable")
+    def modelscope_download(**kwargs):
+        called.append(True)
+    ms_download = ModuleType("modelscope_hub.compat")
+    ms_download.snapshot_download = modelscope_download
+    monkeypatch.setitem(sys.modules, "modelscope_hub", ModuleType("modelscope_hub"))
+    monkeypatch.setitem(sys.modules, "modelscope_hub.compat", ms_download)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=hf_download))
+    with pytest.raises(RuntimeError, match="tried huggingface.co, hf-mirror.com"):
+        recommendations.cmd_models_install(Namespace(tier="asr:test", root=None, dry_run=False))
+    assert called == []
+
+
+def test_doctor_marks_available_whisper_fallback_ready():
+    from openmd.doctor_view import capability_rows
+
+    rows = capability_rows({"profile_diagnostics": {"asr_runtime": {"probe": {"ready": False, "fallback_available": True}}}})
+    asr = next(row for row in rows if row[1] == "无字幕视频 / 播客本机转录")
+    assert asr[0] is True

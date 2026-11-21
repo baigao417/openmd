@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import platform
 from importlib.resources import files
 from pathlib import Path
 import subprocess
+import sys
 
 
 def hardware() -> dict:
@@ -69,17 +71,99 @@ def recommend(machine: dict) -> dict:
 
 
 def install_plan(tier: str, *, root: Path | None = None) -> dict:
-    from openmd.core.local_config import load_local_config
     catalog = matrix()['tiers']
     if tier not in catalog:
         raise ValueError('model_tier_unknown')
-    configured = load_local_config().get('model_roots', [])
-    root = Path(root or os.getenv('OPENMD_MODEL_INSTALL_ROOT') or (configured[0] if configured else Path.home() / '.openmd' / 'models')).expanduser()
+    from openmd.core.preferences import data_directory
+
+    root = Path(root or os.getenv('OPENMD_MODEL_INSTALL_ROOT') or data_directory() / 'models').expanduser()
     return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
         'root': str(root), 'downloads': [{**entry, 'destination': str(root / entry['directory'])} for entry in catalog[tier]],
         'next_action': 'Review model and dependency licenses, then install explicitly in a local runtime. This command only prints a plan.'}
 
 
 def cmd_models_install(args) -> int:
-    print(json.dumps(install_plan(args.tier, root=args.root), ensure_ascii=True, sort_keys=True))
+    plan = install_plan(args.tier, root=args.root)
+    if getattr(args, "dry_run", False):
+        print(json.dumps(plan, ensure_ascii=True, sort_keys=True))
+        return 0
+    if not args.tier.startswith("asr:"):
+        raise ValueError("model_tier_download_unsupported: only ASR model downloads are currently supported")
+    if not sys.stdin.isatty() and not getattr(args, "_confirmed", False):
+        print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
+        return 2
+    total = sum(int(item.get("size_bytes", 0)) for item in plan["downloads"])
+    print(f"将下载约 {total / 1024**3:.1f} GiB 到 {plan['root']}。模型会在本机处理音频。")
+    if not getattr(args, "_confirmed", False):
+        try:
+            answer = input("继续？[y/N] ")
+        except EOFError:
+            print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
+            return 2
+        if answer.strip().lower() not in {"y", "yes"}:
+            print(f"以后可运行：openmd models install {args.tier}")
+            return 1
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError('安装模型需要 ASR extra：pip install "openmd-cli[asr]"') from exc
+    try:
+        from modelscope_hub.compat import snapshot_download as modelscope_snapshot_download
+    except ImportError:
+        modelscope_snapshot_download = None
+    receipts = []
+    for item in plan["downloads"]:
+        destination = Path(item["destination"])
+        destination.mkdir(parents=True, exist_ok=True)
+        last_error = None
+        attempts = []
+        source = None
+        for endpoint in ("https://huggingface.co", "https://hf-mirror.com"):
+            attempts.append(endpoint.removeprefix("https://"))
+            try:
+                snapshot_download(repo_id=item["repository"], revision=item.get("revision"), local_dir=str(destination), endpoint=endpoint)
+                last_error = None
+                source = endpoint.removeprefix("https://")
+                break
+            except Exception as exc:
+                last_error = exc
+        expected_sha256 = item.get("sha256")
+        modelscope_repository = item.get("modelscope_repository")
+        if (last_error is not None and modelscope_snapshot_download is not None
+                and isinstance(modelscope_repository, str)
+                and isinstance(expected_sha256, str)
+                and len(expected_sha256) == 64
+                and all(ch in "0123456789abcdefABCDEF" for ch in expected_sha256)):
+            attempts.append("modelscope")
+            try:
+                modelscope_snapshot_download(model_id=modelscope_repository,
+                                             revision=item.get("modelscope_revision", item.get("revision")),
+                                             local_dir=str(destination))
+                last_error = None
+                source = "modelscope"
+            except Exception as exc:
+                last_error = exc
+        if last_error is not None:
+            routes = ", ".join(attempts) or "no available mirror"
+            raise RuntimeError(f"model_download_failed: {item['repository']}; tried {routes}; retry with openmd models install {args.tier}") from last_error
+        from .models import _missing, _spec_for
+
+        missing = _missing(destination, _spec_for(item["repository"], "whisper"))
+        if missing:
+            raise RuntimeError(f"model_integrity_check_failed: {item['repository']} missing {', '.join(missing)}")
+        verified = "required model files present"
+        if isinstance(expected_sha256, str) and len(expected_sha256) == 64:
+            model_file = destination / "model.bin"
+            digest = hashlib.sha256()
+            with model_file.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            actual_sha256 = digest.hexdigest()
+            if actual_sha256.casefold() != expected_sha256.casefold():
+                raise RuntimeError(f"model_integrity_check_failed: {item['repository']} model.bin sha256 mismatch")
+            verified = "required model files and model.bin sha256"
+        receipts.append({"repository": item["repository"], "destination": str(destination), "verified": verified,
+                         "source": source, "attempts": attempts,
+                         **({"model_sha256": expected_sha256.lower()} if verified.endswith("sha256") else {})})
+    print(json.dumps({"schema": "openmd.model-install-receipt/v1", "tier": args.tier, "downloads": receipts}, ensure_ascii=True, sort_keys=True))
     return 0

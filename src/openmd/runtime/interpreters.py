@@ -48,7 +48,7 @@ def display_path(path: Path | None) -> str | None:
 
 def worker_environment() -> dict[str, str]:
     """Only local-runtime settings cross the process boundary; no cloud credentials."""
-    keep = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "CUDA_PATH", "CUDA_VISIBLE_DEVICES", "OPENMD_CONFIG", "OPENMD_MODEL_ROOTS", "OPENMD_PREPARED_MODEL_ROOT", "OPENMD_ASR_CHINESE_SCRIPT", "OPENMD_RUNTIME_DIR", "OPENMD_GPU_LOCK_TIMEOUT"}
+    keep = {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "CUDA_PATH", "CUDA_VISIBLE_DEVICES", "OPENMD_CONFIG", "OPENMD_DATA_DIR", "OPENMD_MODEL_ROOTS", "OPENMD_PREPARED_MODEL_ROOT", "OPENMD_ASR_CHINESE_SCRIPT", "OPENMD_RUNTIME_DIR", "OPENMD_GPU_LOCK_TIMEOUT"}
     prefixes = ("OPENMD_FASTER_WHISPER_", "OPENMD_ASR_AUTO_", "OPENMD_ASR_ORIGINAL_PEAK_", "OPENMD_ASR_PREPARED_PEAK_", "OPENMD_ASR_LANGUAGE_PROBE_PEAK_", "OPENMD_ASR_MARGIN_", "OPENMD_QWEN3_", "OMP_", "MKL_", "KMP_")
     env = {key: value for key, value in os.environ.items() if (key.upper() in keep or key.upper().startswith(prefixes)) and not re.search(r"TOKEN|COOKIE|SECRET|PASSWORD|CREDENTIAL|API.?KEY", key, re.I)}
     if os.environ.get('OPENMD_OPENCLI_CANARY') == '1':
@@ -57,7 +57,7 @@ def worker_environment() -> dict[str, str]:
                 env[key] = os.environ[key]
     # The worker cwd is deliberately unrelated to the caller. Resolve caller-owned
     # relative locations before crossing that boundary; repository IDs stay IDs.
-    for key in ("OPENMD_CONFIG", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "OPENMD_RUNTIME_DIR", "OPENMD_PREPARED_MODEL_ROOT"):
+    for key in ("OPENMD_CONFIG", "OPENMD_DATA_DIR", "HF_HOME", "HF_HUB_CACHE", "MODELSCOPE_CACHE", "OPENMD_RUNTIME_DIR", "OPENMD_PREPARED_MODEL_ROOT"):
         if env.get(key):
             env[key] = str(Path(env[key]).expanduser().resolve())
     if env.get("OPENMD_MODEL_ROOTS"):
@@ -415,9 +415,21 @@ def select_asr_runtime(*, refresh: bool = False, backend: str = "asr.auto") -> A
             from .models import configured_models
 
             local_models = configured_models()
-            required = ("whisper-large-v3", "whisper-large-v3-turbo") if backend == "asr.auto" else ("whisper-large-v3",)
-            if importlib.util.find_spec("faster_whisper") is not None and all(local_models[key].path is not None for key in required):
-                return AsrRuntime("in_process", Path(sys.executable), "No complete CUDA worker is ready; using the documented local Whisper fallback", {"ready": False, "fallback_available": True, "attempts": reports})
+            available = [key for key in (("whisper-large-v3", "whisper-large-v3-turbo") if backend == "asr.auto" else ("whisper-large-v3",)) if local_models[key].path is not None]
+            discovered = []
+            if backend in {"asr.auto", "asr.faster_whisper"}:
+                from .models import _runnable_whisper_paths
+                discovered = _runnable_whisper_paths()
+            if importlib.util.find_spec("faster_whisper") is not None and (available or discovered):
+                names = available or [f"unverified:{name}" for _, name, _ in discovered]
+                return AsrRuntime("in_process", Path(sys.executable), "No complete CUDA worker is ready; using an available local Whisper model", {"ready": False, "fallback_available": True, "available_models": names, "missing_models": [key for key in ("whisper-large-v3", "whisper-large-v3-turbo") if key not in available] if backend == "asr.auto" else [], "attempts": reports})
         except (ImportError, ValueError):
             pass
-    return AsrRuntime("unavailable", None, "No complete local ASR runtime is ready; configure asr_python and local models, then run openmd doctor --profile media", {"ready": False, "attempts": reports})
+    try:
+        from .models import configured_models
+
+        model_report = {key: model.as_dict() for key, model in configured_models().items()}
+    except (ImportError, ValueError):
+        model_report = {}
+    reason = "Local ASR models are missing; run openmd models install asr:baseline" if model_report and not any(model.get("available") for model in model_report.values()) else "No complete local ASR runtime is ready; configure asr_python and local models, then run openmd doctor --profile media"
+    return AsrRuntime("unavailable", None, reason, {"ready": False, "models": model_report, "attempts": reports})

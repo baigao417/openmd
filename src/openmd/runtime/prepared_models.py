@@ -30,8 +30,13 @@ _AUXILIARY = {"config.json", "configuration.json", "chat_template.json", "genera
 def prepared_root() -> Path:
     from openmd.core.local_config import load_local_config
     setting = load_local_config().get("asr_models", {})
-    return Path(os.getenv("OPENMD_PREPARED_MODEL_ROOT") or setting.get("prepared_root")
-                or Path.home() / ".openmd/models/prepared").expanduser().resolve()
+    from openmd.core.preferences import data_directory
+
+    default = data_directory() / "models/prepared"
+    configured = os.getenv("OPENMD_PREPARED_MODEL_ROOT") or setting.get("prepared_root")
+    if os.getenv("OPENMD_DATA_DIR"):
+        configured = None
+    return Path(configured or default).expanduser().resolve()
 
 
 def prepared_path(source: Path, label: str) -> Path:

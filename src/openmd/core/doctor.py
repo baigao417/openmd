@@ -22,15 +22,17 @@ def _module_available(name: str) -> bool:
 def _media_diagnostics() -> dict[str, Any]:
     from openmd.media_tools import yt_dlp_diagnostics
     from openmd.runtime.interpreters import select_asr_runtime
-    from openmd.runtime.models import configured_models
+    from openmd.runtime.models import configured_models, discover_models
     from openmd.runtime.prepared_models import preparation_status
 
     runtime = select_asr_runtime()
     from openmd.runtime.ffmpeg_tools import ffmpeg_source
     ffmpeg_source_value = ffmpeg_source()
     ffmpeg_available = ffmpeg_source_value != "missing"
+    runtime_ready = bool(runtime.probe.get("ready") or runtime.probe.get("fallback_available"))
     ready = bool(runtime.probe.get("ready")) and ffmpeg_available
-    next_action = "Local CUDA ASR runtime and models are ready" if ready else runtime.reason
+    next_action = ("Local CUDA ASR runtime and models are ready" if runtime.probe.get("ready")
+                   else runtime.reason)
     if not ffmpeg_available:
         next_action = "Install openmd-cli[media] or system FFmpeg, then rerun openmd doctor --profile media"
     models = configured_models()
@@ -44,9 +46,11 @@ def _media_diagnostics() -> dict[str, Any]:
         "local_asr_dependency": _module_available("faster_whisper"),
         "asr_runtime": runtime.as_dict(),
         "models": {key: model.as_dict() for key, model in models.items()},
+        "discovered_models": discover_models(),
         "model_preparation": preparation,
         "yt_dlp": yt_dlp_diagnostics(),
         "ready": ready,
+        "usable": runtime_ready and ffmpeg_available,
         "next_action": next_action,
     }
 

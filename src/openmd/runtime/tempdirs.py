@@ -167,12 +167,24 @@ def _mark(directory) -> None:
 
 
 def owned_mkdtemp(*args, **kwargs):
+    if "dir" not in kwargs:
+        from openmd.core.preferences import data_directory
+
+        root = data_directory() / "runtime" / "tmp"
+        root.mkdir(parents=True, exist_ok=True)
+        kwargs["dir"] = root
     directory = tempfile.mkdtemp(*args, **kwargs)
     _mark(directory)
     return directory
 
 
 def owned_temporary_directory(*args, **kwargs):
+    if "dir" not in kwargs:
+        from openmd.core.preferences import data_directory
+
+        root = data_directory() / "runtime" / "tmp"
+        root.mkdir(parents=True, exist_ok=True)
+        kwargs["dir"] = root
     directory = tempfile.TemporaryDirectory(*args, **kwargs)
     _mark(directory.name)
     return directory

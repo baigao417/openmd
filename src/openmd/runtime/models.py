@@ -142,6 +142,8 @@ def resolve_model(value: str, *, family: str | None = None) -> ResolvedModel:
     compact = spec.repo.replace("/", "--")
     configured = _local_config().get("model_roots", [])
     roots = [*(Path(part).expanduser() for part in os.getenv("OPENMD_MODEL_ROOTS", "").split(os.pathsep) if part), *(Path(part).expanduser() for part in configured)]
+    if os.getenv("OPENMD_DATA_DIR"):
+        roots.append(Path(os.environ["OPENMD_DATA_DIR"]).expanduser() / "models")
     for root in roots:
         candidates.extend((path, "configured_root") for path in (root / spec.logical_id, root / compact, root / "models" / compact, root / ("models--" + compact), root.joinpath(*repo_parts), root / "models" / Path(*repo_parts)))
     checkout = checkout_root()
@@ -185,6 +187,42 @@ def configured_models() -> dict[str, ResolvedModel]:
         "qwen3-asr-1.7b": resolve_model(os.getenv("OPENMD_QWEN3_MODEL") or "Qwen/Qwen3-ASR-1.7B", family="qwen3"),
         "fsmn-vad-zh": resolve_model(os.getenv("OPENMD_QWEN3_VAD_MODEL") or "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch", family="vad"),
     }
+
+
+def _runnable_whisper_paths() -> list[tuple[Path, str, bool]]:
+    configured = configured_models()
+    known_paths = {model.path.resolve(): key for key, model in configured.items() if model.path}
+    roots = [Path(part).expanduser() for part in os.getenv("OPENMD_MODEL_ROOTS", "").split(os.pathsep) if part]
+    roots.extend(Path(item).expanduser() for item in _local_config().get("model_roots", []) if isinstance(item, str))
+    roots.extend(Path(part).expanduser() for part in (os.getenv("HF_HUB_CACHE", ""), os.getenv("HF_HOME", "")) if part)
+    roots.extend(Path(part).expanduser() for part in (os.getenv("MODELSCOPE_CACHE", ""),) if part)
+    data = os.getenv("OPENMD_DATA_DIR")
+    if data:
+        roots.append(Path(data).expanduser() / "models")
+    found: dict[Path, tuple[str, bool]] = {}
+    for root in roots:
+        if not root.is_dir():
+            continue
+        try:
+            candidates = [root, *root.glob("**/model.bin")]
+            for candidate in candidates:
+                directory = candidate.parent if candidate.name == "model.bin" else candidate
+                if directory in found or not directory.is_dir():
+                    continue
+                if _missing(directory, _spec_for(str(directory), "whisper")):
+                    continue
+                resolved = directory.resolve()
+                logical = known_paths.get(resolved)
+                found[resolved] = (logical or directory.name, bool(logical))
+        except OSError:
+            continue
+    return [(path, name, evaluated) for path, (name, evaluated) in sorted(found.items(), key=lambda item: (not item[1][1], item[1][0].casefold()))]
+
+
+def discover_models() -> list[dict[str, object]]:
+    """Classify visible CTranslate2 model directories without opening weights."""
+    return [{"name": name, "origin": "evaluated" if evaluated else "unverified", "evaluated": evaluated, "runnable": True}
+            for _, name, evaluated in _runnable_whisper_paths()]
 
 
 @contextmanager

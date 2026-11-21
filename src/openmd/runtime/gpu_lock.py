@@ -10,7 +10,11 @@ from pathlib import Path
 
 
 def gpu_lock_path() -> Path:
-    root = Path(os.environ.get("OPENMD_RUNTIME_DIR", str(Path.home() / ".openmd/runtime"))).expanduser()
+    from openmd.core.preferences import data_directory
+
+    default = data_directory() / "runtime"
+    configured = os.environ.get("OPENMD_RUNTIME_DIR") if not os.environ.get("OPENMD_DATA_DIR") else None
+    root = Path(configured or default).expanduser()
     return root.resolve() / "gpu.lock"
 
 

@@ -74,11 +74,8 @@ def available_signals(item: ContentItem, result: TranscriptResult) -> dict[str, 
             path = _local_path(item)
             if path and path.is_file():
                 try:
-                    from openmd.runtime.interpreters import run_interruptibly
-
-                    done = run_interruptibly(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                                             stdin=subprocess.DEVNULL, capture_output=True, timeout=10, check=True)
-                    duration = _seconds(done.stdout.decode() if isinstance(done.stdout, bytes) else done.stdout)
+                    from openmd.runtime.ffmpeg_tools import media_duration
+                    duration = media_duration(path)
                     if duration is not None and duration > 0:
                         signals["media_duration_seconds"] = duration
                 except (OSError, ValueError, subprocess.SubprocessError):

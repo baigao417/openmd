@@ -56,6 +56,10 @@ openmd batch links.txt --out ./notes
 当你需要处理本地办公文档或启用本地音视频转写时，可按需安装扩展依赖：
 
 ```bash
+# 一次装齐下面全部（拿不准需要哪些时推荐）
+pip install "openmd-cli[all]"
+
+# 或者只装需要的：
 # 安装文档与图片解析依赖
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,22 @@ pip install "openmd-cli[asr]"
 
 # 保存视频/音频文件（Openmd 自带的 yt-dlp）
 pip install "openmd-cli[media]"
+
+# 原生 PDF 文字层与逐字隐藏文字过滤（PyMuPDF）
+pip install "openmd-cli[ocr-router]"
 ```
 
-> 注：文档解析、OCR 与本地 ASR 除安装 Python 依赖外，还可能需要准备 FFmpeg 或对应本地模型，可通过 `openmd doctor` 查看环境就绪情况。
+> `[all]` 约 1 GB Python 依赖（不含模型）。
+
+其他也都是可选的。少数程序没法通过 pip 安装，只有遇到下表里的情况才需要；用到时 Openmd 会告诉你（`openmd doctor`，或处理到相应文件时给出下一步）：
+
+| 程序 | 只在这些时候需要 | 不装会怎样 |
+|---|---|---|
+| FFmpeg | 处理音频和视频 | 安装 `[media]` / `[asr]` 时已自带；系统里装了的话优先用系统的 |
+| 本地模型（OCR / 语音） | 扫描版 PDF，以及没有字幕的音频或视频 | 图片和截图用 `[ocr]` 在 CPU 上就能识别；有字幕的视频照常可用；`openmd doctor` 会告诉你怎么获取模型 |
+| LibreOffice | 老式 `.doc` / `.ppt`、几乎全是图片的 Office 文件，追求最佳还原 | 自带读取方式照样取出文字，标为“部分” |
+| Calibre | Kindle 电子书（MOBI / AZW3） | 这两种格式会停下并给出安装方法，其他不受影响 |
+| MinerU | 中文扫描件的最佳版面，配合 `--ocr-engine mineru` | 走默认 OCR 路线 |
 
 如果你想把 Openmd 接入自己的 Agent 或自动化工具链，可以阅读 [工具集成指南](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)。
 

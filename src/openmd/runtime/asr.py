@@ -126,12 +126,9 @@ def deserialize_result(payload: object) -> TranscriptResult:
 
 
 def _timeout_for_audio(path: Path) -> float:
-    try:
-        done = run_interruptibly(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)], stdin=subprocess.DEVNULL, capture_output=True, timeout=10, check=True)
-        duration = float(done.stdout.strip())
-        return max(600.0, min(duration * 2, 12 * 60 * 60)) if math.isfinite(duration) and duration >= 0 else 600.0
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return 600.0
+    from openmd.runtime.ffmpeg_tools import media_duration
+    duration = media_duration(path)
+    return max(600.0, min(duration * 2, 12 * 60 * 60)) if duration is not None else 600.0
 
 
 class WorkerASRBackend(ASRBackend):

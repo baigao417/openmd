@@ -56,6 +56,10 @@ openmd batch links.txt --out ./notes
 로컬 오피스 문서를 처리하거나 로컬에서 음성·영상을 전사하려면 필요에 따라 추가 의존성을 설치하세요.
 
 ```bash
+# 아래 전부를 한 번에 설치 (무엇이 필요한지 모를 때 권장)
+pip install "openmd-cli[all]"
+
+# 필요한 것만 고르려면:
 # 문서와 이미지 분석
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,22 @@ pip install "openmd-cli[asr]"
 
 # 영상·음성 파일 저장 (Openmd 관리 yt-dlp)
 pip install "openmd-cli[media]"
+
+# 네이티브 PDF 텍스트 레이어와 글자 단위 숨은 텍스트 제거 (PyMuPDF)
+pip install "openmd-cli[ocr-router]"
 ```
 
-> 참고: 문서 분석, OCR, 로컬 ASR에는 Python 패키지 외에 FFmpeg나 로컬 모델이 필요할 수 있습니다. 준비 상태는 `openmd doctor`로 확인할 수 있습니다.
+> `[all]`은 Python 패키지만 약 1 GB입니다(모델 제외).
+
+나머지도 모두 선택 사항입니다. pip으로 설치할 수 없는 프로그램이 몇 가지 있지만 아래 표의 경우에만 필요하며, 그때 Openmd가 알려 줍니다(`openmd doctor`, 또는 해당 파일을 처리할 때 다음 단계를 안내).
+
+| 프로그램 | 필요한 경우 | 없으면 |
+|---|---|---|
+| FFmpeg | 음성과 영상 | `[media]` / `[asr]`에 포함. 시스템에 FFmpeg가 있으면 그것을 먼저 사용 |
+| 로컬 모델(OCR / 음성) | 스캔한 PDF, 자막 없는 음성·영상 | 이미지와 스크린샷은 `[ocr]`로 CPU에서 OCR 가능. 자막이 있는 영상도 그대로 사용 가능. 모델 받는 방법은 `openmd doctor`가 안내 |
+| LibreOffice | 구형 `.doc` / `.ppt`, 이미지뿐인 Office 파일을 가장 충실하게 변환 | 내장 리더로 본문을 추출하고 partial로 표시 |
+| Calibre | Kindle 전자책(MOBI / AZW3) | 이 두 형식만 설치 방법을 보여 주고 멈추며 나머지는 영향 없음 |
+| MinerU | 중국어 스캔 문서의 최상 레이아웃(`--ocr-engine mineru`) | 기본 OCR 경로 사용 |
 
 Openmd를 여러분의 에이전트나 자동화 도구 체인에 연결하려면 [도구 연동 가이드](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md)를 참고하세요.
 

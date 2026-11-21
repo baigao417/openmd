@@ -56,6 +56,10 @@ Each link becomes `Title.md` in the folder you choose. Run logs go to `~/.openmd
 For local office documents or local audio/video transcription, install the optional extras:
 
 ```bash
+# Everything below at once (recommended if you are not sure what you need)
+pip install "openmd-cli[all]"
+
+# Or pick only what you need:
 # Document and image parsing
 pip install "openmd-cli[document]"
 
@@ -70,9 +74,22 @@ pip install "openmd-cli[asr]"
 
 # Save video/audio files (Openmd-managed yt-dlp)
 pip install "openmd-cli[media]"
+
+# Native PDF text layer with per-glyph hidden-text filtering (PyMuPDF)
+pip install "openmd-cli[ocr-router]"
 ```
 
-> Note: besides the Python packages, document parsing, OCR and local ASR may also need FFmpeg or local models. `openmd doctor` shows what is ready.
+> `[all]` is about 1 GB of Python packages (models not included).
+
+Everything else is optional too. A few programs cannot come from pip; you only need one when you hit the case below, and Openmd says so (`openmd doctor`, or a message with the next step when a file needs it):
+
+| Program | Needed only for | Without it |
+|---|---|---|
+| FFmpeg | Audio and video | Comes with `[media]` / `[asr]`; a system FFmpeg is used first when present |
+| Local models (OCR / speech) | Scanned PDFs, and audio or video without subtitles | Images and screenshots still OCR on CPU with `[ocr]`; videos with subtitles still work; `openmd doctor` shows how to get a model |
+| LibreOffice | Best fidelity for old `.doc` / `.ppt` and image-only Office files | The built-in reader still extracts the text, marked partial |
+| Calibre | Kindle books (MOBI / AZW3) | Those two formats stop with install steps; nothing else changes |
+| MinerU | Best layout on Chinese scans, with `--ocr-engine mineru` | The default OCR route is used |
 
 To connect Openmd to your own agent or automation pipeline, see the [tool integration guide](https://github.com/baigao417/openmd/blob/main/docs/tool-integration.md).
 

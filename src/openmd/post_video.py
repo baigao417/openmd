@@ -138,7 +138,8 @@ def _probe_result(url: str, *, run=_run) -> tuple[list[float] | None, dict[str, 
     if command is None:
         return None, {"category": "missing", "message": "未安装 yt-dlp", "next_action": '安装媒体 extra：`pip install "openmd-cli[media]"`。'}
     try:
-        done = run(command + ["--simulate", "--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--print", "%(duration)s", url], PROBE_TIMEOUT_S)
+        from openmd.runtime.ffmpeg_tools import ffmpeg_location_args
+        done = run(command + ffmpeg_location_args() + ["--simulate", "--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--print", "%(duration)s", url], PROBE_TIMEOUT_S)
     except (OSError, subprocess.TimeoutExpired):
         return None, {"category": "network", "message": "视频探测未完成", "next_action": "检查网络后重试。"}
     if done.returncode != 0:
@@ -179,7 +180,8 @@ def _download(url: str, workdir: Path, *, keep_video: bool, run) -> list[Path]:
     template = str(workdir / "video-%(autonumber)02d.%(ext)s")
     # Progressive mp4 only: X's HLS audio-only streams stall behind proxies (verified 2026-11-08),
     # while the single-file mp4 downloads in seconds. For text, a small rendition is enough.
-    command = command_prefix + ["--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--socket-timeout", "30", "--retries", "3",
+    from openmd.runtime.ffmpeg_tools import ffmpeg_location_args
+    command = command_prefix + ffmpeg_location_args() + ["--no-warnings", "--playlist-items", f"1:{MAX_VIDEOS}", "--socket-timeout", "30", "--retries", "3",
                "-f", "b[ext=mp4][protocol^=http]/b[ext=mp4]/b", "-o", template, url]
     if not keep_video:
         command[len(command_prefix):len(command_prefix)] = ["-S", "res:480"]
@@ -297,14 +299,8 @@ def _append_markdown_section(markdown_path: Path, section: str) -> None:
 
 
 def _local_media_duration(path: Path) -> float | None:
-    ffprobe = shutil.which("ffprobe")
-    if not ffprobe:
-        return None
-    try:
-        done = _run([ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(path)], 10)
-        return float(done.stdout.strip()) if done.returncode == 0 and done.stdout.strip() else None
-    except (OSError, subprocess.SubprocessError, ValueError):
-        return None
+    from openmd.runtime.ffmpeg_tools import media_duration
+    return media_duration(path)
 
 
 def append_retained_media_section(markdown_path: Path, media_dir: Path, *, media_kind: str = "media") -> bool:

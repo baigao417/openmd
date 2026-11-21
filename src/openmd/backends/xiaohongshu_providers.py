@@ -39,6 +39,7 @@ from openmd.core.models import ContentItem, ExtractionComponent, TranscriptResul
 from openmd.core.package_contract import XIAOHONGSHU_EXTRACTION_CONTRACT_VERSION
 from openmd.core.secrets import sanitize_error_summary, sanitize_url
 from openmd.runtime.tempdirs import owned_temporary_directory
+from openmd.runtime.ffmpeg_tools import ffmpeg_executable
 from openmd.runtime.interpreters import run_interruptibly
 
 
@@ -184,7 +185,7 @@ class XiaohongshuCompositeProvider:
             ok=True,
             dependencies={
                 "opencli": "injected" if self._runner is not _run_asset_command else "available" if shutil.which("opencli") or shutil.which("opencli.cmd") else "missing",
-                "ffmpeg": "available" if shutil.which("ffmpeg") else "missing",
+                "ffmpeg": "available" if ffmpeg_executable() else "missing",
                 self._asr_client.name: "available" if self._asr_client.is_available() else "missing",
             },
         )
@@ -503,7 +504,7 @@ class XiaohongshuCompositeProvider:
         return _strip_generated_title(result.text)
 
     def _extract_audio(self, video_path: Path, audio_path: Path) -> None:
-        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        ffmpeg = ffmpeg_executable() or "ffmpeg"
         command = [
             ffmpeg, "-y", "-hide_banner", "-loglevel", "error", "-i", str(video_path),
             "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", str(audio_path),
@@ -515,7 +516,7 @@ class XiaohongshuCompositeProvider:
     def _hard_subtitle_ocr(self, video_path: Path) -> str:
         if self._hard_subtitle_override is not None:
             return self._hard_subtitle_override(video_path)
-        ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+        ffmpeg = ffmpeg_executable() or "ffmpeg"
         with owned_temporary_directory(prefix="openmd-xiaohongshu-frames-") as frames_dir:
             pattern = Path(frames_dir) / "frame_%05d.jpg"
             command = [

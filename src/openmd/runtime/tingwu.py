@@ -18,16 +18,9 @@ from .interpreters import run_interruptibly
 
 
 def probe_audio_duration(path: Path) -> float | None:
-    executable = shutil.which('ffprobe')
-    if not executable:
-        return None
-    try:
-        done = run_interruptibly([executable, '-v', 'error', '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1', str(path)], capture_output=True, text=True, timeout=30)
-        duration = float(done.stdout.strip()) if done.returncode == 0 else 0
-        return duration if math.isfinite(duration) and duration > 0 else None
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
+    from openmd.runtime.ffmpeg_tools import media_duration
+    duration = media_duration(path)
+    return duration if duration and duration > 0 else None
 
 
 def select_xiaoe_asr(duration: float | None, setting: dict, *, allow_cloud: bool = False) -> dict:

@@ -34,14 +34,16 @@ Changelog = "https://github.com/baigao417/openmd/commits/main"
 
 [project.optional-dependencies]
 mcp = ["mcp==1.26.0"]
-asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7", "psutil>=5.9"]
-media = ["yt-dlp[default]>=2026.10.26"]  # [default] brings yt-dlp-ejs for YouTube JS challenges
+asr = ["faster-whisper>=1.1.0", "opencc-python-reimplemented>=0.1.7", "psutil>=5.9", "imageio-ffmpeg>=0.5,<1"]
+media = ["yt-dlp[default]>=2026.10.26", "imageio-ffmpeg>=0.5,<1"]  # [default] brings yt-dlp-ejs for YouTube JS challenges
 web = []  # kept for compatibility; trafilatura is now a core dependency
 pandoc = ["pypandoc-binary>=1.14,<2"]  # optional local structure enhancement
 pdf = ["markitdown[pdf]>=0.1.6"]
 ocr = ["rapidocr-onnxruntime>=1.4.4", "Pillow>=10"]
 ocr-router = ["Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]
 document = ["mammoth>=1.8,<2", "python-pptx>=1.0,<2", "openpyxl>=3.1,<4", "xlrd>=2,<3", "olefile>=0.47,<1", "pdfminer.six>=20231228"]
+# Everything a user can opt into, in one install. Keep in sync with tests/test_extras_all.py.
+all = ["openmd-cli[document,ocr,ocr-router,pandoc,media,asr,mcp]"]
 # Contributors: pip install -e ".[dev]" then python -m pytest
 dev = ["pytest>=8", "Pillow>=10", "numpy>=1.24", "PyMuPDF>=1.24"]  # tests also need ffmpeg on PATH
 

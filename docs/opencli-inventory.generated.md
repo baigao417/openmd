@@ -52,7 +52,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 ## Source references
 
 - `bilibili/subtitle`: `src/openmd/backends/bilibili.py:402`
-- `bilibili/user-videos`: `src/openmd/backends/bilibili.py:854`
+- `bilibili/user-videos`: `src/openmd/backends/bilibili.py:855`
 - `browser/close`: `src/openmd/backends/discourse.py:157`, `src/openmd/backends/douyin.py:525`
 - `browser/eval`: `src/openmd/backends/discourse.py:144`, `src/openmd/backends/douyin.py:514`
 - `browser/open`: `src/openmd/backends/discourse.py:116`, `src/openmd/backends/douyin.py:511`
@@ -70,7 +70,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `grok/status`: `src/openmd/backends/ai_chat.py:255`
 - `openmd-douyin/creator-videos`: `src/openmd/backends/douyin.py:289`
 - `openmd-xiaohongshu/creator-notes`: `src/openmd/backends/xiaohongshu.py:124`
-- `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:96`
+- `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:97`
 - `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
 - `qwen/status`: `src/openmd/backends/ai_chat.py:255`
 - `twitter/article`: `src/openmd/backends/x.py:116`

@@ -199,7 +199,7 @@ class OpenCliXiaohongshuNoteProvider:
         self,
         *,
         runner: OpenCliRunner | None = None,
-        timeout: int = 120,
+        timeout: int = 60,
         min_note_chars: int = MIN_NOTE_CHARS,
     ) -> None:
         self._runner = runner or _run_opencli
@@ -267,7 +267,7 @@ class OpenCliXiaohongshuNoteProvider:
             return _failed(
                 self.name,
                 "xiaohongshu_signed_url_required",
-                "Xiaohongshu note extraction requires a current signed share URL.",
+                "缺少笔记分享参数。请在浏览器里打开这条笔记再点扩展，或从分享按钮复制完整链接。",
                 source_notes=[
                     "OpenCLI Xiaohongshu note extraction was not run because the signed URL shape was missing.",
                 ],
@@ -277,6 +277,15 @@ class OpenCliXiaohongshuNoteProvider:
         command = build_opencli_xiaohongshu_note_args(command_url)
         exit_code, stdout, stderr = self._runner(command, timeout=self.timeout)
         if exit_code != 0:
+            if exit_code == 124:
+                # The bridge owns tab leases by Openmd controller PID. End only
+                # this controller's lease so a killed CLI cannot leave its
+                # background note tab behind; user tabs are never selected.
+                try:
+                    from openmd.runtime.services import finish_openmd_bridge
+                    finish_openmd_bridge()
+                except (ImportError, OSError, RuntimeError):
+                    pass
             return _failed(
                 self.name,
                 classify_xiaohongshu_failure(stderr or stdout),

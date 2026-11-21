@@ -302,6 +302,31 @@ class XiaoeTranscriptProviderTests(unittest.TestCase):
 
 
 class XiaoeContentFallbackTests(unittest.TestCase):
+    def test_real_challenge_fixture_is_rejected_as_login_wall(self) -> None:
+        fixture_path = Path(__file__).parent / "fixtures" / "xiaoe" / "login-challenge.html"
+        fixture = fixture_path.read_text(encoding="utf-8")
+        provider = OpenCliXiaoeContentProvider(
+            runner=lambda *args, **kwargs: (0, json.dumps({"title": "验证码登录", "content": fixture}), "")
+        )
+
+        result = provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_CONTENT_BACKEND))
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error_code, "login_required")
+        self.assertEqual(result.text, "")
+        self.assertIn("浏览器登录小鹅通", result.error_summary)
+
+    def test_course_prose_about_captcha_and_login_is_not_rejected(self) -> None:
+        body = "本节讨论验证码登录的安全性，以及登录流程如何验证账号归属。" * 8
+        provider = OpenCliXiaoeContentProvider(
+            runner=lambda *args, **kwargs: (0, json.dumps({"title": "课程正文", "content": body, "content_length": len(body)}), "")
+        )
+
+        result = provider.extract(_request(_xiaoe_item(), OPENCLI_XIAOE_CONTENT_BACKEND))
+
+        self.assertEqual(result.status, "verified")
+        self.assertIn("验证码登录", result.text)
+
     def test_browser_error_content_is_not_a_verified_article(self) -> None:
         body = "This site can’t provide a secure connection\nexample.com sent an invalid response.\nERR_SSL_PROTOCOL_ERROR\nReload"
         provider = OpenCliXiaoeContentProvider(

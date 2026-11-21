@@ -172,6 +172,23 @@ class XiaohongshuRuntimeGateTests(unittest.TestCase):
 
 
 class XiaohongshuNoteProviderTests(unittest.TestCase):
+    def test_cli_timeout_is_bounded_to_about_one_minute(self) -> None:
+        self.assertLessEqual(OpenCliXiaohongshuNoteProvider().timeout, 60)
+
+    def test_timeout_closes_only_this_openmd_owned_browser_job(self) -> None:
+        from unittest.mock import patch
+
+        provider = OpenCliXiaohongshuNoteProvider(
+            runner=lambda *args, **kwargs: (124, "", "timed out")
+        )
+        item = ContentItem(
+            platform="xiaohongshu", input_type="single", url=_signed_note_url(), source_type="mixed"
+        )
+        with patch("openmd.runtime.services.finish_openmd_bridge") as cleanup:
+            result = provider.extract(_request(item))
+        cleanup.assert_called_once_with()
+        self.assertEqual(result.status, "failed")
+
     def test_note_success_normalizes_json_without_persisting_raw_streams(self) -> None:
         calls: list[tuple[list[str], int]] = []
         note_url = _signed_note_url()
@@ -238,6 +255,8 @@ class XiaohongshuNoteProviderTests(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.source_level, "partial_extraction")
         self.assertEqual(result.error_code, "xiaohongshu_signed_url_required")
+        self.assertIn("请在浏览器里打开这条笔记再点扩展", result.error_summary)
+        self.assertIn("分享按钮复制完整链接", result.error_summary)
         self.assertEqual(calls, [])
         self.assertNotIn(SENSITIVE_QUERY_KEY, str(result.metadata))
 

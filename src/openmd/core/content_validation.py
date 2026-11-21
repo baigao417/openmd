@@ -196,6 +196,20 @@ _WEIXIN_ERROR_LINES = re.compile(
     r"该账号已.*(?:注销|冻结|封禁).*|内容不存在)"
 )
 _WEIXIN_CHALLENGE_LINES = re.compile(r"(?:环境异常|当前环境异常.*完成验证后即可继续访问.*)")
+_XIAOE_LOGIN_TITLE = re.compile(r"(?:验证码|扫码|手机)?登录(?:小鹅通|课程|账号)?", re.I)
+_XIAOE_CHALLENGE = re.compile(r"(?:拖动.{0,30}拼图|拼图.{0,30}验证|滑块.{0,20}验证|完成验证后(?:继续|访问))", re.I)
+
+
+def xiaoe_login_challenge_reason(text: str, title: str | None = None) -> bool:
+    """Recognize Xiaoe's short login/challenge shells without matching course prose."""
+    visible = html.unescape(re.sub(r"<[^>]+>", "\n", _outside_code(text)))
+    compact = re.sub(r"\s+", "", visible)
+    if len(compact) > 1400:
+        return False
+    title_auth = bool(_XIAOE_LOGIN_TITLE.fullmatch(str(title or "").strip()))
+    login_words = bool(re.search(r"(?:验证码登录|扫码登录|请先登录|请登录|登录后查看)", compact, re.I))
+    challenge = bool(_XIAOE_CHALLENGE.search(compact))
+    return challenge and (title_auth or login_words)
 
 
 def weixin_error_page_reason(text: str) -> str | None:
@@ -310,6 +324,15 @@ def validate_extraction_content(
     """
     if result.status not in {"verified", "partial"}:
         return normalize_login_result(result, item)
+    if item is not None and item.platform == "xiaoe" and xiaoe_login_challenge_reason(result.text, result.title):
+        rejected = _reject_content(
+            result,
+            "login_required",
+            "请先在浏览器登录小鹅通、打开课程页，再点 Openmd 扩展。",
+            failure_class="user_resolvable",
+        )
+        normalized = normalize_login_result(rejected, item)
+        return replace(normalized, error_summary="请先在浏览器登录小鹅通、打开课程页，再点 Openmd 扩展。")
     if item is not None and item.source_type in {"article", "mixed"} and item.platform not in {"pdf", "office", "screenshot", "ai_chat"} and login_wall_reason(result.text, result.title):
         rejected = _reject_content(result, "login_wall", "网页返回登录墙，未取得目标正文。", failure_class="user_resolvable")
         return normalize_login_result(rejected, item)

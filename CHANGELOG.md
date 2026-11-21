@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 ### 新增 / Added
+- FFmpeg 随 `[media]` / `[asr]` 一起安装（imageio-ffmpeg），不再需要单独安装；系统里已有 FFmpeg 时优先使用系统版本，读取时长不再依赖 ffprobe。 / FFmpeg now comes with the `[media]` / `[asr]` extras (imageio-ffmpeg), so no separate install is needed; a system FFmpeg is still preferred when present, and reading durations no longer needs ffprobe.
+- README 把 LibreOffice、Calibre、MinerU、本地模型列为可选，并写明各自什么时候才需要。 / The READMEs list LibreOffice, Calibre, MinerU and local models as optional, with when each one is actually needed.
 - 一次装齐全部可选功能：`pip install "openmd-cli[all]"`（约 1 GB Python 依赖，不含模型），包含文档、OCR、PDF 文字层（PyMuPDF）、Pandoc、音视频下载、本地转写与 MCP；README 同时补上此前缺失的 `[ocr-router]` 说明。 / Install every optional feature at once with `pip install "openmd-cli[all]"` (about 1 GB of Python packages, models not included): documents, OCR, the PDF text layer (PyMuPDF), Pandoc, media download, local transcription and MCP. The READMEs also document the previously missing `[ocr-router]` extra.
 
 ## [0.2.2]

@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 import shutil
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,6 +38,7 @@ OPENCLI_TWITTER_THREAD_BACKEND = "opencli.twitter.thread"
 OPENCLI_TWITTER_TWEETS_BACKEND = "opencli.twitter.tweets"
 OPENCLI_TWITTER_ARTICLE_BACKEND = "opencli.twitter.article"
 FXTWITTER_BACKEND = "openmd.x.public"
+X_BROWSER_BACKEND = "openmd.x.logged_in_browser"
 
 DEFAULT_THREAD_LIMIT = 50
 DEFAULT_TWEETS_LIMIT = 20
@@ -72,6 +74,10 @@ def register_backend_providers(
         registry.register(FXTWITTER_BACKEND, XPublicLayeredProvider())
     if not options.enable_browser_backends:
         return
+    if requested in {None, X_BROWSER_BACKEND}:
+        from openmd.backends.x_browser import XLoggedInBrowserProvider
+
+        registry.register(X_BROWSER_BACKEND, XLoggedInBrowserProvider())
     if requested in {None, OPENCLI_TWITTER_THREAD_BACKEND}:
         registry.register(
             OPENCLI_TWITTER_THREAD_BACKEND,
@@ -526,11 +532,12 @@ class XPublicLayeredProvider:
         if item.platform != "x" or not tweet_id:
             return _failed(self.name, "invalid_input", "A public X status URL is required.")
         attempts: list[str] = []
-        urls = [
-            ("syndication", _syndication_url(tweet_id)),
-            ("fxembed_v2", f"https://api.fxtwitter.com/2/conversation/{tweet_id}"),
-            ("fxembed_v1", f"https://api.fxtwitter.com/{urllib.parse.quote(username)}/status/{tweet_id}"),
-        ]
+        urls = [("syndication", _syndication_url(tweet_id))]
+        if os.environ.get("OPENMD_X_DISABLE_FXEMBED") != "1":
+            urls.extend([
+                ("fxembed_v2", f"https://api.fxtwitter.com/2/conversation/{tweet_id}"),
+                ("fxembed_v1", f"https://api.fxtwitter.com/{urllib.parse.quote(username)}/status/{tweet_id}"),
+            ])
         for layer, url in urls:
             try:
                 status, payload = self._fetch_json(url, timeout=self.timeout, layer=layer)

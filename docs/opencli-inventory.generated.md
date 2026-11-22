@@ -7,6 +7,7 @@ Only required column names are pinned; raw Markdown/file consumers need no table
 |---|---|---|---|---|---|
 | bilibili | subtitle | -f | 1 | content, from, to, language, track_type | upstream |
 | bilibili | user-videos | --limit | 1 | title, url, bvid | upstream |
+| browser | chrome | — | 3 | — | upstream |
 | browser | close | --session --window | 0 | — | upstream |
 | browser | eval | --session --window | 1 | — | upstream |
 | browser | open | --session --window | 1 | — | upstream |
@@ -53,6 +54,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 
 - `bilibili/subtitle`: `src/openmd/backends/bilibili.py:402`
 - `bilibili/user-videos`: `src/openmd/backends/bilibili.py:855`
+- `browser/chrome`: `src/openmd/backends/x_browser.py:66`
 - `browser/close`: `src/openmd/backends/discourse.py:157`, `src/openmd/backends/douyin.py:525`
 - `browser/eval`: `src/openmd/backends/discourse.py:144`, `src/openmd/backends/douyin.py:514`
 - `browser/open`: `src/openmd/backends/discourse.py:116`, `src/openmd/backends/douyin.py:511`
@@ -73,9 +75,9 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:98`
 - `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
 - `qwen/status`: `src/openmd/backends/ai_chat.py:255`
-- `twitter/article`: `src/openmd/backends/x.py:121`
-- `twitter/thread`: `src/openmd/backends/x.py:93`
-- `twitter/tweets`: `src/openmd/backends/x.py:107`
+- `twitter/article`: `src/openmd/backends/x.py:127`
+- `twitter/thread`: `src/openmd/backends/x.py:99`
+- `twitter/tweets`: `src/openmd/backends/x.py:113`
 - `web/read`: `src/openmd/backends/web_article.py:636`, `src/openmd/backends/xiaoyuzhou.py:163`
 - `weixin/download`: `src/openmd/backends/weixin.py:269`
 - `xiaoe/catalog`: `src/openmd/backends/xiaoe.py:134`

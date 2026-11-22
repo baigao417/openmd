@@ -66,6 +66,26 @@ def test_thread_without_title_has_stable_post_fallback():
 
 
 class XOpenCliTextProviderTests(unittest.TestCase):
+    def test_disable_fxembed_keeps_syndication_and_skips_hosted_apis(self) -> None:
+        import os
+        calls = []
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (calls.append(url) or (200, {"id_str": "123", "text": "x" * 194})))
+        old = os.environ.get("OPENMD_X_DISABLE_FXEMBED")
+        os.environ["OPENMD_X_DISABLE_FXEMBED"] = "1"
+        try:
+            result = provider.extract(BackendExtractRequest(
+                item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+                backend_chain=(FXTWITTER_BACKEND,),
+            ))
+        finally:
+            if old is None:
+                os.environ.pop("OPENMD_X_DISABLE_FXEMBED", None)
+            else:
+                os.environ["OPENMD_X_DISABLE_FXEMBED"] = old
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("syndication", result.metadata["x_public_attempts"][0])
+
     def test_opencli_title_does_not_use_author_plus_body_summary(self) -> None:
         provider = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, "# 作者：正文前 56 字…\n\n正文实际首句。完整文本继续。", ""))
         result = provider.extract(BackendExtractRequest(

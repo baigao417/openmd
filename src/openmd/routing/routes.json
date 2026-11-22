@@ -97,6 +97,7 @@
       "capability": "content",
       "chain": [
         "openmd.x.public",
+        "openmd.x.logged_in_browser",
         "opencli.twitter.thread"
       ],
       "last_verified": "2026-11-18"

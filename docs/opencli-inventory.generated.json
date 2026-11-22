@@ -64,6 +64,27 @@
     },
     {
       "site": "browser",
+      "command": "chrome",
+      "args": [],
+      "positionals": 3,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/x_browser.py:66"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "browser",
+          "chrome",
+          "call",
+          "openmd.x.read",
+          "{json.dumps([tweet_id])}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "browser",
       "command": "close",
       "args": [
         "--session",
@@ -804,7 +825,7 @@
         "url"
       ],
       "sources": [
-        "src/openmd/backends/x.py:121"
+        "src/openmd/backends/x.py:127"
       ],
       "argv": [
         [
@@ -842,7 +863,7 @@
         "url"
       ],
       "sources": [
-        "src/openmd/backends/x.py:93"
+        "src/openmd/backends/x.py:99"
       ],
       "argv": [
         [
@@ -881,7 +902,7 @@
         "url"
       ],
       "sources": [
-        "src/openmd/backends/x.py:107"
+        "src/openmd/backends/x.py:113"
       ],
       "argv": [
         [

@@ -156,9 +156,14 @@ async function flash(text, color) {
 }
 
 function notify(title, message) {
-  chrome.notifications.create(`openmd:${Date.now()}`, {
-    type: "basic", iconUrl: "icons/icon-128.png", title, message: String(message || "").slice(0, 300),
-  });
+  const create = chrome.notifications?.create;
+  if (typeof create !== "function") return;
+  try {
+    const result = create.call(chrome.notifications, `openmd:${Date.now()}`, {
+      type: "basic", iconUrl: "icons/icon-128.png", title, message: String(message || "").slice(0, 300),
+    });
+    result?.catch?.(() => {});
+  } catch { /* Notifications are optional; the badge and recent result remain available. */ }
 }
 
 function fail(title, message) {
@@ -179,7 +184,7 @@ async function notifyLogin(job, meta) {
   await chrome.storage.local.set({ loginNotices });
   if (existing) return;
   await flash("!", "#b3261e");
-  chrome.notifications.create(id, {
+  notifyWithId(id, {
     type: "basic", iconUrl: "icons/icon-128.png", title: `需要登录 ${job.login.site}`,
     message: `请在浏览器登录 ${job.login.url}，同站点任务已暂停。`,
     buttons: [{ title: "去登录" }, { title: "已登录，重试" }],
@@ -191,11 +196,20 @@ async function notifyFeedback(job, meta) {
   const settings = await getSettings();
   if (settings.allowFeedbackPackage !== true) return;
   const id = `openmd-feedback:${job.id}`;
-  chrome.notifications.create(id, {
+  notifyWithId(id, {
     type: "basic", iconUrl: "icons/icon-128.png", title: "保存结果需要检查",
     message: "结果不完整或失败。可生成脱敏问题报告，附加前请先检查。",
     buttons: [{ title: "生成问题报告" }], requireInteraction: true,
   });
+}
+
+function notifyWithId(id, notice) {
+  const create = chrome.notifications?.create;
+  if (typeof create !== "function") return;
+  try {
+    const result = create.call(chrome.notifications, id, notice);
+    result?.catch?.(() => {});
+  } catch { /* Notifications are optional. */ }
 }
 
 async function feedbackReport(jobId) {
@@ -204,7 +218,7 @@ async function feedbackReport(jobId) {
   return native({ type: "feedback_report", id: jobId, save_to: location?.path });
 }
 
-chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
+chrome.notifications?.onButtonClicked?.addListener?.(async (id, buttonIndex) => {
   if (!id.startsWith("openmd-feedback:") || buttonIndex !== 0) return;
   const jobId = id.slice("openmd-feedback:".length);
   const reply = await feedbackReport(jobId);
@@ -215,7 +229,7 @@ chrome.notifications.onButtonClicked.addListener(async (id, buttonIndex) => {
   }
 });
 
-chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(async () => {
+chrome.notifications?.onButtonClicked?.addListener?.((id, buttonIndex) => saving(async () => {
   const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
   const notice = loginNotices[id];
   if (!notice) return;
@@ -239,7 +253,7 @@ chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(asy
       loginNotices[id] = notice;
     } else {
       delete loginNotices[id];
-      await chrome.notifications.clear(id);
+      try { await chrome.notifications?.clear?.(id); } catch { /* Optional API. */ }
     }
     await chrome.storage.local.set({ loginNotices });
     if (jobs.length) await track(jobs, crypto.randomUUID(), "原保存位置");
@@ -247,7 +261,7 @@ chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => saving(asy
   }
 }));
 
-chrome.notifications.onClosed.addListener(async (id, byUser) => {
+chrome.notifications?.onClosed?.addListener?.(async (id, byUser) => {
   if (!byUser) return;
   const { loginNotices = {} } = await chrome.storage.local.get("loginNotices");
   if (loginNotices[id]) {
@@ -461,21 +475,34 @@ chrome.action.onClicked.addListener((tab) => saving(async () => {
 }));
 
 chrome.runtime.onInstalled.addListener(async () => {
-  chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: "save-page", title: "用 Openmd 保存此页", contexts: ["page"] });
-    chrome.contextMenus.create({ id: "save-link", title: "用 Openmd 保存此链接", contexts: ["link"] });
-    chrome.contextMenus.create({ id: "save-selection", title: "用 Openmd 保存选中的链接", contexts: ["selection"] });
-    // Keep the plain action fast; media is opt-in per save on every web page.
-    const posts = ["http://*/*", "https://*/*"];
-    chrome.contextMenus.create({ id: "save-video-text", title: "用 Openmd 保存（含视频/音频文字版）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
-    chrome.contextMenus.create({ id: "save-video-file", title: "用 Openmd 保存（含视频/音频文件）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
-  });
+  await installContextMenus();
   await seedSettings();
   await applyClickMode();
   if (!(await getSettings()).locations.length) chrome.runtime.openOptionsPage();
 });
 
-chrome.contextMenus.onClicked.addListener((info, tab) => saving(async () => {
+async function installContextMenus() {
+  const menus = chrome.contextMenus;
+  if (typeof menus?.create !== "function" || typeof menus?.removeAll !== "function") return;
+  try {
+    await new Promise((resolve, reject) => {
+      try {
+        const pending = menus.removeAll(resolve);
+        if (pending?.then) pending.then(resolve, reject);
+        else if (menus.removeAll.length === 0) resolve();
+      } catch (error) { reject(error); }
+    });
+    menus.create({ id: "save-page", title: "用 Openmd 保存此页", contexts: ["page"] });
+    menus.create({ id: "save-link", title: "用 Openmd 保存此链接", contexts: ["link"] });
+    menus.create({ id: "save-selection", title: "用 Openmd 保存选中的链接", contexts: ["selection"] });
+    // Keep the plain action fast; media is opt-in per save on every web page.
+    const posts = ["http://*/*", "https://*/*"];
+    menus.create({ id: "save-video-text", title: "用 Openmd 保存（含视频/音频文字版）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
+    menus.create({ id: "save-video-file", title: "用 Openmd 保存（含视频/音频文件）", contexts: ["page", "link", "video"], documentUrlPatterns: posts });
+  } catch { /* Context menus are optional in some Chromium hosts. */ }
+}
+
+chrome.contextMenus?.onClicked?.addListener?.((info, tab) => saving(async () => {
   if (info.menuItemId === "save-link" && info.linkUrl) return saveMany([{ url: info.linkUrl, title: info.linkUrl }]);
   if (info.menuItemId === "save-page" && tab?.url) return saveTabs([tab]);
   if (info.menuItemId === "save-video-text" || info.menuItemId === "save-video-file") {
@@ -505,7 +532,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.cmd === "snapshot") { saving(async () => { const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); return saveSnapshot(tab?.id, msg.locationId); }).then(reply); return true; }
   if (msg?.cmd === "native") { native(msg.message).then(reply); return true; }
   if (msg?.cmd === "import_xiaoyuzhou") {
-    chrome.cookies.getAll({ domain: "xiaoyuzhoufm.com" }, (cookies) => {
+    const getAllCookies = chrome.cookies?.getAll;
+    if (typeof getAllCookies !== "function") {
+      reply({ ok: false, error: "此浏览器暂不支持读取 cookies，无法导入小宇宙登录状态。" });
+      return false;
+    }
+    let replied = false;
+    const onCookies = (cookies) => {
+      if (replied) return;
+      replied = true;
       const error = chrome.runtime.lastError;
       if (error) { reply({ ok: false, error: "读取小宇宙登录状态失败，请确认扩展权限。" }); return; }
       const selected = Object.fromEntries((cookies || [])
@@ -514,13 +549,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       native({ type: "import_xiaoyuzhou", cookies: selected }).then((result) => {
         reply(result?.ok ? { ok: true } : { ok: false, error: "没有找到可用的小宇宙登录凭证，请先在此浏览器登录后重试。" });
       });
-    });
+    };
+    try {
+      const pending = getAllCookies.call(chrome.cookies, { domain: "xiaoyuzhoufm.com" }, onCookies);
+      pending?.catch?.(() => {
+        if (!replied) { replied = true; reply({ ok: false, error: "读取小宇宙登录状态失败，请确认浏览器权限。" }); }
+      });
+    } catch {
+      if (!replied) { replied = true; reply({ ok: false, error: "此浏览器暂不支持读取 cookies，无法导入小宇宙登录状态。" }); }
+    }
     return true;
   }
   if (msg?.cmd === "recent_feedback") {
     native({ type: "recent" }).then((result) => reply({
       ok: result?.ok === true,
-      jobs: (result?.jobs || []).map((job) => ({ id: job.id, state: job.state, snapshot: job.snapshot === true, feedback_opt_in: job.feedback_opt_in === true })),
+      jobs: (result?.jobs || []).map((job) => ({
+        id: job.id, state: job.state, snapshot: job.snapshot === true,
+        feedback_opt_in: job.feedback_opt_in === true, title: job.title,
+        saved_to: job.saved_to, save_to: job.save_to,
+        error: job.error, next_action: job.next_action,
+      })),
       error: result?.error,
     }));
     return true;

@@ -402,6 +402,15 @@ def test_user_facing_text_never_names_opencli(tmp_path, monkeypatch) -> None:
     assert os.environ["OPENCLI_WINDOW"] == "background"
 
 
+def test_doctor_adds_kaze_extension_guidance_when_kaze_is_running(monkeypatch):
+    from openmd import doctor_view
+
+    monkeypatch.setattr(doctor_view, "_kaze_running", lambda: True)
+    text = doctor_view.render({"profile_diagnostics": {}})
+    assert "固定到 Kaze 工具栏" in text
+    assert "chrome.debugger" in text
+
+
 @pytest.mark.parametrize("script", ["dev_setup.py", "vendor_opencli_bridge.py"])
 def test_contributor_scripts_compile(script) -> None:
     import py_compile

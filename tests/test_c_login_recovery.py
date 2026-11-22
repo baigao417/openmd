@@ -144,7 +144,7 @@ def test_browser_jobs_pause_and_resume_site_without_repeat_failures(tmp_path, mo
 def test_extension_has_persistent_login_buttons_and_retry_handler():
     script = (Path(browser_host.__file__).parent / "browser_extension" / "background.js").read_text(encoding="utf-8")
     assert 'title: "去登录"' in script and 'title: "已登录，重试"' in script
-    assert "notifications.onButtonClicked.addListener" in script
+    assert "chrome.notifications?.onButtonClicked?.addListener?.(" in script
     assert "retry_login" in script and "chrome.tabs.create" in script
 
 

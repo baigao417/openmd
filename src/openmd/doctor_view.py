@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
+import subprocess
 from typing import Any
 
 
@@ -25,6 +26,20 @@ def _browser_registered() -> bool | None:
     from openmd.browser_setup import host_files
 
     return host_files()[0].is_file()
+
+
+def _kaze_running() -> bool:
+    """Detect the supported Kaze desktop process without reading its settings."""
+    if os.name != "nt":
+        return False
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq Kaze.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=2, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and '"Kaze.exe"' in result.stdout
 
 
 def _opencli_row() -> tuple[bool | None, str, str]:
@@ -76,6 +91,11 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
 def render(payload: dict[str, Any]) -> str:
     rows = [row for row in capability_rows(payload) if row[0] is not None]
     lines = ["Openmd 体检", ""]
+    if _kaze_running():
+        lines += [
+            "  Kaze：请把 Openmd 固定到 Kaze 工具栏，才能看到保存徽标；Kaze 暂不支持 chrome.debugger，",
+            "      B 站字幕等需要调试接口的读取会自动尝试其他路线，无法读取时会提示。",
+        ]
     xiaoyuzhou = (payload.get("profile_diagnostics") or {}).get("xiaoyuzhou_login")
     if xiaoyuzhou:
         lines.append(f"  小宇宙：{xiaoyuzhou}")

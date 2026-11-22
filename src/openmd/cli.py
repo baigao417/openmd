@@ -117,7 +117,9 @@ def _print_result(result: CliResult) -> None:
 
 def _read_urls_file(path: str) -> list[str]:
     lines = sys.stdin.read().splitlines() if path == "-" else Path(path).read_text(encoding="utf-8").splitlines()
-    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    from openmd.core.input_validation import normalize_http_url
+
+    return [normalize_http_url(line.strip()) for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
 def _read_single_input(value: str) -> str:

@@ -446,6 +446,11 @@ def cmd_go(args: argparse.Namespace) -> int:
         if not url:
             print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
             return 2
+        from openmd.core.input_validation import normalize_http_url
+
+        url = normalize_http_url(url)
+        if getattr(args, "as_snapshot", False):
+            args.snapshot_url = normalize_http_url(str(getattr(args, "snapshot_url", "") or "").strip())
         from openmd.importers.chatgpt import cmd_import, is_chatgpt_export
         from openmd.importers.claude import cmd_import as import_claude, is_claude_export
 

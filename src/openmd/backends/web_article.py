@@ -31,6 +31,7 @@ from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
+from openmd.core.input_validation import normalize_http_url
 from openmd.runtime.interpreters import run_interruptibly
 
 
@@ -60,13 +61,28 @@ class WebFetchError(OSError):
         self.attempts = attempts
 
 
+class _NormalizedRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return super().redirect_request(req, fp, code, msg, headers, normalize_http_url(newurl))
+
+
 def _fetch_web_html(url: str, *, timeout: int = 20, sleep=time.sleep) -> tuple[str | bytes, dict[str, object]]:
     """Fetch one source HTML with bounded proxy/direct retries and safe receipts."""
     attempts: list[dict[str, object]] = []
     last_status: int | None = None
     routes = ("proxy", "direct", "proxy", "direct")
     for index, route in enumerate(routes):
-        opener = urllib.request.build_opener() if route == "proxy" else urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = (
+            urllib.request.build_opener()
+            if route == "proxy"
+            else urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        )
+        if isinstance(opener, urllib.request.OpenerDirector):
+            opener.handlers = [
+                handler for handler in opener.handlers
+                if not isinstance(handler, urllib.request.HTTPRedirectHandler)
+            ]
+            opener.add_handler(_NormalizedRedirects())
         request = urllib.request.Request(url, headers={"User-Agent": "Openmd/1.0", "Accept-Language": "en,zh;q=0.8"})
         try:
             with opener.open(request, timeout=timeout) as response:
@@ -87,6 +103,10 @@ def _fetch_web_html(url: str, *, timeout: int = 20, sleep=time.sleep) -> tuple[s
             retryable = exc.code in {408, 500, 502, 503, 504}
             code = "web_fetch_http_error"
             attempts.append({"route": route, "outcome": code, "http_status": exc.code})
+        except UnicodeEncodeError:
+            retryable = False
+            code = "web_fetch_url_encoding_error"
+            attempts.append({"route": route, "outcome": code, "http_status": None})
         except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             retryable = True

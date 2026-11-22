@@ -427,3 +427,28 @@ def test_failure_hint_surfaces_provider_next_step_for_new_failure_codes() -> Non
     action = source_next_action("douyin_detail_read_failed")
     assert action and "抖音" in action and "browser-setup" in action
     assert interactive._failure_hint([{"error_code": "douyin_detail_read_failed"}]) == action
+
+
+def test_go_json_next_action_comes_from_the_row_error_code():
+    """Round14: douyin_detail_read_failed printed a hint but left JSON next_action empty."""
+    from types import SimpleNamespace
+    from openmd.cli_login import source_next_action
+    from openmd.interactive import _go_receipt_fields
+
+    result = SimpleNamespace(next_action=None, error_code=None, status="failed")
+    rows = [{"event_type": "item", "error_code": "douyin_detail_read_failed", "status": "failed"}]
+    fields = _go_receipt_fields(result, rows, ok=False)
+    assert fields["error_code"] == "douyin_detail_read_failed"
+    assert fields["next_action"] == source_next_action("douyin_detail_read_failed")
+    assert fields["next_action"]
+
+
+def test_damaged_local_document_names_its_type_and_suggests_redownload():
+    """Round14: a truncated EPUB was reported as '平台 pdf' with no next step."""
+    from openmd.cli_login import source_next_action
+    from openmd.interactive import issue_context
+
+    rows = [{"event_type": "item", "error_code": "document_invalid_container", "backend": "document.engines"}]
+    line = issue_context(r"C:\books\sample.epub", rows)
+    assert "本地文件 .epub" in line and "平台 pdf" not in line
+    assert "重新下载" in source_next_action("document_invalid_container")

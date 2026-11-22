@@ -335,6 +335,35 @@ def process_options() -> dict[str, Any]:
     return {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
 
 
+def spawn_detached(command: list[str], *, env: dict[str, str] | None = None, cwd: str | Path | None = None) -> int:
+    """Start a hidden child that must outlive Openmd and is deliberately not owned.
+
+    Only for work that cannot run while Openmd is alive, such as removing the
+    program's own launcher and interpreter on Windows. Returns the child PID.
+    """
+    kwargs: dict[str, Any] = {"env": env, "cwd": None if cwd is None else str(cwd), "stdin": subprocess.DEVNULL,
+                              "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
+    if os.name != "nt":
+        return subprocess.Popen(command, start_new_session=True, **kwargs).pid
+    # uv's openmd.exe launcher runs Openmd inside a kill-on-close job that does
+    # not allow breakaway, so any child Popen creates dies with the launcher
+    # (round14 real-machine uninstall). WMI creates the process from the WMI
+    # service instead, outside that job, hidden.
+    def quote(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    script = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[uint16]0}; "
+              f"$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine={quote(subprocess.list2cmdline(command))}; "
+              + (f"CurrentDirectory={quote(str(cwd))}; " if cwd is not None else "")
+              + "ProcessStartupInformation=$si}; if ($r.ReturnValue -ne 0) { exit 1 }; Write-Output $r.ProcessId")
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    created = run_interruptibly([str(powershell), "-NoProfile", "-NonInteractive", "-Command", script],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, check=False)
+    if created.returncode != 0 or not created.stdout.strip().isdigit():
+        raise OSError(f"detached_process_create_failed: {created.returncode}")
+    return int(created.stdout.strip())
+
+
 def _ready_for(report: dict[str, Any], backend: str) -> bool:
     return bool(report.get("backend_readiness", {}).get(backend, report.get("ready", False)))
 

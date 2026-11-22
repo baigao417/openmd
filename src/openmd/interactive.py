@@ -331,7 +331,10 @@ def issue_context(url: str, rows: list[dict[str, object]]) -> str:
             tried.append(f"{display_backend(row.get('backend'))}={row.get('error_code') or row.get('status')}")
     # Sanitize each attempt: one joined string would hit the summary length cap and lose the tail.
     route = ", ".join(dict.fromkeys(str(sanitize_error_summary(part)) for part in tried)) or "无工具记录"
-    return f"openmd {__version__} · {host.system()} {host.release()} · Python {host.python_version()} · 平台 {detect_platform(url)} · {route}"
+    # Local files all route through the generic document platform (internally "pdf");
+    # name the file type instead so an EPUB failure is not reported as a PDF one.
+    source = detect_platform(url) if "://" in url else f"本地文件 {Path(url).suffix.lower() or '(无扩展名)'}"
+    return f"openmd {__version__} · {host.system()} {host.release()} · Python {host.python_version()} · 平台 {source} · {route}"
 
 
 def _emit_saved(args: argparse.Namespace, *, target: Path, outputs: list[str], records: Path | None) -> None:
@@ -351,17 +354,24 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
     if qr_path and type(qr_expires_at) is not int:
         from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
         qr_expires_at = pending_qr_expiry(qr_path=qr_path)
+    error_code = row.get("error_code") or getattr(result, "error_code", None)
+    next_action = getattr(result, "next_action", None)
+    if not next_action and not ok and error_code:
+        from openmd.cli_login import source_next_action
+        # Same owner as the human failure line (I082): row-level codes such as
+        # douyin_detail_read_failed must not leave the JSON next_action empty.
+        next_action = source_next_action(str(error_code))
     return {
         "status": row.get("status") or getattr(result, "status", None) or ("verified" if ok else "failed"),
         "source_level": row.get("source_level") or getattr(result, "source_level", None),
         "completeness": row.get("completeness") or getattr(result, "completeness", {}) or {},
         "sync": row.get("sync") or getattr(result, "sync", {}) or {},
         "login": row.get("login") or getattr(result, "login", None),
-        "next_action": getattr(result, "next_action", None),
+        "next_action": next_action,
         "qr_path": qr_path,
         "qr_expires_at": qr_expires_at,
         "qr_http_status": getattr(result, "qr_http_status", None),
-        "error_code": row.get("error_code") or getattr(result, "error_code", None),
+        "error_code": error_code,
     }
 
 

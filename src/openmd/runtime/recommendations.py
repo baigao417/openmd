@@ -82,6 +82,53 @@ def install_plan(tier: str, *, root: Path | None = None) -> dict:
         'next_action': 'Review model and dependency licenses, then install explicitly in a local runtime. This command only prints a plan.'}
 
 
+_PROBE_BYTES = 2 * 1024 * 1024
+
+
+def _probe_throughput(url: str, timeout: float = 10.0) -> float | None:
+    """Bytes/second over the first ~2 MB of ``url``; None when nothing arrives."""
+    import time
+    import urllib.request
+
+    request = urllib.request.Request(url, headers={"Range": f"bytes=0-{_PROBE_BYTES - 1}", "User-Agent": "openmd-model-probe"})
+    start = time.monotonic()
+    received = 0
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            while received < _PROBE_BYTES and time.monotonic() - start < timeout:
+                chunk = response.read(65536)
+                if not chunk:
+                    break
+                received += len(chunk)
+    except Exception:
+        pass
+    return received / max(time.monotonic() - start, 1e-3) if received else None
+
+
+def rank_sources(item: dict, *, modelscope_allowed: bool) -> list[tuple[str, float | None]]:
+    """Order download sources by measured speed, slow or unreachable ones last.
+
+    Failure-only fallback left new users in China on a 10 KB/s HuggingFace
+    route for hours while hf-mirror or ModelScope was fast (round14, 2026-11-22).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    endpoints = ["https://huggingface.co", "https://hf-mirror.com"]
+    configured = os.environ.get("HF_ENDPOINT", "").rstrip("/")
+    if configured and configured not in endpoints:
+        endpoints.insert(0, configured)
+    probe_file = item.get("probe_file", "model.bin")
+    urls = {endpoint: f"{endpoint}/{item['repository']}/resolve/{item.get('revision') or 'main'}/{probe_file}" for endpoint in endpoints}
+    if modelscope_allowed:
+        urls["modelscope"] = (f"https://www.modelscope.cn/models/{item['modelscope_repository']}/resolve/"
+                              f"{item.get('modelscope_revision') or 'master'}/{probe_file}")
+    with ThreadPoolExecutor(max_workers=len(urls)) as pool:
+        speeds = dict(zip(urls, pool.map(_probe_throughput, urls.values())))
+    order = list(urls)
+    return sorted(((name, speeds[name]) for name in order),
+                  key=lambda pair: (pair[1] is None, -(pair[1] or 0), order.index(pair[0])))
+
+
 def cmd_models_install(args) -> int:
     plan = install_plan(args.tier, root=args.root)
     if getattr(args, "dry_run", False):
@@ -118,29 +165,31 @@ def cmd_models_install(args) -> int:
         last_error = None
         attempts = []
         source = None
-        for endpoint in ("https://huggingface.co", "https://hf-mirror.com"):
-            attempts.append(endpoint.removeprefix("https://"))
-            try:
-                snapshot_download(repo_id=item["repository"], revision=item.get("revision"), local_dir=str(destination), endpoint=endpoint)
-                last_error = None
-                source = endpoint.removeprefix("https://")
-                break
-            except Exception as exc:
-                last_error = exc
         expected_sha256 = item.get("sha256")
         modelscope_repository = item.get("modelscope_repository")
-        if (last_error is not None and modelscope_snapshot_download is not None
-                and isinstance(modelscope_repository, str)
-                and isinstance(expected_sha256, str)
-                and len(expected_sha256) == 64
-                and all(ch in "0123456789abcdefABCDEF" for ch in expected_sha256)):
-            attempts.append("modelscope")
+        # ModelScope is a different host for the same weights, so it is only
+        # used when model.bin can be checked against the pinned SHA-256.
+        modelscope_allowed = (modelscope_snapshot_download is not None
+                              and isinstance(modelscope_repository, str)
+                              and isinstance(expected_sha256, str)
+                              and len(expected_sha256) == 64
+                              and all(ch in "0123456789abcdefABCDEF" for ch in expected_sha256))
+        ranked = rank_sources(item, modelscope_allowed=modelscope_allowed)
+        print("下载源测速：" + "，".join(f"{name.removeprefix('https://')} "
+                                     + (f"{speed / 1e6:.1f} MB/s" if speed else "不可达") for name, speed in ranked),
+              file=sys.stderr, flush=True)
+        for name, _speed in ranked:
+            attempts.append(name.removeprefix("https://"))
             try:
-                modelscope_snapshot_download(model_id=modelscope_repository,
-                                             revision=item.get("modelscope_revision", item.get("revision")),
-                                             local_dir=str(destination))
+                if name == "modelscope":
+                    modelscope_snapshot_download(model_id=modelscope_repository,
+                                                 revision=item.get("modelscope_revision", item.get("revision")),
+                                                 local_dir=str(destination))
+                else:
+                    snapshot_download(repo_id=item["repository"], revision=item.get("revision"), local_dir=str(destination), endpoint=name)
                 last_error = None
-                source = "modelscope"
+                source = name.removeprefix("https://")
+                break
             except Exception as exc:
                 last_error = exc
         if last_error is not None:

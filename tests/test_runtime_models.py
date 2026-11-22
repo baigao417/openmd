@@ -440,6 +440,15 @@ def test_auto_selects_unverified_runnable_whisper_directory(monkeypatch, tmp_pat
     assert "small-unreviewed" in reason
 
 
+@pytest.fixture(autouse=True)
+def _no_source_probe(monkeypatch):
+    """Model-source speed probes are network calls; tests decide the speeds."""
+    from openmd.runtime import recommendations
+
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    monkeypatch.setattr(recommendations, "_probe_throughput", lambda url, timeout=10.0: None)
+
+
 def test_model_install_noninteractive_returns_action_without_download(monkeypatch, tmp_path, capsys):
     from argparse import Namespace
     from openmd.runtime import recommendations
@@ -597,3 +606,33 @@ def test_doctor_marks_available_whisper_fallback_ready():
     rows = capability_rows({"profile_diagnostics": {"asr_runtime": {"probe": {"ready": False, "fallback_available": True}}}})
     asr = next(row for row in rows if row[1] == "无字幕视频 / 播客本机转录")
     assert asr[0] is True
+
+
+def test_model_install_starts_with_the_fastest_measured_source(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    fixture_sha = hashlib.sha256(b"fixture").hexdigest()
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"asr:baseline": [{
+        "artifact": "fixture", "repository": "org/repo", "directory": "fixture", "size_bytes": 1, "sha256": fixture_sha,
+    }]}})
+    monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    speeds = {"huggingface.co": 10_000.0, "hf-mirror.com": 8_000_000.0}
+    monkeypatch.setattr(recommendations, "_probe_throughput",
+                        lambda url, timeout=10.0: next(v for k, v in speeds.items() if f"//{k}/" in url))
+    endpoints = []
+
+    def download(*, repo_id, revision, local_dir, endpoint):
+        endpoints.append(endpoint)
+        for name in ("model.bin", "config.json", "tokenizer.json"):
+            (Path(local_dir) / name).write_bytes(b"fixture")
+
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=download))
+    assert recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=tmp_path / "m", dry_run=False)) == 0
+    assert endpoints == ["https://hf-mirror.com"]
+    captured = capsys.readouterr()
+    assert json.loads(captured.out.splitlines()[-1])["downloads"][0]["source"] == "hf-mirror.com"
+    assert "hf-mirror.com 8.0 MB/s" in captured.err

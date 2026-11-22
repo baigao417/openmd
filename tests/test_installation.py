@@ -67,6 +67,8 @@ def test_uninstall_removes_only_managed_runtime_by_default(monkeypatch, tmp_path
     runtime = tmp_path / "tools" / "opencli"
     runtime.mkdir(parents=True)
     (runtime / "managed.txt").write_text("managed")
+    defuddle = tmp_path / "tools" / "defuddle"
+    defuddle.mkdir(parents=True)
     (tmp_path / "runs").mkdir()
     monkeypatch.setattr(installation, "installation_manager", lambda: "pip")
     monkeypatch.setattr(installation, "data_directory", lambda: tmp_path)
@@ -81,5 +83,68 @@ def test_uninstall_removes_only_managed_runtime_by_default(monkeypatch, tmp_path
 
     assert result == 0
     assert not runtime.exists()
+    assert not defuddle.exists()  # every managed tool is program, not user data
     assert (tmp_path / "runs").is_dir()
     assert "pip_shared_dependencies_retained" in capsys.readouterr().out
+
+
+def _uv_record(tmp_path):
+    root = tmp_path / "Openmd"
+    return {"schema": "openmd.install/v1", "manager": "uv", "manager_exe": str(root / "manager" / "uv.exe"),
+            "tool_dir": str(root / "uv" / "tools"), "tool_bin": str(root / "bin"), "python_dir": str(root / "uv" / "python"),
+            "cache_dir": str(root / "uv" / "cache"), "install_root": str(root), "path_entry_added": True}
+
+
+def test_uv_lifecycle_commands_use_the_recorded_tool_directories(monkeypatch, tmp_path):
+    """A new terminal has no UV_* variables; update/uninstall must not fall back to uv's default tool dir."""
+    from openmd import installation
+
+    monkeypatch.delenv("UV_TOOL_DIR", raising=False)
+    env = installation.uv_environment(_uv_record(tmp_path))
+    assert env["UV_TOOL_DIR"] == str(tmp_path / "Openmd" / "uv" / "tools")
+    assert env["UV_TOOL_BIN_DIR"] == str(tmp_path / "Openmd" / "bin")
+    assert env["UV_PYTHON_INSTALL_DIR"] == str(tmp_path / "Openmd" / "uv" / "python")
+    assert env["UV_CACHE_DIR"] == str(tmp_path / "Openmd" / "uv" / "cache")
+    assert installation.uv_environment({"manager": "pip"}) is None
+
+
+def test_windows_uv_uninstall_is_finished_after_openmd_exits(monkeypatch, tmp_path, capsys):
+    import argparse
+    import json
+    from openmd import installation
+
+    data = tmp_path / "data"
+    data.mkdir()
+    record = _uv_record(tmp_path)
+    (data / "install.json").write_text(json.dumps(record), encoding="utf-8")
+    spawned = []
+    monkeypatch.setattr(installation.os, "name", "nt")
+    monkeypatch.setattr(installation, "installation_manager", lambda: "uv")
+    monkeypatch.setattr(installation, "data_directory", lambda: data)
+    monkeypatch.setattr(installation, "manager_command", lambda *_: [record["manager_exe"], "tool", "uninstall", "openmd-cli"])
+    monkeypatch.setattr("openmd.browser_setup.uninstall", lambda: 0)
+    monkeypatch.setattr("openmd.shell_menu.uninstall", lambda: {"removed": True})
+    monkeypatch.setattr("openmd.runtime.interpreters.spawn_detached", lambda command, **kw: spawned.append(command) or 4242)
+    monkeypatch.setattr("tempfile.gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(installation, "run_interruptibly", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run in-process")))
+
+    result = installation.cmd_lifecycle(argparse.Namespace(lifecycle_action="uninstall", yes=True, purge_data=False))
+
+    assert result == 0
+    assert len(spawned) == 1 and spawned[0][-2] == "-File"
+    script = open(spawned[0][-1], encoding="utf-8-sig").read()
+    assert "'tool' 'uninstall' 'openmd-cli'" in script
+    assert f"$env:UV_TOOL_DIR = '{record['tool_dir']}'" in script
+    assert record["tool_bin"] in script and "path_entry_removed" in script
+    assert str(data / "install.json") in script
+    assert str(data) not in script.replace(str(data / "install.json"), "").replace(str(data / "runs"), "")  # never removes data
+    assert data.is_dir()
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["scheduled"] is True
+
+
+def test_version_flag_prints_the_package_version(capsys):
+    from openmd import __version__
+    from openmd.cli import main
+
+    assert main(["--version"]) == 0
+    assert capsys.readouterr().out.strip() == f"openmd {__version__}"

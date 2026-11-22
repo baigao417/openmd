@@ -323,6 +323,12 @@ def test_waiting_workers_must_use_launch_time_ownership():
                     functions = [function for function in ast.walk(ast.parse(path.read_text(encoding="utf-8-sig")))
                                  if isinstance(function, ast.FunctionDef) and function.lineno <= node.lineno <= function.end_lineno]
                     assert [function.name for function in functions] == ["_start_opencli_daemon_detached"]
+                if rel == "runtime/interpreters.py":
+                    functions = [function.name for function in ast.walk(ast.parse(path.read_text(encoding="utf-8-sig")))
+                                 if isinstance(function, ast.FunctionDef) and function.lineno <= node.lineno <= function.end_lineno]
+                    # owned_popen and the taskkill helper own their children; spawn_detached is the one
+                    # reviewed unowned launch (uninstall cleanup must outlive Openmd).
+                    assert functions in (["owned_popen"], ["kill_process_tree"], ["spawn_detached"]), (functions, node.lineno)
                 assert rel in allowed, (rel, node.lineno)
                 found.append(rel)
-    assert sorted(found) == ["browser_host.py", "runtime/interpreters.py", "runtime/interpreters.py", "runtime/services.py"]
+    assert sorted(found) == ["browser_host.py"] + ["runtime/interpreters.py"] * 3 + ["runtime/services.py"]

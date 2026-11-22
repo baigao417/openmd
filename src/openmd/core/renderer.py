@@ -216,6 +216,8 @@ def render_markdown_document(
     *,
     captured_at: str | None = None,
 ) -> MarkdownDocument:
+    from .input_validation import normalize_http_url
+
     title = result.title or item.title or item.id or "untitled"
     image_post_author_text = (
         item.platform == "douyin" and result.backend == "douyin.post-text"
@@ -226,7 +228,7 @@ def render_markdown_document(
     )
     frontmatter = {
         "platform": item.platform,
-        "url": sanitize_url_text(item.url),
+        "url": sanitize_url_text(normalize_http_url(item.url)),
         "title": title,
         "author": result.author or item.author,
         "published_at": result.published_at or item.published_at,

@@ -28,6 +28,9 @@ def cmd_collect(args: argparse.Namespace) -> int:
             return _emit_result(args, result, discovery_complete=False)
         print(f"openmd collect: {sanitize_error_summary(exc)}", file=sys.stderr)
         return 1
+    from openmd.core.input_validation import normalize_http_url
+
+    args.url = normalize_http_url(args.url)
     if args.all and not _allow_scoped_all_collect(args.url, args):
         result = _log_all_guard(args.url, args, command="collect")
         return _emit_result(args, result, discovery_complete=False)
@@ -44,19 +47,26 @@ def cmd_collect(args: argparse.Namespace) -> int:
         )
     )
 
+    from dataclasses import replace
+
+    discovered_items = [
+        replace(item, url=normalize_http_url(item.url))
+        for item in discovery_result.items
+    ]
+
     if not discovery_result.ok:
         partial_outputs: list[str] = []
         partial_count = 0
         if platform == "youtube":
             # Failed discovery must preserve known inputs without extracting or
             # claiming them verified, including compact expected-item accounting.
-            _prepare_compact_collection(args, discovery_result.items)
+            _prepare_compact_collection(args, discovered_items)
             args._compact_execution_failed = True
-            partial_count = len(discovery_result.items)
+            partial_count = len(discovered_items)
             partial_manifest = write_discovery_manifest(
                 out_dir=args.out, platform=platform,
-                collection_url=str(discovery_result.metadata.get("normalized_url") or args.url),
-                provider=discovery_result.provider, items=discovery_result.items,
+                collection_url=normalize_http_url(str(discovery_result.metadata.get("normalized_url") or args.url)),
+                provider=discovery_result.provider, items=discovered_items,
                 limit=None if args.all else args.limit,
             )
             partial_outputs.append(str(partial_manifest))
@@ -94,9 +104,9 @@ def cmd_collect(args: argparse.Namespace) -> int:
         )
         return _emit_result(args, result, discovery_complete=False)
 
-    discovered_items = _prepare_compact_collection(args, discovery_result.items)
+    discovered_items = _prepare_compact_collection(args, discovered_items)
     discovery_complete = not args.all or bool(discovery_result.metadata.get("source_exhausted"))
-    collection_url = str(discovery_result.metadata.get("normalized_url") or args.url)
+    collection_url = normalize_http_url(str(discovery_result.metadata.get("normalized_url") or args.url))
     manifest_path = write_discovery_manifest(
         out_dir=args.out,
         platform=platform,
@@ -105,13 +115,13 @@ def cmd_collect(args: argparse.Namespace) -> int:
         items=discovered_items,
         limit=None if args.all else args.limit,
     )
-    _append_large_batch_guardrail_if_needed(args, command="collect", total=len(discovery_result.items))
+    _append_large_batch_guardrail_if_needed(args, command="collect", total=len(discovered_items))
     if platform == "youtube" and discovery_result.provider.startswith("youtube.data-api"):
         metadata = discovery_result.metadata
         _write_youtube_discovery_summary(
             args.out, discovery_result,
             status="ok", source_exhausted=bool(metadata.get("source_exhausted")),
-            item_count=len(discovery_result.items),
+            item_count=len(discovered_items),
             playlist_item_count=metadata.get("playlist_item_count", 0),
             duplicate_item_count=metadata.get("duplicate_item_count", 0),
             stop_reason=metadata.get("stop_reason"),
@@ -126,17 +136,17 @@ def cmd_collect(args: argparse.Namespace) -> int:
             source_type="mixed",
             source_level="third_party_extractor",
             output_path=manifest_path,
-            item_count=len(discovery_result.items),
-            success_count=len(discovery_result.items),
+            item_count=len(discovered_items),
+            success_count=len(discovered_items),
             failed_count=0,
             event_type="discovery",
         )
         _append_execution_entry(args, entry)
         result = CliResult(
-            ok=bool(discovery_result.items) or (platform == "youtube" and args.all and discovery_complete),
+            ok=bool(discovered_items) or (platform == "youtube" and args.all and discovery_complete),
             command="collect",
-            item_count=len(discovery_result.items),
-            success_count=len(discovery_result.items),
+            item_count=len(discovered_items),
+            success_count=len(discovered_items),
             failed_count=0,
             outputs=[str(manifest_path)],
             message="manifest written",
@@ -153,7 +163,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
             args=args,
             result=result,
             manifest_path=manifest_path,
-            discovered_count=len(discovery_result.items),
+            discovered_count=len(discovered_items),
             source_exhausted=bool(discovery_result.metadata.get("source_exhausted")),
             discovery_metadata=dict(discovery_result.metadata),
             start_index=start_index,
@@ -164,7 +174,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
         coverage_path = _write_xiaohongshu_coverage_summary(
             args=args,
             result=result,
-            discovered_items=discovery_result.items,
+            discovered_items=discovered_items,
             discovery_metadata=dict(discovery_result.metadata),
             start_index=start_index,
             max_items=max_items,

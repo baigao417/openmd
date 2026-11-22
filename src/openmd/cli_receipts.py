@@ -235,13 +235,16 @@ def _read_new_runlog_rows(path: Path, offset: int) -> list[dict[str, object]]:
 
 def _compact_item_identity(item: ContentItem) -> str:
     from .cli import CompactReceiptRun, ContentItem, sanitize_url
+    from openmd.core.input_validation import normalize_http_url
 
-    return CompactReceiptRun.stable_identity(item.platform, sanitize_url(item.url))
+    return CompactReceiptRun.stable_identity(item.platform, sanitize_url(normalize_http_url(item.url)))
 
 
 def _compact_url_identity(url: str) -> str:
     from .cli import CompactReceiptRun, detect_platform, sanitize_url
+    from openmd.core.input_validation import normalize_http_url
 
+    url = normalize_http_url(url)
     return CompactReceiptRun.stable_identity(detect_platform(url), sanitize_url(url))
 
 

@@ -1,4 +1,4 @@
-# Openmd 新用户环境实测报告（2026-11-22）
+# Openmd 新用户环境实测报告（2026-11-22，0.3.0）
 
 [English](#english) · 简体中文
 
@@ -7,106 +7,119 @@
 ## 怎么测的
 
 - **新用户环境**：从源码构建 wheel，装进一个全新的 Python 虚拟环境（依赖经清华 PyPI 镜像安装）；`HOME`、`USERPROFILE`、`OPENMD_DATA_DIR`、`OPENMD_CONFIG`、HuggingFace / ModelScope 缓存全部指向空目录；`PATH` 只保留虚拟环境和 Windows 系统目录；在源码目录之外启动。这样维护者电脑上的私有工具、手放的令牌和已下载的模型都不会参与。
-- **机器**：Windows 11，16 GB 内存（测试时可用约 2 GB），RTX 4060 Laptop。网络经本地代理，国内网络条件。
-- **对照**：同一时段、同一环境里交替运行旧版和新版（A/B/A/B），结果不一致的样本再各复测一次。
-- **评分规则先冻结**：网页、PDF、OCR 的样本集与计分脚本沿用 2026-11-20 那一轮冻结的版本，跑之前不改。
-- **竞品分数**：来自 2026-11-20 同一批样本、同一计分规则的运行，**今晚没有重跑**；当时 Openmd 的网页分数是在维护者电脑上测的（装有私有 Defuddle），不代表新用户，下表单独注明。
+- **机器**：Windows 11，16 GB 内存，RTX 4060 Laptop（8 GB 显存）。网络经本地代理，国内网络条件；公开网站在测试窗口内时有取页失败，下文照实记录。
+- **对照**：同一时段、同一环境里交替运行旧版和新版（A/B/A/B），结果不一致的样本再复测。
+- **评分规则先冻结**：网页、PDF、OCR 的样本集与计分脚本沿用 2026-11-20 冻结的版本，跑之前不改。
+- **竞品分数**：网页一项在同一新用户环境、同一时段重跑了 Defuddle 与 MarkItDown；其余竞品分数来自 2026-11-20 同一批样本、同一计分规则，表中注明日期。
 
 ## 平台：新用户装完能不能用
 
-| 平台 | 改之前（新用户） | 现在（新用户） | 说明 |
+| 平台 | 0.2.3（新用户） | 0.3.0（新用户） | 说明 |
 |---|---|---|---|
-| X 帖子 | 首次 128 秒失败，第二次 17 秒成功；标题是“作者：正文前几十字” | 5 条公开样本 5/5 成功，每条 6–23 秒，标题取自帖子本身 | 不登录：X 官方内嵌接口 → FxEmbed 公开接口 → 浏览器扩展 |
-| 小宇宙 | 失败（需要 App 令牌） | 扫码登录一次后 3 期均取得官方逐字稿；令牌过期后连续 2 轮自动续期成功 | 账号有被风控的风险，建议用小号 |
-| 小鹅通（未登录） | 把“验证码登录 / 拖动拼图”页存成正文 | 拒收，并提示先在浏览器登录、打开课程 | |
-| 小红书 | 命令行读取最长卡 15 分钟 | 约 60 秒内给出结论并引导浏览器扩展；Agent 浏览器快照路线实测成功 | 命令行后台读取本身仍读不出（维护者电脑上一样） |
-| 公众号 | 经浏览器扩展约 95 秒 | 本地读取 5–20 秒 | 只用 1 篇公开文章验证 |
-| 语音转写 | 不可用（没有模型） | 首次使用询问后下载；HuggingFace 不通时自动换 ModelScope，空缓存实测下载与 SHA256 校验通过 | 真实转写因测试机可用内存不足未在本轮验证 |
+| X 帖子 | 首次 128 秒失败，第二次 17 秒成功；标题是“作者：正文前几十字” | 长推文 10 秒、短推文 7 秒，标题取自帖子本身 | 不登录：X 官方内嵌接口 → FxEmbed 公开接口 → 浏览器扩展。长推文全文依赖 FxEmbed 托管接口；它不可用时退到浏览器，约 70 秒 |
+| 小宇宙 | 失败（需要 App 令牌） | 扫码登录一次后取得官方逐字稿（2 秒），令牌自动续期 | 账号有被风控的风险，建议用小号 |
+| 小鹅通（已登录浏览器） | 未登录时把登录页存成正文 | 课程正文 verified；全新环境首次 127 秒，已准备好的环境 7 秒 | 首次慢在浏览器读取组件的准备 |
+| 小红书 | 命令行读取最长卡 15 分钟 | 缺分享参数的链接 0.6 秒给出下一步；Agent 浏览器快照路线可用 | 命令行后台读取仍读不出 |
+| 公众号 | 经浏览器扩展约 95 秒 | 本地读取，9 个不同公众号的 9 篇文章全部成功，每篇 9–12 秒 | |
+| 语音转写 / 抖音 | 装完模型后仍转写失败（PyAV 19 与 faster-whisper 不兼容；回退写死未安装的模型） | 中文、英文合成语音转写正确；抖音视频 176 秒出逐字稿 | 首次使用询问下载 1.6 GB 模型；HuggingFace 慢或不通时按实测速度换 ModelScope，SHA256 校验 |
+| EPUB | — | 两本公开 EPUB 3 样书 1–2 秒转完；损坏文件 0.6 秒拒收并提示重新下载 | 书内插图未做 OCR 时如实标 partial |
 
-（全平台发布前验收见下文“附：发布前验收”。）
+## 网页正文完整度（英文网页与文档）
 
-## 网页正文完整度（英文网页与文档，14 个样本、112 个探针）
+**同一新用户环境、同一时段**（13 个网页样本、104 个探针，各工具读同一份 HTML）：
 
-| 工具 | 分数 | 环境 |
-|---|---:|---|
-| Firecrawl | 100 | 2026-11-20 |
-| MarkItDown | 93 | 2026-11-20 |
-| Defuddle | 92 | 2026-11-20 |
-| Openmd（维护者电脑，含私有 Defuddle） | 90 | 2026-11-20，**不代表新用户** |
-| **Openmd 新版（新用户环境，首次使用自动安装 Defuddle）** | **63** | 2026-11-22，同时段 A/B 均值 |
-| Openmd 旧版（新用户环境） | 58 | 2026-11-22，同时段 A/B 均值 |
+| 工具 | 分数 | 噪音命中 |
+|---|---:|---:|
+| MarkItDown 0.1.9 | 92 | **13** |
+| **Openmd 0.3.0** | **81** | **0** |
+| Defuddle 0.19.6 | 80 | 0 |
+| Firecrawl | 未重跑（需付费 key）；2026-11-20 历史 100/112 | — |
 
-新用户环境下 Openmd 在英文网页上**明显落后**。部分样本（GitHub README、Python 博客）在两个版本中都会随机取页失败，看起来是经代理访问时的网络波动，因此这个分数本身也不稳定。中文网站与内容平台上，2026-11-20 那一轮 Openmd 领先（72% 探针命中，Firecrawl 54%、Defuddle 47%、Jina 37%），但那是在维护者电脑上测的（含私有 Defuddle），还没有在新用户环境重测。
+14 样本、112 探针的冻结口径（含一个非网页样本）：Openmd 0.2.3 为 78，0.3.0 为 82，噪音 0。RFC 9110 由约 9 KB 片段改为完整正文（50 万字、657 个标题）；arXiv 摘要页改为读取 HTML 全文，但正文结构还原仍弱（1/8）。测试窗口内 RFC 与 arXiv 多次取页失败，分数受网络波动影响。2026-11-20 维护者电脑上的 90/112 含私有 Defuddle，不代表新用户。
 
 ## PDF
 
 | 项目 | Openmd | 对照 |
 |---|---|---|
-| 原生文字论文处理速度（10 篇平均，同环境 A/B） | 旧版 133 s → **新版 69 s** | pdfplumber 约 6.5 s（2026-11-20） |
-| 表格结构（10 份带 LaTeX 源的表格 PDF，单元格 F1） | **0**（两种新方法都没成功，未发布；宁可输出正确的纯文字） | Docling 0.042、MarkItDown 0.002、pdfplumber 0（2026-11-20） |
+| 原生文字论文处理速度（13 份冻结 PDF，同环境 A/B 均值） | 0.2.3 43 s → **0.3.0 18 s**（输出逐字节相同）；最慢一篇 179 s → 46 s | pdfplumber 约 6.5 s（2026-11-20） |
+| 表格结构（10 份带 LaTeX 源的表格 PDF，单元格 F1） | **0**（两轮尝试都没有通过真实论文的行列核对，未发布；保留正确的纯文字） | Docling 0.042、MarkItDown 0.002、pdfplumber 0（2026-11-20） |
 | 没有表格的 PDF 误造表格 | 0/3 | Docling 在同样 3 份上造出 13 张表 |
 | 隐藏文字注入（10 类合成样本） | 泄露 0/10 | MarkItDown 10/10、pdfplumber 10/10（2026-11-20） |
 
-## 扫描件与复杂版面（OmniDocBench 12 页，2026-11-20，本轮未改）
+表格评分器按“第几张表、第几行第几列”对齐，且参照表不完整，会低估所有工具；下一版先修评分器再改方法。
 
-| 工具 | 中文 | 英文 |
-|---|---:|---:|
-| MinerU basic | 86.38 | 87.67 |
-| MiniCPM（Openmd 可选模型） | 84.89 | 88.26 |
-| Docling | 74.10 | 74.17 |
-| **Openmd 默认（Ovis3）** | **73.14** | **80.33** |
+## 扫描件与复杂版面（OmniDocBench 12 页）
 
-这一项 Openmd 默认配置**明显落后**。在 Openmd 自己的合成测试集上结论相反（Ovis3 97.71、MiniCPM 84.23、MinerU 78.24），所以本轮没有更换默认模型；需要在内存充足时用新用户环境重测后再决定。
+新用户环境、同一批页面（评分器把“部分完成”的页计 0 分）：
 
-## 安装与卸载（隔离环境实测）
+| 路线 | 中文 | 英文 | Openmd 合成集 |
+|---|---:|---:|---:|
+| **Openmd 默认（Ovis3，失败时回退 MiniCPM）** | **33.0** | **31.9** | 68.8 |
+| MiniCPM 单独 | 47.4 | 32.1 | 63.2 |
 
-| 方式 | 需要预装 Python | 装 `[all]` 首次耗时 | 卸载后程序残留 |
-|---|---|---:|---|
-| uv（`scripts/install.ps1` 采用） | 否 | 约 408 s | 工具环境与命令入口清零；数据默认保留 |
-| pipx | 是 | 约 565 s | 应用环境与命令入口清零；数据默认保留 |
-| pip | 是 | — | 只删 Openmd 本身，约 100 个共享依赖（约 1.18 GB）保留 |
+参考（2026-11-20，维护者环境）：MinerU basic 86.38 / 87.67，Docling 74.10 / 74.17。
+
+这一项 Openmd **明显落后**。主因已查清：长页面切块识别后拼接时“合并不确定”，12 页里 8 页被标为部分完成；回退也没有被触发。扫描件首次使用时还没有询问下载 OCR 模型的入口。这三项都排在下一个小版本，本版不更换默认模型。
+
+## 安装、升级与卸载（真实 Windows 电脑）
+
+在一台真实 Windows 11 上，用 PowerShell 5.1 按 README 的一条命令（`irm … | iex`）安装，不设环境变量代理，程序与数据目录放在测试目录里，结束后还原注册表：
+
+| 步骤 | 结果 |
+|---|---|
+| 一条命令安装（uv 下载并校验 SHA256，uv 自带 Python 3.12，装 `[all]` 约 2.4 GB） | 成功，约 15 分钟（主要是下载依赖） |
+| 新开终端输入 `openmd` | 找到命令，`openmd --version` 正常 |
+| 真实网页 | 19 秒取得全文 |
+| `openmd update` | 19 秒升级，已选组件保留 |
+| `openmd uninstall` | 程序、命令入口、用户 PATH 项、浏览器原生宿主注册全部删除；数据保留 |
 
 ## 复现
 
 评分脚本、样本清单和逐样本回执在维护者工作区保存；公开样本链接与计分规则可按需提供。欢迎用真实失败链接提 issue。
 
-## 附：发布前验收（2026-11-22 06:43–06:52）
+## 附：发布前验收（2026-11-22 16:40–16:54）
 
-从 main 构建 wheel，经清华镜像装进全新虚拟环境的 `[all]`（166 秒），按上文的新用户环境逐个运行真实链接并读回产物：
+从 main 构建 wheel，经清华镜像装进全新虚拟环境的 `[all]`（177 秒），按上文的新用户环境逐个运行真实链接并读回产物：
 
 | 来源 | 结果 | 耗时 |
 |---|---|---:|
-| 普通网页 | verified | 15 s |
-| YouTube（有字幕） | verified | 53 s |
-| B 站（自动字幕） | verified | 8 s |
-| 公众号 | verified | 9 s |
+| 普通网页 | verified | 32 s（含首次准备 Defuddle） |
+| YouTube（有字幕） | verified | 58 s |
+| B 站（自动字幕） | verified | 9 s |
+| 公众号 | verified | 10 s |
 | X 长推文 + 图片 | verified | 10 s |
-| X 短推文 | verified | 8 s |
+| X 短推文 | verified | 7 s |
 | 小宇宙（扫码登录后） | verified（官方逐字稿） | 2 s |
-| 小鹅通课程（浏览器已登录） | verified | 124 s |
-| 小红书（缺分享参数的链接） | 立即失败并给出下一步 | 0.7 s |
-| 抖音（本机没有语音模型） | 失败并给出模型安装命令 | 20 s |
-| 本地论文 PDF | partial（少数页文字层无法核验，如实标注） | 21 s |
+| 小鹅通课程（浏览器已登录） | verified | 128 s |
+| 小红书（缺分享参数的链接） | 立即失败并给出下一步 | 0.6 s |
+| 抖音（已装语音模型） | verified（本地转写） | 176 s |
+| 本地论文 PDF | partial（少数页文字层无法核验，如实标注） | 11 s |
+| 最慢的论文 PDF（2303.08774） | partial（同上） | 53 s |
+| RFC 9110 / RFC 9112 | verified（全文） | 11 s / 7 s |
+| arXiv 摘要页 | verified（HTML 全文） | 11 s |
+| EPUB | partial（插图未做 OCR） | 2 s |
+| 损坏的 EPUB | 拒收并提示重新下载 | 0.6 s |
+| 中文语音文件 | verified | 28 s |
 
 ---
 
 <a id="english"></a>
-# Openmd new-user benchmark (2026-11-22)
+# Openmd new-user benchmark (2026-11-22, 0.3.0)
 
 Only numbers from real runs are reported, including where Openmd falls behind.
 
-**Method.** A wheel built from source is installed into a fresh virtual environment (dependencies via the Tsinghua PyPI mirror). `HOME`, `USERPROFILE`, `OPENMD_DATA_DIR`, `OPENMD_CONFIG` and the HuggingFace / ModelScope caches point to empty folders, `PATH` holds only the venv and Windows system folders, and Openmd starts outside the source tree, so no maintainer-only tools, hand-placed tokens or downloaded models take part. Machine: Windows 11, 16 GB RAM (about 2 GB free during tests), RTX 4060 Laptop, local proxy, China network. Old and new builds alternate in the same time window (A/B/A/B) and disagreeing samples are re-run. Sample sets and scorers are the ones frozen on 2026-11-20. Competitor scores come from that 2026-11-20 run and were **not** re-run tonight; Openmd's web score from that run was measured on the maintainer's machine (with a private Defuddle) and is listed separately.
+**Method.** A wheel built from source is installed into a fresh virtual environment (dependencies via the Tsinghua PyPI mirror). `HOME`, `USERPROFILE`, `OPENMD_DATA_DIR`, `OPENMD_CONFIG` and the HuggingFace / ModelScope caches point to empty folders, `PATH` holds only the venv and Windows system folders, and Openmd starts outside the source tree, so no maintainer-only tools, hand-placed tokens or downloaded models take part. Machine: Windows 11, 16 GB RAM, RTX 4060 Laptop (8 GB), local proxy, China network; public sites failed intermittently during the window and this is recorded as such. Old and new builds alternate in the same time window (A/B/A/B). Sample sets and scorers are the ones frozen on 2026-11-20. For web pages, Defuddle and MarkItDown were re-run in the same new-user environment and window; other competitor scores come from the 2026-11-20 run and are dated.
 
-**Platforms (new user).** X: 5/5 public posts in 6–23 s without login (official embed → FxEmbed → browser extension), titles from the post. Xiaoyuzhou: after one QR login, 3/3 episodes with official transcripts and two automatic token renewals (account risk; use a throwaway account). Xiaoe-tech logged out: the login/puzzle page is refused instead of saved. Xiaohongshu: a conclusion within about 60 s instead of up to 15 minutes, with the browser-extension and agent-snapshot routes; the background CLI read still fails, as it does on the maintainer machine. WeChat: 5–20 s locally instead of about 95 s via the extension (one public article verified). Speech: models are offered on first use; a clean-cache download with ModelScope fallback and SHA256 check passed; real transcription was not verified because of low free memory.
+**Platforms (new user, 0.2.3 → 0.3.0).** X: long post 10 s, short post 7 s without login, titles from the post (official embed → FxEmbed → browser extension); long-post full text depends on the hosted FxEmbed API, and without it the browser fallback takes about 70 s. Xiaoyuzhou: after one QR login the official transcript arrives in 2 s and tokens renew automatically (account risk; use a throwaway account). Xiaoe-tech with a logged-in browser: course text verified, 127 s on first use in a fresh environment, 7 s once prepared. Xiaohongshu: a link without share parameters returns a next step in 0.6 s; the agent-snapshot route works; the background CLI read still fails. WeChat: read locally, 9 articles from 9 accounts all verified in 9–12 s (about 95 s before). Speech and Douyin: 0.2.3 still failed after the model was installed (PyAV 19 broke faster-whisper and a fallback named a model that was not installed); 0.3.0 transcribes Chinese and English speech correctly and a Douyin video in 176 s; the 1.6 GB model is offered on first use, sources are ranked by measured speed (HuggingFace → ModelScope when slow) and SHA256-checked. EPUB: two public EPUB 3 books in 1–2 s; a damaged file is refused in 0.6 s with a re-download hint; illustrations without OCR are marked partial.
 
-**English web completeness (14 samples, 112 probes).** Firecrawl 100, MarkItDown 93, Defuddle 92 (2026-11-20); Openmd on the maintainer machine 90 (not a new-user figure); **Openmd new build, new user 63**; old build, new user 58 (same-window A/B means). Openmd clearly trails here, and some pages (GitHub READMEs, the Python blog) fail intermittently in both builds through the proxy. On Chinese sites the 2026-11-20 run had Openmd ahead (72% of probes vs Firecrawl 54%, Defuddle 47%, Jina 37%), but that was on the maintainer's machine with a private Defuddle and has not been repeated in a new-user environment.
+**English web completeness.** Same new-user environment and window, 13 web samples / 104 probes, every tool reading the same HTML: MarkItDown 0.1.9 92 (13 noise hits), **Openmd 0.3.0 81 (0 noise)**, Defuddle 0.19.6 80 (0 noise); Firecrawl not re-run (paid key), 100/112 on 2026-11-20. On the frozen 14-sample / 112-probe set Openmd went from 78 (0.2.3) to 82 (0.3.0), noise 0. RFC 9110 now comes out whole (about 500k characters, 657 headings) instead of a ~9 KB fragment; arXiv abstract pages now read the HTML full text, but structure recovery is still weak (1/8). RFC and arXiv fetches failed repeatedly in the window, so these scores carry network noise. The 2026-11-20 maintainer-machine 90/112 used a private Defuddle and is not a new-user figure.
 
-**PDF.** Paper speed (10-paper mean, same-environment A/B): 133 s → **69 s**; pdfplumber about 6.5 s. Table structure cell F1: **0** (two new methods failed and were not shipped; correct plain text is kept instead) vs Docling 0.042, MarkItDown 0.002, pdfplumber 0. Invented tables on 3 table-free PDFs: 0 (Docling 13). Hidden-text injection leaks: 0/10 (MarkItDown 10/10, pdfplumber 10/10).
+**PDF.** Native-text paper speed (13 frozen PDFs, same-environment A/B mean): 43 s → **18 s** with byte-identical output; the slowest paper 179 s → 46 s; pdfplumber about 6.5 s. Table structure cell F1: **0** (two attempts failed the row/column check on real papers and were not shipped; correct plain text is kept) vs Docling 0.042, MarkItDown 0.002, pdfplumber 0. The table scorer aligns cells by table index and its reference tables are incomplete, which understates every tool; the next version fixes the scorer first. Invented tables on 3 table-free PDFs: 0 (Docling 13). Hidden-text injection leaks: 0/10 (MarkItDown 10/10, pdfplumber 10/10).
 
-**Scanned and complex layouts (OmniDocBench, 12 pages, 2026-11-20, unchanged).** Chinese / English: MinerU basic 86.38 / 87.67, MiniCPM (an optional Openmd model) 84.89 / 88.26, Docling 74.10 / 74.17, **Openmd default (Ovis3) 73.14 / 80.33** — clearly behind. Openmd's own synthetic set points the other way (Ovis3 97.71, MiniCPM 84.23, MinerU 78.24), so the default was not changed this round.
+**Scanned and complex layouts (OmniDocBench, 12 pages, new user; partial pages score 0).** Chinese / English / Openmd synthetic set: **Openmd default (Ovis3 with MiniCPM fallback) 33.0 / 31.9 / 68.8**; MiniCPM alone 47.4 / 32.1 / 63.2. Reference (2026-11-20, maintainer environment): MinerU basic 86.38 / 87.67, Docling 74.10 / 74.17. Openmd is clearly behind. The cause is known: tiles of long pages are not merged when their overlap is uncertain (8 of 12 pages partial), the fallback was not triggered, and first use of scanned documents does not yet offer to download the OCR models. All three are scheduled for the next minor version; the default is unchanged.
 
-**Install / uninstall (isolated).** uv (used by `scripts/install.ps1`): no Python needed, `[all]` first install about 408 s, program removed cleanly, data kept by default. pipx: needs Python, about 565 s, program removed cleanly. pip: removes only Openmd itself; about 100 shared dependencies (about 1.18 GB) stay.
+**Install, update and uninstall (real Windows machine).** On a real Windows 11 with PowerShell 5.1, the README one-liner (`irm … | iex`) without proxy environment variables, program and data folders redirected to a test location and the registry restored afterwards: install (uv fetched and SHA256-checked, uv-managed Python 3.12, `[all]` about 2.4 GB) succeeded in about 15 minutes, mostly downloads; a new terminal finds `openmd` and `openmd --version` works; a real web page in 19 s; `openmd update` in 19 s with extras kept; `openmd uninstall` removed the program, launcher, user PATH entry and browser native-host registration and kept the data.
 
 Scorers, sample lists and per-sample receipts are kept in the maintainer workspace; public sample links and scoring rules are available on request. Real failing links are welcome as issues.
 
-**Pre-release acceptance (2026-11-22 06:43–06:52).** A wheel built from main was installed with `[all]` into a fresh venv (166 s) and run in the new-user environment described above, reading back each output: web article verified 15 s; YouTube with captions verified 53 s; Bilibili auto-captions verified 8 s; WeChat article verified 9 s; X long post with images verified 10 s; X short post verified 8 s; Xiaoyuzhou after QR login verified with the official transcript 2 s; a Xiaoe-tech course with a logged-in browser verified 124 s; a Xiaohongshu link without share parameters failed immediately with a next step 0.7 s; Douyin without a local speech model failed with the model install command 20 s; a local paper PDF partial (a few pages with an unverifiable text layer, labelled as such) 21 s.
+**Pre-release acceptance (2026-11-22 16:40–16:54).** A wheel built from main was installed with `[all]` into a fresh venv (177 s) and run in the new-user environment above, reading back each output: web article verified 32 s (including first-use Defuddle setup); YouTube with captions verified 58 s; Bilibili auto-captions verified 9 s; WeChat article verified 10 s; X long post with images verified 10 s; X short post verified 7 s; Xiaoyuzhou after QR login verified with the official transcript 2 s; a Xiaoe-tech course with a logged-in browser verified 128 s; a Xiaohongshu link without share parameters failed immediately with a next step 0.6 s; Douyin with the local speech model verified 176 s; a local paper PDF partial (a few pages with an unverifiable text layer, labelled as such) 11 s; the slowest paper (2303.08774) partial 53 s; RFC 9110 / RFC 9112 verified full text 11 s / 7 s; an arXiv abstract page verified via HTML full text 11 s; an EPUB partial (illustrations without OCR) 2 s; a damaged EPUB refused with a re-download hint 0.6 s; a Chinese speech file verified 28 s.

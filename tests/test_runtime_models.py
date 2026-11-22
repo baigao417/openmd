@@ -306,8 +306,11 @@ def test_cpu_fallback_doctor_never_claims_cuda_ready(monkeypatch):
     monkeypatch.setattr(doctor.shutil, "which", lambda name: "fixture")
     monkeypatch.setattr(models, "configured_models", lambda: {})
     report = doctor._media_diagnostics()
-    assert report["ready"] is False
-    assert report["next_action"] == reason
+    # Transcription works through the fallback, so the media profile is usable/ready,
+    # but the CUDA worker is never claimed (round14: baseline-only installs read as usable).
+    assert report["cuda_worker_ready"] is False
+    assert report["usable"] is True and report["ready"] is True
+    assert "CUDA" not in report["next_action"] and "可用" in report["next_action"]
 
 
 def test_runtime_config_fingerprint_detects_interpreter_and_model_location_changes(monkeypatch, tmp_path):

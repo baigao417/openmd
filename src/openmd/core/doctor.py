@@ -30,9 +30,17 @@ def _media_diagnostics() -> dict[str, Any]:
     ffmpeg_source_value = ffmpeg_source()
     ffmpeg_available = ffmpeg_source_value != "missing"
     runtime_ready = bool(runtime.probe.get("ready") or runtime.probe.get("fallback_available"))
-    ready = bool(runtime.probe.get("ready")) and ffmpeg_available
-    next_action = ("Local CUDA ASR runtime and models are ready" if runtime.probe.get("ready")
-                   else runtime.reason)
+    # After `openmd models install asr:baseline` transcription works through the
+    # in-process Whisper route; doctor must say so instead of reporting not-ready
+    # because the optional full CUDA worker set is absent (round14 acceptance).
+    ready = runtime_ready and ffmpeg_available
+    available = [str(name) for name in runtime.probe.get("available_models", []) or []]
+    if runtime.probe.get("ready"):
+        next_action = "Local CUDA ASR runtime and models are ready"
+    elif runtime.probe.get("fallback_available"):
+        next_action = "本地语音转写可用（Whisper：" + ("、".join(available) or "已安装模型") + "）"
+    else:
+        next_action = runtime.reason
     if not ffmpeg_available:
         next_action = "Install openmd-cli[media] or system FFmpeg, then rerun openmd doctor --profile media"
     models = configured_models()
@@ -51,6 +59,7 @@ def _media_diagnostics() -> dict[str, Any]:
         "yt_dlp": yt_dlp_diagnostics(),
         "ready": ready,
         "usable": runtime_ready and ffmpeg_available,
+        "cuda_worker_ready": bool(runtime.probe.get("ready")),
         "next_action": next_action,
     }
 

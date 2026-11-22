@@ -161,11 +161,16 @@ def install_layout_runtime() -> dict:
     if not python.is_file():
         venv.EnvBuilder(with_pip=True).create(target)
     index = os.environ.get("OPENMD_PYPI_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    cpu_index = os.environ.get("OPENMD_PYTORCH_CPU_INDEX_URL", "https://download.pytorch.org/whl/cpu")
+    wheelhouse = Path(os.environ.get("OPENMD_OCR_LAYOUT_WHEELHOUSE") or target.parent / "ocr-layout-wheelhouse")
+    offline = wheelhouse.is_dir() and any(wheelhouse.glob("*.whl"))
+    pip_source = ["--no-index", "--find-links", str(wheelhouse)] if offline else []
+    torch_source = pip_source or ["--index-url", cpu_index]
+    package_source = pip_source or ["--index-url", index]
     commands = [
-        [str(python), "-m", "pip", "install", "--index-url", index,
-         "--extra-index-url", "https://download.pytorch.org/whl/cpu",
+        [str(python), "-m", "pip", "install", *torch_source,
          "torch==2.5.1+cpu", "torchvision==0.20.1+cpu"],
-        [str(python), "-m", "pip", "install", "--index-url", index,
+        [str(python), "-m", "pip", "install", *package_source,
          "transformers==5.13.1", "pillow==12.3.0", "numpy==2.5.4"],
     ]
     for command in commands:
@@ -174,12 +179,12 @@ def install_layout_runtime() -> dict:
         [str(python), "-c",
          "import importlib.util,json,torch; names=('torch','transformers','PIL','numpy','torchvision'); "
          "modules={n:importlib.util.find_spec(n) is not None for n in names}; "
-         "print(json.dumps({'modules':modules,'cuda_visible':torch.cuda.is_available()}))"],
+         "print(json.dumps({'modules':modules,'cuda_visible':torch.cuda.is_available(),'torch_cuda_build':torch.version.cuda}))"],
         check=True, capture_output=True, text=True,
         env={**os.environ, "CUDA_VISIBLE_DEVICES": "-1"},
     )
     report = json.loads(probe.stdout.strip().splitlines()[-1])
-    if not all(report.get("modules", {}).values()) or report.get("cuda_visible"):
+    if not all(report.get("modules", {}).values()) or report.get("cuda_visible") or report.get("torch_cuda_build"):
         raise RuntimeError("layout_cpu_runtime_probe_failed")
     os.environ["OPENMD_OCR_PYTHON"] = str(python)
     return {"python": str(python), "probe": report,
@@ -218,22 +223,30 @@ def cmd_models_install(args) -> int:
                         raise RuntimeError(f"ollama_pull_failed: {item['model']}; rerun openmd models install {args.tier}")
                     receipts.append({'kind': 'ollama', 'model': item['model'], 'verified': 'ollama pull exited successfully'})
                     continue
-                from huggingface_hub import snapshot_download
                 destination = Path(item['destination'])
                 destination.mkdir(parents=True, exist_ok=True)
-                sources = rank_sources({'repository': item['repository'], 'revision': item['revision'], 'probe_file': 'model.safetensors'}, modelscope_allowed=False)
-                last_error = None
-                source = None
-                for endpoint, _speed in sources:
-                    try:
-                        snapshot_download(repo_id=item['repository'], revision=item['revision'], local_dir=str(destination), endpoint=endpoint,
-                                          allow_patterns=list(item['files']))
-                        source, last_error = endpoint.removeprefix('https://'), None
-                        break
-                    except Exception as exc:
-                        last_error = exc
-                if last_error:
-                    raise RuntimeError(f"model_download_failed: {item['repository']}; retry with openmd models install {args.tier}") from last_error
+                already_verified = all(
+                    (destination / filename).is_file()
+                    and hashlib.sha256((destination / filename).read_bytes()).hexdigest().casefold() == expected.casefold()
+                    for filename, expected in item['files'].items()
+                )
+                source = 'existing_verified'
+                if not already_verified:
+                    from huggingface_hub import snapshot_download
+
+                    sources = rank_sources({'repository': item['repository'], 'revision': item['revision'], 'probe_file': 'model.safetensors'}, modelscope_allowed=False)
+                    last_error = None
+                    source = None
+                    for endpoint, _speed in sources:
+                        try:
+                            snapshot_download(repo_id=item['repository'], revision=item['revision'], local_dir=str(destination), endpoint=endpoint,
+                                              allow_patterns=list(item['files']))
+                            source, last_error = endpoint.removeprefix('https://'), None
+                            break
+                        except Exception as exc:
+                            last_error = exc
+                    if last_error:
+                        raise RuntimeError(f"model_download_failed: {item['repository']}; retry with openmd models install {args.tier}") from last_error
                 hashes = {}
                 for filename, expected in item['files'].items():
                     digest = hashlib.sha256((destination / filename).read_bytes()).hexdigest()

@@ -405,6 +405,7 @@ def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
     assert layout["repository"] == "PaddlePaddle/PP-DocLayoutV3_safetensors"
     assert plan["runtime"]["install_command"] == "openmd models install ocr:chain"
     assert "torch==2.5.1+cpu" in plan["runtime"]["required"]
+    assert "torchvision==0.20.1+cpu" in plan["runtime"]["required"]
 
 
 def test_ocr_install_plan_defaults_to_d_drive_on_windows(monkeypatch):
@@ -425,7 +426,7 @@ def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch,
     calls = []
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
     monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
-        calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false}\n')
+        calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
     ))
 
     receipt = recommendations.install_layout_runtime()
@@ -433,7 +434,7 @@ def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch,
     assert len(calls) == 3
     assert "torch==2.5.1+cpu" in calls[0][0]
     assert "torchvision==0.20.1+cpu" in calls[0][0]
-    assert calls[0][0].index("--extra-index-url") < calls[0][0].index("https://download.pytorch.org/whl/cpu")
+    assert "https://download.pytorch.org/whl/cpu" in calls[0][0]
     assert calls[-1][1]["env"]["CUDA_VISIBLE_DEVICES"] == "-1"
     suffix = "Scripts\\python.exe" if recommendations.os.name == "nt" else "bin/python"
     assert receipt["python"].endswith(suffix)
@@ -461,6 +462,31 @@ def test_layout_runtime_discovers_managed_venv_and_model_root(monkeypatch, tmp_p
 
     assert resolved_python == python.resolve()
     assert resolved_model == model.resolve()
+
+
+def test_layout_runtime_uses_pre_downloaded_wheelhouse(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    target = tmp_path / "layout-runtime"
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    (wheelhouse / "torch-2.5.1+cpu-cp312.whl").write_bytes(b"pre-downloaded wheel")
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_WHEELHOUSE", str(wheelhouse))
+    calls = []
+    monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
+    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+        calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
+    ))
+
+    recommendations.install_layout_runtime()
+
+    assert len(calls) == 3
+    assert "--no-index" in calls[0][0]
+    assert calls[0][0][calls[0][0].index("--find-links") + 1] == str(wheelhouse)
+    assert "torch==2.5.1+cpu" in calls[0][0]
+    assert "torchvision==0.20.1+cpu" in calls[0][0]
 
 
 def test_auto_runtime_accepts_only_baseline_model(monkeypatch, tmp_path):

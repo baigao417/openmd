@@ -331,7 +331,10 @@ def issue_context(url: str, rows: list[dict[str, object]]) -> str:
             tried.append(f"{display_backend(row.get('backend'))}={row.get('error_code') or row.get('status')}")
     # Sanitize each attempt: one joined string would hit the summary length cap and lose the tail.
     route = ", ".join(dict.fromkeys(str(sanitize_error_summary(part)) for part in tried)) or "无工具记录"
-    return f"openmd {__version__} · {host.system()} {host.release()} · Python {host.python_version()} · 平台 {detect_platform(url)} · {route}"
+    # Local files all route through the generic document platform (internally "pdf");
+    # name the file type instead so an EPUB failure is not reported as a PDF one.
+    source = detect_platform(url) if "://" in url else f"本地文件 {Path(url).suffix.lower() or '(无扩展名)'}"
+    return f"openmd {__version__} · {host.system()} {host.release()} · Python {host.python_version()} · 平台 {source} · {route}"
 
 
 def _emit_saved(args: argparse.Namespace, *, target: Path, outputs: list[str], records: Path | None) -> None:

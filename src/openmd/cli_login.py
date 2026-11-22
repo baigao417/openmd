@@ -42,6 +42,8 @@ def source_next_action(error_code: str | None) -> str | None:
                 "Agent 可把已加载的页面交给 openmd go <页面.html> --as-snapshot --url <链接>。")
     if error_code in {"douyin_asr_unavailable", "asr_model_missing"}:
         return "本机还没有语音模型：运行 openmd models install asr:baseline（约 1.6 GB，会先确认）后重试。"
+    if error_code == "document_invalid_container":
+        return "文件结构不完整或已损坏（常见于没下载完）：请重新下载或用原软件另存一份后再试。"
     if error_code == "douyin_detail_read_failed":
         return "抖音需要借用浏览器读取：确认 Chrome / Edge 已登录抖音、Openmd 扩展已加载（openmd browser-setup）后重试。"
     return None

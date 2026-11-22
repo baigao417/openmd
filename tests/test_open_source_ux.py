@@ -441,3 +441,14 @@ def test_go_json_next_action_comes_from_the_row_error_code():
     assert fields["error_code"] == "douyin_detail_read_failed"
     assert fields["next_action"] == source_next_action("douyin_detail_read_failed")
     assert fields["next_action"]
+
+
+def test_damaged_local_document_names_its_type_and_suggests_redownload():
+    """Round14: a truncated EPUB was reported as '平台 pdf' with no next step."""
+    from openmd.cli_login import source_next_action
+    from openmd.interactive import issue_context
+
+    rows = [{"event_type": "item", "error_code": "document_invalid_container", "backend": "document.engines"}]
+    line = issue_context(r"C:\books\sample.epub", rows)
+    assert "本地文件 .epub" in line and "平台 pdf" not in line
+    assert "重新下载" in source_next_action("document_invalid_container")

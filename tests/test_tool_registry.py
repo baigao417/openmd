@@ -70,6 +70,30 @@ def test_declarative_default_projection_and_generated_document(monkeypatch, tmp_
     assert Path("docs/routes.generated.md").read_text(encoding="utf-8-sig").replace("\r\n", "\n") == render_routes_markdown()
 
 
+def test_kaze_route_follows_chrome_by_default_and_is_first_when_preferred(monkeypatch):
+    # Keep this projection test independent of the maintainer's route overlay.
+    from tempfile import TemporaryDirectory
+
+    import json
+    from pathlib import Path
+
+    with TemporaryDirectory() as tmp:
+        config = Path(tmp) / "local.json"
+        config.write_text(json.dumps({"schema": "openmd.local/v1"}), encoding="utf-8")
+        monkeypatch.setenv("OPENMD_CONFIG", str(config))
+        from openmd.routing.loader import load_catalog
+
+        load_catalog.cache_clear()
+        monkeypatch.delenv("OPENMD_KAZE", raising=False)
+        chain = default_backend_chains()["web_article"]
+        assert chain.index("opencli.web.read") < chain.index("browser.kaze.snapshot")
+        x_chain = default_backend_chains()["x"]
+        assert x_chain.index("opencli.twitter.thread") < x_chain.index("browser.kaze.snapshot")
+        monkeypatch.setenv("OPENMD_KAZE", "1")
+        assert default_backend_chains()["web_article"][0] == "browser.kaze.snapshot"
+        assert default_backend_chains()["x"][0] == "browser.kaze.snapshot"
+
+
 def test_command_tools_gated_and_explicit_override_preserved():
     disabled = create_runtime_backend_provider_registry("web_article", BackendRuntimeOptions())
     assert not isinstance(disabled.provider_for("defuddle.web.content"), CommandToolProvider)
@@ -200,7 +224,7 @@ def test_overlay_updates_registry_capability_binding_gates_and_trace(monkeypatch
     assert create_default_registry().backend_chain("x")[0] == record.runtime_provider
     assert route_trace("x", record.runtime_provider) == {"card_id": "builtin", "route_version": load_catalog().version, "overlay_applied": True}
     assert "openmd.x.public → opencli.twitter.thread" in render_routes_markdown()
-    assert "opencli.twitter.thread → openmd.x.public" in render_routes_markdown(effective=True)
+    assert "opencli.twitter.thread → browser.kaze.snapshot → openmd.x.public" in render_routes_markdown(effective=True)
     from openmd.routing.view import main as view_main
     assert view_main(["--bundled", "--format", "markdown"]) == 0
     assert "openmd.x.public → opencli.twitter.thread" in capsys.readouterr().out

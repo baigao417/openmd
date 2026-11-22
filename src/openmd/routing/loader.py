@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from datetime import date
 import json
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib.resources import files
@@ -152,6 +153,12 @@ def default_backend_chains(*, effective: bool = True) -> dict[str, tuple[str, ..
     for route in sorted(routes, key=lambda r: priority.get(r["capability"], 2)):
         chain = result.setdefault(route["source"], [])
         chain.extend(backend for backend in route["chain"] if backend not in chain)
+    if os.environ.get("OPENMD_KAZE") == "1":
+        for source in ("web_article", "x"):
+            chain = result.get(source, [])
+            if "browser.kaze.snapshot" in chain:
+                chain.remove("browser.kaze.snapshot")
+                chain.insert(0, "browser.kaze.snapshot")
     return {source: tuple(chain) for source, chain in result.items()}
 
 

@@ -345,11 +345,23 @@ def spawn_detached(command: list[str], *, env: dict[str, str] | None = None, cwd
                               "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
     if os.name != "nt":
         return subprocess.Popen(command, start_new_session=True, **kwargs).pid
-    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-    try:  # leave any job Openmd itself was started in, so closing it does not kill the child
-        return subprocess.Popen(command, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs).pid
-    except OSError:
-        return subprocess.Popen(command, creationflags=flags, **kwargs).pid
+    # uv's openmd.exe launcher runs Openmd inside a kill-on-close job that does
+    # not allow breakaway, so any child Popen creates dies with the launcher
+    # (round14 real-machine uninstall). WMI creates the process from the WMI
+    # service instead, outside that job, hidden.
+    def quote(value: str) -> str:
+        return "'" + value.replace("'", "''") + "'"
+
+    script = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ShowWindow=[uint16]0}; "
+              f"$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine={quote(subprocess.list2cmdline(command))}; "
+              + (f"CurrentDirectory={quote(str(cwd))}; " if cwd is not None else "")
+              + "ProcessStartupInformation=$si}; if ($r.ReturnValue -ne 0) { exit 1 }; Write-Output $r.ProcessId")
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    created = run_interruptibly([str(powershell), "-NoProfile", "-NonInteractive", "-Command", script],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, check=False)
+    if created.returncode != 0 or not created.stdout.strip().isdigit():
+        raise OSError(f"detached_process_create_failed: {created.returncode}")
+    return int(created.stdout.strip())
 
 
 def _ready_for(report: dict[str, Any], backend: str) -> bool:

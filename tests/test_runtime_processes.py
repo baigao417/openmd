@@ -331,4 +331,4 @@ def test_waiting_workers_must_use_launch_time_ownership():
                     assert functions in (["owned_popen"], ["kill_process_tree"], ["spawn_detached"]), (functions, node.lineno)
                 assert rel in allowed, (rel, node.lineno)
                 found.append(rel)
-    assert sorted(found) == ["browser_host.py"] + ["runtime/interpreters.py"] * 5 + ["runtime/services.py"]
+    assert sorted(found) == ["browser_host.py"] + ["runtime/interpreters.py"] * 3 + ["runtime/services.py"]

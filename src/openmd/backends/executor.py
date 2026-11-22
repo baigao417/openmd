@@ -8,6 +8,7 @@ their own hidden fallback loops.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from collections.abc import Callable
 
@@ -369,28 +370,95 @@ class BackendExecutor:
                 continue
             provider = self._provider_for(backend)
             if request.item.platform == "web_article" and backend in web_candidates:
-                from openmd.backends.web_article import apply_completeness_guard, _urllib_fetch
+                from openmd.backends.web_article import WebFetchError, _fetch_web_html, apply_completeness_guard
+                from openmd.core.content_validation import browser_error_page_reason, login_wall_reason
 
                 candidate_backends = [name for name in chain if name in web_candidates]
                 guarded_web_candidates.update(candidate_backends)
-                candidate_results: list[TranscriptResult] = []
-                for candidate_backend in candidate_backends:
-                    candidate_provider = self._provider_for(candidate_backend)
-                    if candidate_provider is None:
-                        candidate_results.append(_failed_result(request.item, candidate_backend, "backend_not_registered"))
-                    else:
-                        candidate_results.append(self._extract_one(candidate_provider, current_item, candidate_backend))
                 source_html = request.item.raw_meta.get("source_html")
-                if not isinstance(source_html, str) or not source_html:
+                fetch_receipt = request.item.raw_meta.get("source_fetch")
+                fetch_error: WebFetchError | None = None
+                if len(candidate_backends) > 1 and (not isinstance(source_html, (str, bytes)) or not source_html):
                     try:
-                        source_html = _urllib_fetch(request.item.url)
-                    except Exception:
-                        source_html = None
+                        source_html, fetch_receipt = _fetch_web_html(request.item.url)
+                    except WebFetchError as exc:
+                        fetch_error = exc
+                        fetch_receipt = {"http_status": exc.http_status, "retry_history": exc.attempts}
+                html_text = source_html.decode("utf-8", "replace") if isinstance(source_html, bytes) else source_html
+                if isinstance(fetch_receipt, dict):
+                    for network_attempt in fetch_receipt.get("retry_history", []):
+                        if not isinstance(network_attempt, dict):
+                            continue
+                        status = network_attempt.get("http_status")
+                        attempt_notes.append(
+                            f"web_fetch_attempt: {network_attempt.get('route', 'unknown')} {network_attempt.get('outcome', 'unknown')}"
+                            + (f" HTTP {status}" if type(status) is int else "")
+                        )
+                candidate_results: list[TranscriptResult] = []
+                rejected_code = None
+                if html_text:
+                    rejected_code = browser_error_page_reason(html_text)
+                    if not rejected_code and login_wall_reason(html_text):
+                        rejected_code = "login_wall"
+                    if not rejected_code:
+                        from bs4 import BeautifulSoup
+
+                        soup = BeautifulSoup(html_text, "html.parser")
+                        status_page = re.compile(
+                            r"^(?:access denied|rate limit(?:ed)?|too many requests|service unavailable|bad gateway|gateway timeout|internal server error|request blocked|temporarily unavailable|404 not found)$",
+                            re.I,
+                        )
+                        headings = [soup.title, *soup.find_all(["h1", "h2"])]
+                        if any(node and status_page.fullmatch(node.get_text(" ", strip=True)) for node in headings):
+                            rejected_code = "web_error_page"
+                if fetch_error is not None or rejected_code:
+                    error_code = rejected_code or fetch_error.code
+                    http_status = fetch_error.http_status if fetch_error else (fetch_receipt or {}).get("http_status")
+                    candidate_results = [
+                        replace(
+                            _failed_result(request.item, name, error_code),
+                            metadata={"http_status": http_status, "fetch_attempts": fetch_error.attempts if fetch_error else []},
+                        )
+                        for name in candidate_backends
+                    ]
+                elif len(candidate_backends) == 1:
+                    only_backend = candidate_backends[0]
+                    only_provider = self._provider_for(only_backend)
+                    candidate_results = [
+                        self._extract_one(only_provider, current_item, only_backend)
+                        if only_provider is not None
+                        else _failed_result(current_item, only_backend, "backend_not_registered")
+                    ]
+                else:
+                    shared_item = replace(
+                        request.item,
+                        raw_meta={**request.item.raw_meta, "source_html": html_text, "source_fetch": fetch_receipt or {}},
+                    )
+                    for candidate_backend in candidate_backends:
+                        candidate_provider = self._provider_for(candidate_backend)
+                        if candidate_provider is None:
+                            candidate_results.append(_failed_result(shared_item, candidate_backend, "backend_not_registered"))
+                        else:
+                            candidate_results.append(self._extract_one(candidate_provider, shared_item, candidate_backend))
                 result = apply_completeness_guard(
                     candidate_results,
-                    html=source_html.decode("utf-8", "replace") if isinstance(source_html, bytes) else source_html,
+                    html=html_text,
                     title=request.item.title,
                 )
+                result = replace(result, metadata={**result.metadata, "web_fetch": fetch_receipt or {}})
+                if all(not candidate.has_usable_text for candidate in candidate_results):
+                    diagnostics = [
+                        {"backend": candidate.backend, "error_code": candidate.error_code or candidate.status,
+                         "http_status": candidate.metadata.get("http_status") if candidate.metadata.get("http_status") is not None else (fetch_receipt or {}).get("http_status")}
+                        for candidate in candidate_results
+                    ]
+                    result = replace(result, metadata={**result.metadata, "web_route_diagnostics": diagnostics})
+                    attempt_notes.extend(
+                        f"fallback_attempt: {entry['backend']} failed with {entry['error_code']}"
+                        + (f" (HTTP {entry['http_status']})" if entry["http_status"] is not None else "")
+                        for entry in diagnostics
+                    )
+                    attempts.extend(diagnostics)
             else:
                 if provider is None:
                     result = _failed_result(request.item, backend, "backend_not_registered")
@@ -422,10 +490,11 @@ class BackendExecutor:
             # the source itself (error page, challenge, no subtitles).
             if last_result is None or not _is_tool_unavailable(result) or _is_tool_unavailable(last_result):
                 last_result = result
-            attempts.append({"backend": backend, "error_code": result.error_code or result.status})
-            attempt_notes.append(
-                f"fallback_attempt: {backend} failed with {result.error_code or result.status}"
-            )
+            if not result.metadata.get("web_route_diagnostics"):
+                attempts.append({"backend": backend, "error_code": result.error_code or result.status})
+                attempt_notes.append(
+                    f"fallback_attempt: {backend} failed with {result.error_code or result.status}"
+                )
 
         if last_result is not None:
             last_result = replace(last_result, metadata={**last_result.metadata, "fallback_attempts": attempts})

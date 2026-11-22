@@ -11,6 +11,9 @@ from __future__ import annotations
 import shutil
 import subprocess
 import re
+import time
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -46,6 +49,53 @@ CommandRunner = Callable[[list[str], int], tuple[int, str, str]]
 TrafilaturaFetcher = Callable[[str], object]
 TrafilaturaExtractor = Callable[..., str | None]
 TrafilaturaMetadataExtractor = Callable[[object], object]
+
+
+class WebFetchError(OSError):
+    def __init__(self, code: str, *, http_status: int | None, attempts: list[dict[str, object]]) -> None:
+        super().__init__(code)
+        self.code = code
+        self.http_status = http_status
+        self.attempts = attempts
+
+
+def _fetch_web_html(url: str, *, timeout: int = 20, sleep=time.sleep) -> tuple[str | bytes, dict[str, object]]:
+    """Fetch one source HTML with bounded proxy/direct retries and safe receipts."""
+    attempts: list[dict[str, object]] = []
+    last_status: int | None = None
+    routes = ("proxy", "direct", "proxy", "direct")
+    for index, route in enumerate(routes):
+        opener = urllib.request.build_opener() if route == "proxy" else urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        request = urllib.request.Request(url, headers={"User-Agent": "Openmd/1.0", "Accept-Language": "en,zh;q=0.8"})
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                status = getattr(response, "status", None)
+                if type(status) is int:
+                    last_status = status
+                body = response.read(20 * 1024 * 1024)
+                charset = response.headers.get_content_charset()
+            attempts.append({"route": route, "outcome": "success", "http_status": last_status})
+            if not body:
+                raise WebFetchError("web_fetch_empty", http_status=last_status, attempts=attempts)
+            text = body.decode(charset, errors="replace") if charset else body
+            return text, {"route": route, "attempts": index + 1, "http_status": last_status, "retry_history": attempts}
+        except WebFetchError:
+            raise
+        except urllib.error.HTTPError as exc:
+            last_status = exc.code
+            retryable = exc.code in {408, 500, 502, 503, 504}
+            code = "web_fetch_http_error"
+            attempts.append({"route": route, "outcome": code, "http_status": exc.code})
+        except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as exc:
+            reason = getattr(exc, "reason", exc)
+            retryable = True
+            code = "web_fetch_timeout" if isinstance(reason, TimeoutError) else "web_fetch_connection_error"
+            attempts.append({"route": route, "outcome": code, "http_status": None})
+        if not retryable:
+            break
+        if index < len(routes) - 1:
+            sleep(0.2 * (index + 1))
+    raise WebFetchError(code, http_status=last_status, attempts=attempts)
 
 
 def estimate_html_body_chars(html: str) -> int:
@@ -301,12 +351,16 @@ class WebArticleTrafilaturaProvider:
                 "trafilatura is not installed; install it or enable browser fallback.",
             )
 
-        try:
-            downloaded = fetcher(item.url)
-        except Exception as exc:
-            downloaded, fetch_error = None, exc
+        shared_html = item.raw_meta.get("source_html")
+        if isinstance(shared_html, (str, bytes)) and shared_html:
+            downloaded, fetch_error = shared_html, None
         else:
-            fetch_error = None
+            try:
+                downloaded = fetcher(item.url)
+            except Exception as exc:
+                downloaded, fetch_error = None, exc
+            else:
+                fetch_error = None
         if downloaded is None and self._fetcher is None:
             # trafilatura's urllib3 client ignores system/SOCKS proxy settings;
             # stdlib urllib honors HTTP(S)_PROXY and the Windows proxy.
@@ -316,7 +370,8 @@ class WebArticleTrafilaturaProvider:
                 fetch_error = fetch_error or exc
         if downloaded is None:
             if fetch_error is not None:
-                return _failed(self.name, "web_article_fetch_failed", fetch_error)
+                result = _failed(self.name, getattr(fetch_error, "code", "web_article_fetch_failed"), "Web page could not be fetched.")
+                return replace(result, metadata={"http_status": getattr(fetch_error, "http_status", None), "fetch_attempts": getattr(fetch_error, "attempts", [])})
             return _failed(self.name, "web_article_fetch_empty", "trafilatura.fetch_url returned no document.")
 
         try:

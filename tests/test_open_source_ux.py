@@ -427,6 +427,12 @@ def test_failure_hint_surfaces_provider_next_step_for_new_failure_codes() -> Non
     action = source_next_action("douyin_detail_read_failed")
     assert action and "抖音" in action and "browser-setup" in action
     assert interactive._failure_hint([{"error_code": "douyin_detail_read_failed"}]) == action
+    for code in ("web_fetch_timeout", "web_fetch_connection_error", "web_fetch_http_error", "web_fetch_failed"):
+        action = source_next_action(code)
+        assert action and "代理与直连重试" in action
+        assert interactive._failure_hint([{"error_code": code}]) == action
+    action = source_next_action("web_error_page")
+    assert action and "没有保存为正文" in action
 
 
 def test_go_json_next_action_comes_from_the_row_error_code():

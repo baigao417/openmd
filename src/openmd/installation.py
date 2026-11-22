@@ -66,6 +66,110 @@ def manager_command(manager: str, action: str) -> list[str] | None:
     return None
 
 
+_UV_RECORD_ENV = (("UV_TOOL_DIR", "tool_dir"), ("UV_TOOL_BIN_DIR", "tool_bin"),
+                  ("UV_PYTHON_INSTALL_DIR", "python_dir"), ("UV_CACHE_DIR", "cache_dir"))
+
+
+def uv_environment(record: dict | None = None) -> dict[str, str] | None:
+    """Environment that points uv at the directories install.ps1 used.
+
+    A new terminal does not carry install.ps1's UV_* variables; without them
+    `uv tool upgrade/uninstall` looks in uv's default tool directory and reports
+    that openmd-cli is not installed.
+    """
+    record = _install_record() if record is None else record
+    if record.get("manager") != "uv":
+        return None
+    env = dict(os.environ)
+    for key, field in _UV_RECORD_ENV:
+        value = record.get(field)
+        if isinstance(value, str) and value:
+            env[key] = value
+    env.setdefault("UV_PYTHON_PREFERENCE", "only-managed")
+    return env
+
+
+def _ps_literal(value: str) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def windows_cleanup_script(command: list[str], record: dict, receipt: Path, wait_pids: list[int], install_json: Path) -> str:
+    """PowerShell that finishes a uv uninstall after Openmd has exited.
+
+    Windows refuses to delete a running launcher/interpreter, so the manager
+    command, the user-PATH entry and the program root are removed only after
+    the waiting PIDs end. User data is never touched.
+    """
+    env_lines = "\n".join(f"$env:{key} = {_ps_literal(record[field])}" for key, field in _UV_RECORD_ENV
+                          if isinstance(record.get(field), str) and record.get(field))
+    tool_bin = record.get("tool_bin") or ""
+    install_root = record.get("install_root") or ""
+    remove_path = "$true" if record.get("path_entry_added") and tool_bin else "$false"
+    args = " ".join(_ps_literal(part) for part in command[1:])
+    return f"""$ErrorActionPreference = 'Continue'
+Wait-Process -Id {', '.join(str(pid) for pid in wait_pids)} -Timeout 120 -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+{env_lines}
+$env:UV_PYTHON_PREFERENCE = 'only-managed'
+$code = 1
+for ($i = 0; $i -lt 5; $i++) {{
+  & {_ps_literal(command[0])} {args} *> $null
+  $code = $LASTEXITCODE
+  if ($code -eq 0) {{ break }}
+  Start-Sleep -Seconds 2
+}}
+$pathRemoved = $false
+if ({remove_path}) {{
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  $raw = $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+  if ($raw) {{
+    $kind = $key.GetValueKind('Path')
+    $kept = @($raw -split ';' | Where-Object {{ $_ -and ($_.TrimEnd('\\') -ine {_ps_literal(tool_bin)}.TrimEnd('\\')) }})
+    if ($kept.Count -ne @($raw -split ';' | Where-Object {{ $_ }}).Count) {{ $key.SetValue('Path', ($kept -join ';'), $kind); $pathRemoved = $true }}
+  }}
+  $key.Close()
+  Add-Type -Namespace OpenmdUninstall -Name Native -MemberDefinition '[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr h, uint m, System.UIntPtr w, string l, uint f, uint t, out System.UIntPtr r);'
+  $r = [System.UIntPtr]::Zero
+  [void][OpenmdUninstall.Native]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$r)
+}}
+$rootRemoved = $false
+$root = {_ps_literal(install_root)}
+if ($code -eq 0 -and $root -and (Test-Path -LiteralPath $root)) {{
+  for ($i = 0; $i -lt 10 -and (Test-Path -LiteralPath $root); $i++) {{
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $root) {{ Start-Sleep -Seconds 1 }}
+  }}
+  $rootRemoved = -not (Test-Path -LiteralPath $root)
+}}
+$result = [ordered]@{{schema='openmd.uninstall/v1'; manager_exit=$code; path_entry_removed=$pathRemoved; program_root_removed=$rootRemoved; finished=(Get-Date).ToString('o')}}
+$result | ConvertTo-Json | Set-Content -LiteralPath {_ps_literal(str(receipt))} -Encoding utf8
+if ($code -eq 0) {{ Remove-Item -LiteralPath {_ps_literal(str(install_json))} -Force -ErrorAction SilentlyContinue }}
+Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+"""
+
+
+def _schedule_windows_uninstall(command: list[str], record: dict, data: Path, *, purge_data: bool) -> dict:
+    import tempfile
+
+    from openmd.runtime.interpreters import spawn_detached
+
+    scratch = Path(tempfile.gettempdir())
+    # With --purge-data the data directory is gone before the cleanup runs, so
+    # the script and its receipt live in the temporary directory instead.
+    runs = scratch if purge_data else data / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    receipt = runs / ("openmd-uninstall-result.json" if purge_data else "uninstall-result.json")
+    receipt.unlink(missing_ok=True)
+    script = scratch / f"openmd-uninstall-{os.getpid()}.ps1"
+    pids = sorted({os.getpid(), os.getppid()})
+    # UTF-8 with BOM so Windows PowerShell 5.1 reads non-ASCII paths correctly.
+    script.write_text(windows_cleanup_script(command, record, receipt, pids, data / "install.json"), encoding="utf-8-sig")
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    spawn_detached([str(powershell), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                    "-WindowStyle", "Hidden", "-File", str(script)], cwd=str(scratch))
+    return {"scheduled": True, "result": str(receipt)}
+
+
 def _update_indexes() -> list[str]:
     record = _install_record()
     configured = record.get("install_index")
@@ -144,12 +248,23 @@ def cmd_lifecycle(args) -> int:
     if not commands:
         print(json.dumps(next_action("manager_missing", manager)), file=sys.stderr)
         return 127
+    record = _install_record()
+    if action == "uninstall" and manager == "uv" and os.name == "nt" and record.get("manager") == "uv":
+        # The running launcher and interpreter belong to the environment being
+        # removed; Windows only lets that happen after this process exits.
+        if args.purge_data:
+            shutil.rmtree(data, ignore_errors=True)
+        scheduled = _schedule_windows_uninstall(commands[0], record, data, purge_data=bool(args.purge_data))
+        print(json.dumps({"command": "openmd uninstall", "ok": True, "manager": manager, **scheduled,
+                          "message": "Openmd 退出后几秒内完成删除程序；新开的终端里 openmd 将不再可用。"},
+                         ensure_ascii=False, sort_keys=True))
+        return 0
     if manager == "pip" and action == "uninstall":
         print("pip_shared_dependencies_retained: pip removes only openmd-cli; shared dependencies are untouched.")
     result = None
     try:
         for index, command in enumerate(commands):
-            env = None
+            env = uv_environment(record) if manager == "uv" else None
             if action == "update" and manager in {"pip", "pipx"}:
                 env = {**os.environ, "PIP_INDEX_URL": _update_indexes()[index]}
             # Hidden, interruptible child (process contract); output is relayed

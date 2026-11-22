@@ -67,6 +67,25 @@ if ($LASTEXITCODE -ne 0) {
 if ($LASTEXITCODE -ne 0) { throw 'openmd_install_failed_on_both_pypi_indexes' }
 if (-not (Test-Path -LiteralPath $openmd)) { throw 'openmd_launcher_missing' }
 
+# A new terminal must find `openmd`: add the launcher directory to the user
+# PATH in the registry (raw value and type kept, so %VAR% entries survive) and
+# tell Explorer the environment changed.
+$pathAdded = $false
+$envKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+$rawPath = $envKey.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+$pathKind = if ($rawPath) { $envKey.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
+$pathEntries = @($rawPath -split ';' | Where-Object { $_ })
+if (-not ($pathEntries | Where-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') -ieq $toolBin.TrimEnd('\') })) {
+  $envKey.SetValue('Path', (@($pathEntries + $toolBin) -join ';'), $pathKind)
+  $pathAdded = $true
+}
+$envKey.Close()
+if ($pathAdded) {
+  Add-Type -Namespace OpenmdInstall -Name Native -MemberDefinition '[DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern System.IntPtr SendMessageTimeout(System.IntPtr h, uint m, System.UIntPtr w, string l, uint f, uint t, out System.UIntPtr r);'
+  $broadcastResult = [System.UIntPtr]::Zero
+  [void][OpenmdInstall.Native]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$broadcastResult)
+}
+
 & $openmd browser-setup
 if ($LASTEXITCODE -ne 0) { throw 'browser_setup_failed' }
 $doctor = & $openmd doctor --profile all --json
@@ -77,11 +96,11 @@ $doctor | Set-Content -LiteralPath $cardPath -Encoding utf8
 
 $recordPath = Join-Path $env:OPENMD_DATA_DIR 'install.json'
 New-Item -ItemType Directory -Force -Path $env:OPENMD_DATA_DIR | Out-Null
-$record = [ordered]@{schema='openmd.install/v1';manager='uv';manager_exe=$uvExe;tool_dir=$toolDir;tool_bin=$toolBin;python_dir=$pythonDir;install_spec=$spec;install_index=$successfulIndex;managed_opencli_npm_registry=$env:OPENMD_NPM_REGISTRY;hf_endpoint=$env:HF_ENDPOINT}
+$record = [ordered]@{schema='openmd.install/v1';manager='uv';manager_exe=$uvExe;tool_dir=$toolDir;tool_bin=$toolBin;python_dir=$pythonDir;cache_dir=$cacheDir;install_root=$installRoot;path_entry_added=$pathAdded;install_spec=$spec;install_index=$successfulIndex;managed_opencli_npm_registry=$env:OPENMD_NPM_REGISTRY;hf_endpoint=$env:HF_ENDPOINT}
 $recordTemp = "$recordPath.tmp"
 $record | ConvertTo-Json | Set-Content -LiteralPath $recordTemp -Encoding utf8
 Move-Item -LiteralPath $recordTemp -Destination $recordPath -Force
 
-Write-Output "Openmd 已安装。命令：$openmd；能力卡：$cardPath（doctor exit $doctorCode；缺少可选模型时按卡片显示的 next_action 处理）。"
+Write-Output "Openmd 已安装。新开一个终端即可直接输入 openmd（当前窗口也已可用）。命令：$openmd；能力卡：$cardPath（doctor exit $doctorCode；缺少可选模型时按卡片显示的 next_action 处理）。"
 Write-Output 'Chrome 中请手动打开 chrome://extensions，启用“开发者模式”，选择“加载已解压的扩展程序”，再选 Openmd 显示的扩展目录。'
 Write-Output 'npm 镜像已为托管 OpenCLI 设置；HF 镜像已为后续模型下载设置。安装期间不会下载语音模型。'

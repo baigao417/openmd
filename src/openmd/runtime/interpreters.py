@@ -335,6 +335,23 @@ def process_options() -> dict[str, Any]:
     return {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
 
 
+def spawn_detached(command: list[str], *, env: dict[str, str] | None = None, cwd: str | Path | None = None) -> int:
+    """Start a hidden child that must outlive Openmd and is deliberately not owned.
+
+    Only for work that cannot run while Openmd is alive, such as removing the
+    program's own launcher and interpreter on Windows. Returns the child PID.
+    """
+    kwargs: dict[str, Any] = {"env": env, "cwd": None if cwd is None else str(cwd), "stdin": subprocess.DEVNULL,
+                              "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
+    if os.name != "nt":
+        return subprocess.Popen(command, start_new_session=True, **kwargs).pid
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    try:  # leave any job Openmd itself was started in, so closing it does not kill the child
+        return subprocess.Popen(command, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs).pid
+    except OSError:
+        return subprocess.Popen(command, creationflags=flags, **kwargs).pid
+
+
 def _ready_for(report: dict[str, Any], backend: str) -> bool:
     return bool(report.get("backend_readiness", {}).get(backend, report.get("ready", False)))
 

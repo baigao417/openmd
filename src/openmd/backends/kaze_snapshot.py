@@ -17,6 +17,7 @@ from openmd.backends.base import BackendCapability, BackendDescriptor, BackendEx
 from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.models import TranscriptResult
+from openmd.runtime.interpreters import owned_popen, process_options, terminate_quietly, wait_interruptibly
 from openmd.runtime.tempdirs import owned_temporary_directory
 
 KAZE_BACKEND = "browser.kaze.snapshot"
@@ -128,10 +129,11 @@ def _verify_tools(tools: list[dict[str, Any]]) -> str:
 
 class _McpSession:
     def __init__(self, launcher: Path) -> None:
-        self.process = subprocess.Popen(
+        self.process = owned_popen(
             ["cmd.exe", "/d", "/s", "/c", str(launcher)],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", bufsize=1,
+            **process_options(),
         )
         self.lines: queue.Queue[str | None] = queue.Queue()
         self.errors: queue.Queue[str | None] = queue.Queue()
@@ -210,14 +212,11 @@ class _McpSession:
         if self.process.stdin:
             self.process.stdin.close()
         try:
-            self.process.wait(timeout=2)
+            wait_interruptibly(self.process, timeout=2, cleanup_on_error=False, cleanup_on_exit=False)
         except subprocess.TimeoutExpired:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=2)
+            terminate_quietly(self.process)
+        finally:
+            terminate_quietly(self.process)
 
 
 def _tool_payload(result: dict[str, Any]) -> dict[str, Any]:

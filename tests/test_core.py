@@ -3649,7 +3649,7 @@ class ArticleProviderTests(unittest.TestCase):
         )
         self.assertEqual(
             registry.backend_chain("web_article"),
-            ("web_article.discourse", "defuddle.web.content", WEB_ARTICLE_TRAFILATURA_BACKEND, OPENCLI_WEB_READ_BACKEND),
+            ("web_article.discourse", "defuddle.web.content", WEB_ARTICLE_TRAFILATURA_BACKEND, OPENCLI_WEB_READ_BACKEND, "browser.kaze.snapshot"),
         )
 
     def test_weixin_local_provider_parses_fixture_metadata_content_images_and_code(self) -> None:

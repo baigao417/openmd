@@ -103,3 +103,31 @@ class AutoASRRoutingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutoASRBaselineOnlyTests(unittest.TestCase):
+    """`openmd models install asr:baseline` installs only large-v3-turbo (round14, 2026-11-22)."""
+
+    def test_failed_language_probe_falls_back_to_the_installed_model(self) -> None:
+        constructed = []
+
+        def fake_init(self, *args, model_size=None, **kwargs):
+            constructed.append(model_size)
+            self.model_size = model_size
+            self.language = kwargs.get("language")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            audio = Path(tmp) / "a.wav"
+            audio.write_bytes(b"audio")
+            auto = AutoASRBackend(qwen3=FakeQwen(available=False))
+            with (
+                patch.dict("os.environ", {"OPENMD_FASTER_WHISPER_DEVICE": "cpu"}),
+                patch.object(AutoASRBackend, "is_available", return_value=True),
+                patch.object(AutoASRBackend, "detect_language", side_effect=TypeError("decoder api changed")),
+                patch.object(AutoASRBackend, "_select_whisper", side_effect=lambda preferred: "D:/models/whisper-large-v3-turbo"),
+                patch.object(FasterWhisperASRBackend, "__init__", fake_init),
+                patch.object(FasterWhisperASRBackend, "transcribe", return_value=_verified("asr.faster_whisper")),
+            ):
+                result = auto.transcribe(audio)
+        self.assertEqual(constructed, ["D:/models/whisper-large-v3-turbo"])
+        self.assertEqual(result.status, "verified")

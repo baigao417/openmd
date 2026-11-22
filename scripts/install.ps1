@@ -17,26 +17,44 @@ foreach ($dir in @($managerDir,$toolDir,$toolBin,$pythonDir,$cacheDir,$temporary
 }
 
 if (-not (Test-Path -LiteralPath $uvExe)) {
+  # Windows PowerShell 5.1: the progress bar slows Invoke-WebRequest by orders
+  # of magnitude, and older .NET defaults may not offer TLS 1.2.
+  $ProgressPreference = 'SilentlyContinue'
+  try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
   $asset = "uv-x86_64-pc-windows-msvc.zip"
-  $urls = @(
-    "https://releases.astral.sh/github/uv/releases/download/$uvVersion/$asset",
-    "https://github.com/astral-sh/uv/releases/download/$uvVersion/$asset"
+  # The same uv build is also published on PyPI as a wheel (a zip with uv.exe
+  # inside); Chinese PyPI mirrors reach it when GitHub does not. Each source
+  # has its own pinned SHA-256 (wheel digest cross-checked with pypi.org).
+  $uvWheel = "uv-$uvVersion-py3-none-win_amd64.whl"
+  $uvWheelSha256 = '6a44b2ed8111d2f60d2b92627c5dccda3f7ed7570b18ce115e569cd68c28246b'
+  $uvWheelPath = 'packages/dd/ef/ceeabf3631117f7354787d9fb1ffe943899e59ed4b887a696ed547e47e76'
+  $sources = @(
+    @{ url = "https://releases.astral.sh/github/uv/releases/download/$uvVersion/$asset"; sha = $uvSha256 },
+    @{ url = "https://github.com/astral-sh/uv/releases/download/$uvVersion/$asset"; sha = $uvSha256 },
+    @{ url = "https://pypi.tuna.tsinghua.edu.cn/$uvWheelPath/$uvWheel"; sha = $uvWheelSha256 },
+    @{ url = "https://mirrors.aliyun.com/pypi/$uvWheelPath/$uvWheel"; sha = $uvWheelSha256 },
+    @{ url = "https://files.pythonhosted.org/$uvWheelPath/$uvWheel"; sha = $uvWheelSha256 }
   )
-  $archive = Join-Path $temporary $asset
+  $archive = Join-Path $temporary 'uv-download.zip'
   $downloaded = $false
-  foreach ($url in $urls) {
+  $failures = @()
+  foreach ($source in $sources) {
     try {
-      Invoke-WebRequest -Uri $url -OutFile $archive -TimeoutSec 60
-      if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $uvSha256) {
-        throw 'uv_release_checksum_mismatch'
+      Invoke-WebRequest -Uri $source.url -OutFile $archive -TimeoutSec 120 -UseBasicParsing
+      if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $source.sha) {
+        throw 'checksum_mismatch'
       }
       $downloaded = $true
       break
     } catch {
+      $failures += "$(([Uri]$source.url).Host): $($_.Exception.Message)"
       Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
     }
   }
-  if (-not $downloaded) { throw 'uv_download_or_checksum_failed' }
+  if (-not $downloaded) {
+    $failures | ForEach-Object { Write-Warning $_ }
+    throw 'uv_download_or_checksum_failed: check the network or proxy, then rerun the install command'
+  }
   $expanded = Join-Path $temporary 'expanded'
   Expand-Archive -LiteralPath $archive -DestinationPath $expanded -Force
   $candidate = Get-ChildItem -LiteralPath $expanded -Filter 'uv.exe' -File -Recurse | Select-Object -First 1

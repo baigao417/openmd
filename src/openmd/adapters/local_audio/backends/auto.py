@@ -81,33 +81,40 @@ class AutoASRBackend(ASRBackend):
 
             return failed_result(self.name, "asr_model_missing", exc)
         except Exception as exc:  # pragma: no cover - dependency/model safety net
-            result = FasterWhisperASRBackend(model_size=self.general_model, **self._whisper_device()).transcribe(source_path)
-            return self._annotate(result, None, None, f"language detection failed ({type(exc).__name__}); used Whisper {model_label(self.general_model)}")
+            selected = self._select_whisper(self.general_model)
+            result = FasterWhisperASRBackend(model_size=selected, **self._whisper_device()).transcribe(source_path)
+            return self._annotate(result, None, None, f"language detection failed ({type(exc).__name__}: {exc}); used Whisper {model_label(selected)}")
 
         backend, reason = self.choose(language)
         self._selected_model = getattr(backend, "model_size", None)
         result = backend.transcribe(source_path)
         if result.status != "verified" and result.error_code != "asr_insufficient_memory" and isinstance(backend, Qwen3ASRBackend):
-            fallback = FasterWhisperASRBackend(model_size=self.general_model, language="zh", **self._whisper_device())
+            selected = self._select_whisper(self.general_model)
+            fallback = FasterWhisperASRBackend(model_size=selected, language="zh", **self._whisper_device())
             result = fallback.transcribe(source_path)
-            reason += f"; Qwen3-ASR failed, fell back to Whisper {model_label(self.general_model)}"
+            reason += f"; Qwen3-ASR failed, fell back to Whisper {model_label(selected)}"
         return self._annotate(result, language, probability, reason)
+
+    def _select_whisper(self, preferred: str) -> str:
+        """The preferred Whisper model, or the best one actually installed.
+
+        ``asr:baseline`` installs only large-v3-turbo, so every route that would
+        name large-v3 must downgrade instead of failing with asr_model_missing.
+        """
+        if resolve_model(preferred, family="whisper").path is not None:
+            return preferred
+        models = configured_models()
+        for key in ("whisper-large-v3-turbo", "whisper-large-v3"):
+            if models[key].path is not None:
+                return str(models[key].path)
+        unknown = [path for path, _, evaluated in _runnable_whisper_paths() if not evaluated]
+        if unknown:
+            return str(unknown[0])
+        return preferred
 
     def choose(self, language: str | None) -> tuple[ASRBackend, str]:
         device = self._whisper_device()
-        models = configured_models()
-        available = {key for key, model in models.items() if model.path is not None}
-
-        def select_whisper(preferred: str) -> str:
-            if resolve_model(preferred, family="whisper").path is not None:
-                return preferred
-            for key in ("whisper-large-v3-turbo", "whisper-large-v3"):
-                if key in available:
-                    return str(models[key].path)
-            unknown = [path for path, _, evaluated in _runnable_whisper_paths() if not evaluated]
-            if unknown:
-                return str(unknown[0])
-            return preferred
+        select_whisper = self._select_whisper
 
         if language == "zh":
             qwen3 = self._qwen3 or Qwen3ASRBackend()

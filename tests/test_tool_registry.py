@@ -145,6 +145,45 @@ def test_defuddle_actual_json_metadata_does_not_use_internal_heading(tmp_path):
     assert result.author == "Source Author" and result.published_at == "2026-11-07"
 
 
+def test_defuddle_runner_parses_shared_html_with_node_api_without_network(monkeypatch, tmp_path):
+    import openmd.routing.runner as runner
+    from openmd.routing.runner import Launcher
+
+    html = "<html><body><article>Shared source HTML for the Defuddle candidate.</article></body></html>"
+    launcher = Launcher(
+        ("node.exe", "-e", "existing wrapper", "defuddle-cli.js", "defuddle-node-api.js", "Defuddle", '{"removeExactSelectors":false}'),
+        "managed", tmp_path / "defuddle-cli.js",
+    )
+    seen = {}
+
+    class Process:
+        returncode = 0
+
+    def fake_popen(argv, **kwargs):
+        seen["argv"] = argv
+        kwargs["stdout"].write(b'{"title":"Article","content":"Shared source HTML became Markdown with enough words to validate."}')
+        kwargs["stderr"].write(b"")
+        return Process()
+
+    monkeypatch.setattr(runner, "resolve_launcher", lambda _card: launcher)
+    monkeypatch.setattr(runner, "owned_popen", fake_popen)
+    monkeypatch.setattr(runner, "wait_interruptibly", lambda _process, _timeout: None)
+    item = ContentItem("web_article", "single", "https://example.test/article", raw_meta={"source_html": html})
+    card = {"id": "defuddle"}
+    capability = {
+        "id": "defuddle.web.content", "argv": ["parse", "{url}"], "timeout_s": 10,
+    }
+
+    result = runner.run_tool(card, capability, item, tmp_path)
+
+    assert seen["argv"][0:2] == ["node.exe", "-e"]
+    assert "defuddle-node-api.js" in seen["argv"]
+    assert str(tmp_path / "source.html") in seen["argv"]
+    assert not (tmp_path / "source.html").exists()
+    assert "<html>" not in result.stdout
+    assert result.exit_code == 0
+
+
 def test_overlay_updates_registry_capability_binding_gates_and_trace(monkeypatch, tmp_path, capsys):
     from openmd.adapters.registry import create_default_registry
     from openmd.core.capabilities import get_capability

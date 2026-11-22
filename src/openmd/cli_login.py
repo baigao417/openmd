@@ -33,6 +33,10 @@ def recovery_fields(args):
 
 def source_next_action(error_code: str | None) -> str | None:
     """Return a bounded user route for source-level blocks."""
+    if error_code == "web_error_page":
+        return "网页返回了限流或错误页，没有保存为正文；请稍后重试同一链接。"
+    if error_code in {"web_fetch_timeout", "web_fetch_connection_error", "web_fetch_http_error", "web_fetch_failed"}:
+        return "网页取页已尝试代理与直连重试；请检查网络或稍后重试同一链接。"
     if error_code in {"xiaohongshu_request_blocked", "xiaohongshu_loaded_page_mismatch"}:
         return "在浏览器打开这篇小红书笔记后，点击 Openmd 扩展保存；Openmd 将读取当前已加载页面。"
     if error_code == "douyin_snapshot_no_transcript":

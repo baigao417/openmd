@@ -170,6 +170,20 @@ def isolated_environment(workdir: Path) -> dict[str, str]:
 def run_tool(card: dict[str, Any], capability: dict[str, Any], item, workdir: Path) -> ToolRun:
     launcher = resolve_launcher(card)
     argv = build_argv(launcher, capability, url=item.url, item_id=item.id, workdir=workdir)
+    source_html = item.raw_meta.get("source_html") if card.get("id") == "defuddle" else None
+    if isinstance(source_html, str) and source_html:
+        if len(launcher.argv) < 7 or launcher.argv[1] != "-e":
+            raise ToolError("tool_launcher_invalid", "Defuddle HTML mode requires the declared Node API launcher.")
+        html_path = workdir / "source.html"
+        html_path.write_text(source_html, encoding="utf-8")
+        script = (
+            "const fs=require('fs');const [apiPath,optionsText,htmlPath,url]=process.argv.slice(1);"
+            "const {Defuddle}=require(apiPath);"
+            "Defuddle(fs.readFileSync(htmlPath,'utf8'),url,JSON.parse(optionsText))"
+            ".then(result=>process.stdout.write(JSON.stringify(result)))"
+            ".catch(()=>process.exit(1));"
+        )
+        argv = [launcher.argv[0], "-e", script, launcher.argv[4], launcher.argv[6], str(html_path), item.url]
     stdout_path, stderr_path = workdir / ".stdout", workdir / ".stderr"
     started = time.monotonic()
     try:
@@ -187,6 +201,8 @@ def run_tool(card: dict[str, Any], capability: dict[str, Any], item, workdir: Pa
             raise ToolError("tool_output_too_large")
         stdout = stdout_path.read_text(encoding="utf-8", errors="replace")
         stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
+        if isinstance(source_html, str) and source_html and (workdir / "source.html").exists():
+            (workdir / "source.html").unlink()
         artifacts: dict[str, dict[str, Any]] = {}
         for path in workdir.rglob("*"):
             if path.is_file() and path.name not in {".stdout", ".stderr", ".openmd-owner.json"} and ".home" not in path.relative_to(workdir).parts:

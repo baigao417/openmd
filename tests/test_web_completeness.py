@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from openmd.backends.base import BackendExtractRequest
 from openmd.backends.snapshot import SnapshotProvider
+from openmd.backends.executor import BackendExecutor
 from openmd.backends.web_article import apply_completeness_guard
 from openmd.core.models import ContentItem, TranscriptResult
 
@@ -139,3 +140,96 @@ def test_snapshot_provider_applies_same_completeness_guard(tmp_path) -> None:
 
     assert result.status == "partial"
     assert result.metadata["coverage_estimate"]["body_chars"] > result.metadata["coverage_estimate"]["selected_chars"]
+
+
+def test_web_candidates_share_one_fetched_html_and_preserve_route_failures(monkeypatch) -> None:
+    import openmd.backends.web_article as web_article_module
+
+    html = "<html><body><article>Stable article source body with enough text.</article></body></html>"
+    fetches = []
+    monkeypatch.setattr(web_article_module, "_fetch_web_html", lambda url: (fetches.append(url) or (html, {"route": "direct", "attempts": 2, "http_status": 200, "retry_history": [{"route": "proxy", "outcome": "web_fetch_timeout", "http_status": None}, {"route": "direct", "outcome": "success", "http_status": 200}]})))
+
+    class Candidate:
+        def __init__(self, name, code, status):
+            self.name, self.code, self.http_status = name, code, status
+
+        def extract(self, request):
+            assert request.item.raw_meta["source_html"] == html
+            assert request.item.raw_meta["source_fetch"]["http_status"] == 200
+            return TranscriptResult(
+                text="", status="failed", source_level="partial_extraction", backend=self.name,
+                error_code=self.code, metadata={"http_status": self.http_status},
+            )
+
+    def provider_result(name, code, http_status):
+        return Candidate(name, code, http_status)
+
+    providers = {
+        "defuddle.web.content": provider_result("defuddle.web.content", "web_fetch_failed", 502),
+        "web_article.trafilatura": provider_result("web_article.trafilatura", "web_fetch_failed", 504),
+    }
+    item = ContentItem(platform="web_article", input_type="single", source_type="article", url="https://example.test/article")
+    result = BackendExecutor(providers=providers).extract(item, tuple(providers))
+
+    assert fetches == [item.url]
+    assert result.status == "failed"
+    assert result.metadata["web_route_diagnostics"] == [
+        {"backend": "defuddle.web.content", "error_code": "web_fetch_failed", "http_status": 502},
+        {"backend": "web_article.trafilatura", "error_code": "web_fetch_failed", "http_status": 504},
+    ]
+    assert result.metadata["fallback_attempts"] == result.metadata["web_route_diagnostics"]
+    assert any("web_fetch_attempt: proxy web_fetch_timeout" in note for note in result.source_notes)
+    assert all(item.url not in note for note in result.source_notes)
+
+
+def test_web_fetch_retries_proxy_then_direct_without_persisting_url(monkeypatch) -> None:
+    import urllib.error
+    import openmd.backends.web_article as web_article_module
+
+    routes = []
+    class Opener:
+        def __init__(self, route):
+            self.route = route
+        def open(self, request, timeout):
+            routes.append(self.route)
+            if self.route == "proxy":
+                raise urllib.error.URLError(TimeoutError("connect"))
+            class Headers:
+                def get_content_charset(self):
+                    return "utf-8"
+            class Response:
+                status = 200
+                headers = Headers()
+                def __enter__(self): return self
+                def __exit__(self, *_args): return None
+                def read(self, _limit): return b"<html><article>Fetched once</article></html>"
+            return Response()
+
+    monkeypatch.setattr(web_article_module.urllib.request, "build_opener", lambda *handlers: Opener("direct" if handlers else "proxy"))
+    html, receipt = web_article_module._fetch_web_html("https://example.test/path?signature=redacted")
+
+    assert routes == ["proxy", "direct"]
+    assert html == "<html><article>Fetched once</article></html>"
+    assert receipt["http_status"] == 200
+    assert all("signature" not in str(attempt) for attempt in receipt["retry_history"])
+
+
+def test_web_rate_limit_page_is_rejected_before_extractors_run(monkeypatch) -> None:
+    import openmd.backends.web_article as web_article_module
+
+    html = "<html><head><title>Too Many Requests</title></head><body>Please retry later.</body></html>"
+    monkeypatch.setattr(web_article_module, "_fetch_web_html", lambda _url: (html, {"route": "proxy", "attempts": 1, "http_status": 200}))
+
+    class MustNotRun:
+        def extract(self, _request):
+            raise AssertionError("error pages must not reach content extractors")
+
+    item = ContentItem(platform="web_article", input_type="single", source_type="article", url="https://example.test/article")
+    result = BackendExecutor(providers={"defuddle.web.content": MustNotRun(), "web_article.trafilatura": MustNotRun()}).extract(
+        item, ("defuddle.web.content", "web_article.trafilatura")
+    )
+
+    assert result.status == "failed"
+    assert result.error_code == "web_error_page"
+    assert [row["error_code"] for row in result.metadata["web_route_diagnostics"]] == ["web_error_page", "web_error_page"]
+    assert "Please retry later" not in str(result.metadata)

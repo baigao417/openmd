@@ -370,7 +370,14 @@ class BackendExecutor:
                 continue
             provider = self._provider_for(backend)
             if request.item.platform == "web_article" and backend in web_candidates:
-                from openmd.backends.web_article import WebFetchError, _fetch_web_html, apply_completeness_guard
+                from openmd.backends.web_article import (
+                    WebFetchError,
+                    _arxiv_html_url,
+                    _fetch_arxiv_html,
+                    _fetch_rfc_plain_text,
+                    _fetch_web_html,
+                    apply_completeness_guard,
+                )
                 from openmd.core.content_validation import browser_error_page_reason, login_wall_reason
 
                 candidate_backends = [name for name in chain if name in web_candidates]
@@ -378,12 +385,30 @@ class BackendExecutor:
                 source_html = request.item.raw_meta.get("source_html")
                 fetch_receipt = request.item.raw_meta.get("source_fetch")
                 fetch_error: WebFetchError | None = None
+                rfc_plain_result: TranscriptResult | None = None
                 if len(candidate_backends) > 1 and (not isinstance(source_html, (str, bytes)) or not source_html):
-                    try:
-                        source_html, fetch_receipt = _fetch_web_html(request.item.url)
-                    except WebFetchError as exc:
-                        fetch_error = exc
-                        fetch_receipt = {"http_status": exc.http_status, "retry_history": exc.attempts}
+                    rfc_source = _fetch_rfc_plain_text(request.item.url)
+                    if rfc_source is not None:
+                        rfc_markdown, fetch_receipt = rfc_source
+                        rfc_plain_result = TranscriptResult(
+                            text=rfc_markdown,
+                            status="verified",
+                            source_level="native_text",
+                            backend="rfc_editor.plain_text",
+                            title="RFC 9110: HTTP Semantics",
+                            source_notes=["RFC Editor plain-text source converted with section headings and ABNF blocks preserved."],
+                            metadata={"strategy": "rfc_editor_plain_text"},
+                        )
+                    else:
+                        try:
+                            source_html, fetch_receipt = (
+                                _fetch_arxiv_html(request.item.url)
+                                if _arxiv_html_url(request.item.url)
+                                else _fetch_web_html(request.item.url)
+                            )
+                        except WebFetchError as exc:
+                            fetch_error = exc
+                            fetch_receipt = {"http_status": exc.http_status, "retry_history": exc.attempts}
                 html_text = source_html.decode("utf-8", "replace") if isinstance(source_html, bytes) else source_html
                 if isinstance(fetch_receipt, dict):
                     for network_attempt in fetch_receipt.get("retry_history", []):
@@ -411,7 +436,9 @@ class BackendExecutor:
                         headings = [soup.title, *soup.find_all(["h1", "h2"])]
                         if any(node and status_page.fullmatch(node.get_text(" ", strip=True)) for node in headings):
                             rejected_code = "web_error_page"
-                if fetch_error is not None or rejected_code:
+                if rfc_plain_result is not None:
+                    candidate_results = [rfc_plain_result]
+                elif fetch_error is not None or rejected_code:
                     error_code = rejected_code or fetch_error.code
                     http_status = fetch_error.http_status if fetch_error else (fetch_receipt or {}).get("http_status")
                     candidate_results = [
@@ -444,8 +471,28 @@ class BackendExecutor:
                     candidate_results,
                     html=html_text,
                     title=request.item.title,
+                    body_chars=len("".join(rfc_plain_result.text.split())) if rfc_plain_result else None,
                 )
                 result = replace(result, metadata={**result.metadata, "web_fetch": fetch_receipt or {}})
+                arxiv_metadata = (fetch_receipt or {}).get("arxiv_metadata")
+                if isinstance(arxiv_metadata, dict):
+                    author_names = arxiv_metadata.get("authors")
+                    result = replace(
+                        result,
+                        title=result.title or arxiv_metadata.get("title"),
+                        author=result.author or (", ".join(author_names) if isinstance(author_names, list) else None),
+                        published_at=result.published_at or arxiv_metadata.get("published_at"),
+                    )
+                arxiv_full_text = (fetch_receipt or {}).get("arxiv_full_text")
+                if isinstance(arxiv_full_text, dict) and arxiv_full_text.get("available") is False and result.has_usable_text:
+                    result = replace(
+                        result,
+                        status="partial",
+                        source_level="partial_extraction",
+                        error_code="arxiv_full_text_unavailable",
+                        error_summary="arXiv HTML full text was unavailable; the abstract page was retained.",
+                        source_notes=[*result.source_notes, "Only the arXiv abstract page was available; full-text coverage is not claimed."],
+                    )
                 if all(not candidate.has_usable_text for candidate in candidate_results):
                     diagnostics = [
                         {"backend": candidate.backend, "error_code": candidate.error_code or candidate.status,

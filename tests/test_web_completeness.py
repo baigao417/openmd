@@ -3,7 +3,12 @@ from __future__ import annotations
 from openmd.backends.base import BackendExtractRequest
 from openmd.backends.snapshot import SnapshotProvider
 from openmd.backends.executor import BackendExecutor
-from openmd.backends.web_article import apply_completeness_guard
+from openmd.backends.web_article import (
+    _arxiv_html_url,
+    _fetch_arxiv_html,
+    _format_rfc_plain_text,
+    apply_completeness_guard,
+)
 from openmd.core.models import ContentItem, TranscriptResult
 
 
@@ -233,3 +238,164 @@ def test_web_rate_limit_page_is_rejected_before_extractors_run(monkeypatch) -> N
     assert result.error_code == "web_error_page"
     assert [row["error_code"] for row in result.metadata["web_route_diagnostics"]] == ["web_error_page", "web_error_page"]
     assert "Please retry later" not in str(result.metadata)
+
+
+def test_rfc_plain_text_conversion_preserves_full_sections_and_abnf_blocks() -> None:
+    from openmd.backends.web_article import _format_rfc_plain_text
+
+    source = (
+        "RFC 9110                 HTTP Semantics                 June 2022\n"
+        "\n"
+        "1. Introduction\n"
+        "This document defines HTTP semantics and message handling.\n"
+        "\n"
+        "1.1. Purpose\n"
+        "The protocol provides a uniform interface.\n"
+        "\n"
+        "field-name = token\n"
+        "token = 1*tchar\n"
+        "\n"
+        "16. Security Considerations\n"
+        "Implementations must consider intermediary attacks.\n"
+        "\n"
+        "GET /hello.txt HTTP/1.1\n"
+        "Host: www.example.com\n"
+        "\n"
+        "Appendix A. Collected ABNF\n"
+        "message = start-line *( field-line CRLF ) CRLF\n"
+        "\n"
+        "RFC 9110                 HTTP Semantics                 June 2022\n"
+        "[Page 1]\n"
+    )
+
+    markdown = _format_rfc_plain_text(source)
+
+    assert markdown.startswith("# RFC 9110")
+    assert "## 1. Introduction" in markdown
+    assert "### 1.1. Purpose" in markdown
+    assert "## 16. Security Considerations" in markdown
+    assert "## Appendix A. Collected ABNF" in markdown
+    assert markdown.count("```") >= 4
+    assert "field-name = token" in markdown and "message = start-line" in markdown
+    assert "[Page 1]" not in markdown
+
+
+def test_arxiv_abs_uses_html_fulltext_and_falls_back_to_partial_abstract(monkeypatch) -> None:
+    import openmd.backends.web_article as web_article_module
+
+    assert _arxiv_html_url("https://arxiv.org/abs/1706.03762") == "https://arxiv.org/html/1706.03762"
+    assert _arxiv_html_url("https://arxiv.org/abs/1706.03762v7") == "https://arxiv.org/html/1706.03762v7"
+    assert _arxiv_html_url("https://example.test/abs/1706.03762") is None
+
+    calls = []
+
+    def fulltext_available(url):
+        calls.append(url)
+        if "/abs/" in url:
+            return ("<html><head><meta name='citation_title' content='Sample Paper'>"
+                    "<meta name='citation_author' content='A. Author'>"
+                    "<meta name='citation_date' content='2024/01/02'></head><body>abstract</body></html>",
+                    {"http_status": 200, "route": "proxy", "retry_history": []})
+        return ("<html><article>full paper</article></html>", {"http_status": 200, "route": "proxy", "retry_history": []})
+
+    monkeypatch.setattr(web_article_module, "_fetch_web_html", fulltext_available)
+    fulltext, receipt = _fetch_arxiv_html("https://arxiv.org/abs/1706.03762")
+    assert calls == ["https://arxiv.org/abs/1706.03762", "https://arxiv.org/html/1706.03762"]
+    assert "full paper" in fulltext
+    assert receipt["arxiv_full_text"]["available"] is True
+    assert receipt["arxiv_metadata"] == {
+        "title": "Sample Paper", "authors": ["A. Author"], "published_at": "2024/01/02"
+    }
+
+    calls.clear()
+
+    def fulltext_missing(url):
+        calls.append(url)
+        if "/html/" in url:
+            raise web_article_module.WebFetchError("web_fetch_http_error", http_status=404, attempts=[])
+        return ("<html><article>abstract only</article></html>", {"http_status": 200, "route": "proxy", "retry_history": []})
+
+    monkeypatch.setattr(web_article_module, "_fetch_web_html", fulltext_missing)
+    abstract, receipt = _fetch_arxiv_html("https://arxiv.org/abs/1706.03762")
+    assert calls == ["https://arxiv.org/abs/1706.03762", "https://arxiv.org/html/1706.03762"]
+    assert "abstract only" in abstract
+    assert receipt["arxiv_full_text"]["available"] is False
+    assert receipt["arxiv_full_text"]["error_code"] == "web_fetch_http_error"
+
+
+def test_executor_uses_rfc_editor_plain_text_instead_of_short_html_extractors(monkeypatch) -> None:
+    import openmd.backends.web_article as web_article_module
+
+    source = (
+        "RFC 9110                 HTTP Semantics                 June 2022\n\n"
+        "1. Introduction\nComplete RFC body for this test.\n\n"
+        "16. Security Considerations\nFinal section content.\n\n"
+        "Appendix A. Collected ABNF\nfield-name = token\n"
+    )
+    monkeypatch.setattr(
+        web_article_module,
+        "_fetch_web_html",
+        lambda url: (source, {"http_status": 200, "route": "proxy", "retry_history": []}),
+    )
+
+    class MustNotRun:
+        def extract(self, _request):
+            raise AssertionError("complete RFC plain text should bypass short article extractors")
+
+    item = ContentItem(
+        platform="web_article",
+        input_type="single",
+        source_type="article",
+        url="https://www.rfc-editor.org/rfc/rfc9110",
+    )
+    result = BackendExecutor(providers={
+        "defuddle.web.content": MustNotRun(),
+        "web_article.trafilatura": MustNotRun(),
+    }).extract(item, ("defuddle.web.content", "web_article.trafilatura"))
+
+    assert result.backend == "rfc_editor.plain_text"
+    assert result.status == "verified"
+    assert "## 16. Security Considerations" in result.text
+    assert "field-name = token" in result.text
+
+
+def test_executor_marks_arxiv_abstract_partial_when_html_fulltext_is_missing(monkeypatch) -> None:
+    import openmd.backends.web_article as web_article_module
+
+    calls = []
+
+    def fetch(url):
+        calls.append(url)
+        if "/html/" in url:
+            raise web_article_module.WebFetchError("web_fetch_http_error", http_status=404, attempts=[])
+        return ("<html><body><article><h1>Paper</h1><p>Abstract summary.</p></article></body></html>",
+                {"http_status": 200, "route": "proxy", "retry_history": []})
+
+    monkeypatch.setattr(web_article_module, "_fetch_web_html", fetch)
+
+    class AbstractExtractor:
+        def __init__(self, name):
+            self.name = name
+
+        def extract(self, request):
+            assert "Abstract summary" in request.item.raw_meta["source_html"]
+            return TranscriptResult(
+                text="# Paper\n\nAbstract summary.", status="verified", source_level="native_text",
+                backend=self.name,
+            )
+
+    item = ContentItem(
+        platform="web_article",
+        input_type="single",
+        source_type="article",
+        url="https://arxiv.org/abs/1706.03762",
+    )
+    result = BackendExecutor(providers={
+        "defuddle.web.content": AbstractExtractor("defuddle.web.content"),
+        "web_article.trafilatura": AbstractExtractor("web_article.trafilatura"),
+    }).extract(item, ("defuddle.web.content", "web_article.trafilatura"))
+
+    assert calls == ["https://arxiv.org/abs/1706.03762", "https://arxiv.org/html/1706.03762"]
+    assert result.status == "partial"
+    assert result.error_code == "arxiv_full_text_unavailable"
+    assert "Abstract summary" in result.text

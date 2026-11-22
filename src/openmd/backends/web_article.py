@@ -14,6 +14,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
@@ -96,6 +97,137 @@ def _fetch_web_html(url: str, *, timeout: int = 20, sleep=time.sleep) -> tuple[s
         if index < len(routes) - 1:
             sleep(0.2 * (index + 1))
     raise WebFetchError(code, http_status=last_status, attempts=attempts)
+
+
+def _arxiv_html_url(url: str) -> str | None:
+    """Map a public arXiv abstract URL to its HTML full-text counterpart."""
+    parsed = urlsplit(url)
+    if parsed.hostname not in {"arxiv.org", "www.arxiv.org"}:
+        return None
+    match = re.fullmatch(r"/abs/(\d{4}\.\d{4,5}(?:v\d+)?)", parsed.path)
+    if not match:
+        return None
+    return f"https://arxiv.org/html/{match.group(1)}"
+
+
+def _fetch_arxiv_html(url: str) -> tuple[str | bytes, dict[str, object]]:
+    """Read abs metadata first, then prefer the corresponding HTML full text."""
+    abs_html, abs_receipt = _fetch_web_html(url)
+    fulltext_url = _arxiv_html_url(url)
+    if fulltext_url is None:
+        return abs_html, abs_receipt
+    abs_text = abs_html.decode("utf-8", "replace") if isinstance(abs_html, bytes) else abs_html
+    abs_soup = BeautifulSoup(abs_text, "html.parser")
+
+    def meta_value(name: str) -> str | None:
+        node = abs_soup.find("meta", attrs={"name": name}) or abs_soup.find("meta", attrs={"property": name})
+        value = node.get("content", "").strip() if node else ""
+        return value or None
+
+    authors = [
+        node.get("content", "").strip()
+        for node in abs_soup.find_all("meta", attrs={"name": "citation_author"})
+        if node.get("content", "").strip()
+    ]
+    arxiv_metadata = {
+        "title": meta_value("citation_title"),
+        "authors": authors,
+        "published_at": meta_value("citation_date"),
+        "arxiv_id": meta_value("citation_arxiv_id"),
+    }
+    arxiv_metadata = {key: value for key, value in arxiv_metadata.items() if value}
+    try:
+        fulltext_html, fulltext_receipt = _fetch_web_html(fulltext_url)
+    except WebFetchError as exc:
+        receipt = {
+            **abs_receipt,
+            "retry_history": [*abs_receipt.get("retry_history", []), *exc.attempts],
+            "arxiv_full_text": {
+                "available": False,
+                "error_code": exc.code,
+                "http_status": exc.http_status,
+            },
+            "arxiv_metadata": arxiv_metadata,
+        }
+        return abs_html, receipt
+    receipt = {
+        **fulltext_receipt,
+        "attempts": int(abs_receipt.get("attempts", 1)) + int(fulltext_receipt.get("attempts", 1)),
+        "retry_history": [*abs_receipt.get("retry_history", []), *fulltext_receipt.get("retry_history", [])],
+        "metadata_page_http_status": abs_receipt.get("http_status"),
+        "arxiv_full_text": {"available": True, "http_status": fulltext_receipt.get("http_status")},
+        "arxiv_metadata": arxiv_metadata,
+    }
+    return fulltext_html, receipt
+
+
+def _rfc_plain_text_url(url: str) -> str | None:
+    parsed = urlsplit(url)
+    if parsed.hostname not in {"www.rfc-editor.org", "rfc-editor.org"}:
+        return None
+    if parsed.path.rstrip("/").lower() != "/rfc/rfc9110":
+        return None
+    return "https://www.rfc-editor.org/rfc/rfc9110.txt"
+
+
+def _format_rfc_plain_text(source: str | bytes) -> str:
+    """Convert RFC Editor text while retaining headings and indented ABNF."""
+    text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
+    lines = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").replace("\f", "\n").splitlines()
+    lines = [line.rstrip() for line in lines]
+    lines = [
+        line for line in lines
+        if not re.fullmatch(r"\s*\[Page\s+\d+\]\s*", line, re.I)
+        and not re.fullmatch(r"\s*RFC\s+9110\s+HTTP Semantics\s+June 2022\s*", line, re.I)
+    ]
+
+    content: list[str] = []
+    for line in lines:
+        if not content and not line.strip():
+            continue
+        content.append(line)
+
+    heading_pattern = re.compile(r"^(\s*)(\d+(?:\.\d+)*\.)\s+(.+?)\s*$")
+    appendix_pattern = re.compile(r"^\s*(Appendix\s+[A-Z](?:\.\s+.*)?)\s*$", re.I)
+    abnf_start = re.compile(r"^\s*[A-Za-z][A-Za-z0-9-]*\s*=\s*\S")
+    http_message_start = re.compile(r"^\s*(?:[A-Z]+\s+\S+\s+HTTP/\d(?:\.\d)?|HTTP/\d(?:\.\d)?\s+\d{3})\b")
+    output = ["# RFC 9110: HTTP Semantics", ""]
+    in_abnf = False
+    for line in content:
+        heading = heading_pattern.match(line)
+        appendix = appendix_pattern.match(line)
+        if in_abnf and (not line.strip() or heading or appendix):
+            output.extend(("```", ""))
+            in_abnf = False
+        if heading:
+            level = min(6, 1 + heading.group(2).count("."))
+            output.append(f"{'#' * level} {heading.group(2)} {heading.group(3)}")
+        elif appendix:
+            output.append(f"## {appendix.group(1)}")
+        else:
+            if (abnf_start.match(line) or http_message_start.match(line)) and not in_abnf:
+                if output and output[-1] != "":
+                    output.append("")
+                output.append("```")
+                in_abnf = True
+            output.append(line)
+    if in_abnf:
+        output.extend(("```", ""))
+
+    while output and not output[-1].strip():
+        output.pop()
+    return "\n".join(output) + "\n"
+
+
+def _fetch_rfc_plain_text(url: str) -> tuple[str, dict[str, object]] | None:
+    text_url = _rfc_plain_text_url(url)
+    if text_url is None:
+        return None
+    try:
+        source, receipt = _fetch_web_html(text_url)
+    except WebFetchError:
+        return None
+    return _format_rfc_plain_text(source), receipt
 
 
 def estimate_html_body_chars(html: str) -> int:

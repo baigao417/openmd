@@ -51,7 +51,7 @@ class PDFVisibilityTests(unittest.TestCase):
             probe = probe_page(self.page, self.config)
         self.assertEqual(probe["route"], "textlayer")
 
-    def test_ruled_native_table_is_rendered_as_rows_and_removed_from_prose(self):
+    def test_ruled_native_table_remains_text_without_gfm_inference(self):
         self.page.insert_text((20, 35), "Ordinary paragraph remains prose.", fontsize=10)
         xs, ys = (20, 120, 220), (70, 100, 130)
         for y in ys:
@@ -67,9 +67,11 @@ class PDFVisibilityTests(unittest.TestCase):
             result = extract_pdf(ContentItem(platform="pdf", input_type="single", url=path.as_uri()),
                                  backend="pdf.textlayer", allow_ocr=False)
         self.assertIn("Ordinary paragraph remains prose.", result.text)
-        self.assertIn("| Name | Value |", result.text)
-        self.assertIn("| Alpha | 12 |", result.text)
-        self.assertEqual(result.text.count("Alpha"), 1)
+        self.assertIn("Name", result.text)
+        self.assertIn("Value", result.text)
+        self.assertIn("Alpha", result.text)
+        self.assertNotIn("| Name |", result.text)
+        self.assertNotIn("| Alpha |", result.text)
 
     def test_hidden_native_text_inside_grid_is_never_table_output(self):
         xs, ys = (20, 120, 220), (70, 100, 130)

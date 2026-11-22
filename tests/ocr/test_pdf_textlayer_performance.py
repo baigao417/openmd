@@ -26,7 +26,13 @@ class _Pixmap:
         pixels = [255, 255, 255] * 9
         offset = (1 * self.width + 1) * self.n
         pixels[offset:offset + 3] = [0, 0, 0]
-        self.samples = bytes(pixels)
+        self._samples = bytes(pixels)
+        self.samples_reads = 0
+
+    @property
+    def samples(self):
+        self.samples_reads += 1
+        return self._samples
 
     def pixel(self, x, y):
         raise AssertionError("the hot path must read the pixmap buffer in one pass")
@@ -38,6 +44,18 @@ def test_rendered_ink_uses_buffer_and_preserves_exact_pixel_coordinates():
     page.rect = _PageRect()
 
     assert _rendered_ink(_Pixmap(), page, (0, 0, 3, 3), 0.1) == [(1, 1)]
+
+
+def test_rendered_ink_materializes_same_page_pixmap_samples_once():
+    pytest.importorskip("numpy")
+    page = _Page()
+    page.rect = _PageRect()
+    pixmap = _Pixmap()
+    page_rgb_cache = {}
+
+    assert _rendered_ink(pixmap, page, (0, 0, 2, 2), 0.1, rgb_cache=page_rgb_cache) == [(1, 1)]
+    assert _rendered_ink(pixmap, page, (1, 1, 3, 3), 0.1, rgb_cache=page_rgb_cache) == [(1, 1)]
+    assert pixmap.samples_reads == 1
 
 
 def test_opaque_fill_index_checks_only_overlapping_drawings():

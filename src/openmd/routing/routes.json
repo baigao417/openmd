@@ -97,7 +97,8 @@
       "capability": "content",
       "chain": [
         "openmd.x.public",
-        "opencli.twitter.thread"
+        "opencli.twitter.thread",
+        "browser.kaze.snapshot"
       ],
       "last_verified": "2026-11-18"
     },
@@ -108,7 +109,8 @@
         "web_article.discourse",
         "defuddle.web.content",
         "web_article.trafilatura",
-        "opencli.web.read"
+        "opencli.web.read",
+        "browser.kaze.snapshot"
       ],
       "last_verified": "2026-11-18"
     },

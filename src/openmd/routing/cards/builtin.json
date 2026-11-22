@@ -367,7 +367,8 @@
       "id": "web_article.trafilatura",
       "provider": "web_article.trafilatura",
       "sources": [
-        "web_article"
+        "web_article",
+        "x"
       ],
       "capability": "content",
       "gates": [
@@ -645,6 +646,22 @@
         "local_compute"
       ],
       "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "browser.kaze.snapshot",
+      "provider": "browser.kaze.snapshot",
+      "sources": [
+        "web_article",
+        "x"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "browser_rendered",
       "requires_login": true,
       "cost_class": "unknown",
       "status_policy": "provider_defined"

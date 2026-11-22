@@ -123,18 +123,34 @@ class SnapshotProvider:
         return result
 
     def _html_to_markdown(self, path: Path, html: str, url: str) -> tuple[str, bool]:
+        managed_markdown = ""
         if self.runner is not None:
             result = self.runner(path, html)
             if isinstance(result, dict):
-                return str(result.get("contentMarkdown") or result.get("content") or ""), True
-            return str(result or ""), True
-        managed = _run_managed_defuddle(path, html, url)
-        if managed:
-            return managed, True
+                managed_markdown = str(result.get("contentMarkdown") or result.get("content") or "")
+            else:
+                managed_markdown = str(result or "")
+        else:
+            managed_markdown = _run_managed_defuddle(path, html, url) or ""
         try:
-            return html_to_markdown(html), False
+            fallback_markdown = html_to_markdown(html)
         except Exception:
-            return re.sub(r"<[^>]+>", "\n", html), False
+            fallback_markdown = re.sub(r"<[^>]+>", "\n", html)
+        if not managed_markdown:
+            return fallback_markdown, False
+        # Defuddle is usually the better article extractor, but it can discard
+        # tables retained by the HTML converter. Compare the same snapshot and
+        # keep the candidate with more Markdown table rows; ties favor Defuddle.
+        if _markdown_table_row_count(fallback_markdown) > _markdown_table_row_count(managed_markdown):
+            return fallback_markdown, False
+        return managed_markdown, True
+
+
+def _markdown_table_row_count(markdown: str) -> int:
+    return sum(
+        1 for line in markdown.splitlines()
+        if line.strip().startswith("|") and line.count("|") >= 3
+    )
 
 
 def _defuddle_card_path() -> Path:

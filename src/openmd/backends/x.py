@@ -87,6 +87,9 @@ def register_backend_providers(
             OPENCLI_TWITTER_ARTICLE_BACKEND,
             OpenCliTwitterTextProvider(default_backend=OPENCLI_TWITTER_ARTICLE_BACKEND),
         )
+    from openmd.backends.kaze_snapshot import register_backend_providers as register_kaze_snapshot
+
+    register_kaze_snapshot(registry, options)
 
 
 def build_opencli_twitter_thread_args(tweet_id: str, *, limit: int) -> list[str]:

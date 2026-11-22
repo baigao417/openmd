@@ -16,6 +16,14 @@ foreach ($dir in @($managerDir,$toolDir,$toolBin,$pythonDir,$cacheDir,$temporary
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
 
+# Module-free helpers: Get-FileHash / Expand-Archive live in modules that some
+# shells cannot autoload (round14 real-machine run), so use .NET directly.
+function Get-Sha256([string]$Path) {
+  $stream = [System.IO.File]::OpenRead($Path)
+  try { return ([System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($stream)) -replace '-', '').ToLowerInvariant() }
+  finally { $stream.Dispose() }
+}
+
 if (-not (Test-Path -LiteralPath $uvExe)) {
   # Windows PowerShell 5.1: the progress bar slows Invoke-WebRequest by orders
   # of magnitude, and older .NET defaults may not offer TLS 1.2.
@@ -41,7 +49,7 @@ if (-not (Test-Path -LiteralPath $uvExe)) {
   foreach ($source in $sources) {
     try {
       Invoke-WebRequest -Uri $source.url -OutFile $archive -TimeoutSec 120 -UseBasicParsing
-      if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $source.sha) {
+      if ((Get-Sha256 $archive) -ne $source.sha) {
         throw 'checksum_mismatch'
       }
       $downloaded = $true
@@ -56,7 +64,9 @@ if (-not (Test-Path -LiteralPath $uvExe)) {
     throw 'uv_download_or_checksum_failed: check the network or proxy, then rerun the install command'
   }
   $expanded = Join-Path $temporary 'expanded'
-  Expand-Archive -LiteralPath $archive -DestinationPath $expanded -Force
+  Remove-Item -LiteralPath $expanded -Recurse -Force -ErrorAction SilentlyContinue
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $expanded)
   $candidate = Get-ChildItem -LiteralPath $expanded -Filter 'uv.exe' -File -Recurse | Select-Object -First 1
   if (-not $candidate) { throw 'uv_executable_missing_from_archive' }
   Copy-Item -LiteralPath $candidate.FullName -Destination $uvExe -Force

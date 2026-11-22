@@ -161,13 +161,43 @@ def _fetch_arxiv_html(url: str) -> tuple[str | bytes, dict[str, object]]:
     return fulltext_html, receipt
 
 
+_RFC_PATH = re.compile(r"/rfc/rfc(\d+)(?:\.html)?/?", re.I)
+_RFC_MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
+_RFC_RUNNING_HEADER = re.compile(rf"\s*RFC\s+(\d+)\s{{2,}}(.+?)\s{{2,}}(?:{_RFC_MONTHS})\s+\d{{4}}\s*", re.I)
+
+
 def _rfc_plain_text_url(url: str) -> str | None:
+    """Any RFC Editor document page -> its official full plain-text edition."""
     parsed = urlsplit(url)
     if parsed.hostname not in {"www.rfc-editor.org", "rfc-editor.org"}:
         return None
-    if parsed.path.rstrip("/").lower() != "/rfc/rfc9110":
-        return None
-    return "https://www.rfc-editor.org/rfc/rfc9110.txt"
+    match = _RFC_PATH.fullmatch(parsed.path)
+    return f"https://www.rfc-editor.org/rfc/rfc{int(match.group(1))}.txt" if match else None
+
+
+def _rfc_title(lines: list[str]) -> str:
+    """'RFC <n>: <title>' from the document head; older RFCs also carry it in running headers."""
+    number = next((m.group(1) for m in (re.search(r"Request for Comments:\s*(\d+)", line, re.I) for line in lines[:40]) if m), None)
+    header = next((m for m in map(_RFC_RUNNING_HEADER.fullmatch, lines) if m), None)
+    number = number or (header.group(1) if header else None)
+    title = None
+    start = next((i for i, line in enumerate(lines[:40]) if re.search(r"Request for Comments:", line, re.I)), None)
+    if start is not None:
+        i = start
+        while i < len(lines) and lines[i].strip():   # rest of the left/right header block
+            i += 1
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        parts = []
+        while i < len(lines) and lines[i].strip() and lines[i].startswith("   "):  # centred title lines
+            parts.append(lines[i].strip())
+            i += 1
+        title = " ".join(parts) or None
+    if title is None and header:
+        title = header.group(2).strip()
+    if number is None:
+        return title or "RFC"
+    return f"RFC {int(number)}: {title}" if title else f"RFC {int(number)}"
 
 
 def _format_rfc_plain_text(source: str | bytes) -> str:
@@ -175,10 +205,14 @@ def _format_rfc_plain_text(source: str | bytes) -> str:
     text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
     lines = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n").replace("\f", "\n").splitlines()
     lines = [line.rstrip() for line in lines]
+    # Running page headers ("RFC 9110   HTTP Semantics   June 2022") give the
+    # number and short title; page footers end with "[Page N]". Both repeat on
+    # every page and are dropped from the body.
+    title = _rfc_title(lines)
     lines = [
         line for line in lines
-        if not re.fullmatch(r"\s*\[Page\s+\d+\]\s*", line, re.I)
-        and not re.fullmatch(r"\s*RFC\s+9110\s+HTTP Semantics\s+June 2022\s*", line, re.I)
+        if not re.fullmatch(r".*\[Page\s+[0-9ivxlc]+\]\s*", line, re.I)
+        and not _RFC_RUNNING_HEADER.fullmatch(line)
     ]
 
     content: list[str] = []
@@ -191,7 +225,7 @@ def _format_rfc_plain_text(source: str | bytes) -> str:
     appendix_pattern = re.compile(r"^\s*(Appendix\s+[A-Z](?:\.\s+.*)?)\s*$", re.I)
     abnf_start = re.compile(r"^\s*[A-Za-z][A-Za-z0-9-]*\s*=\s*\S")
     http_message_start = re.compile(r"^\s*(?:[A-Z]+\s+\S+\s+HTTP/\d(?:\.\d)?|HTTP/\d(?:\.\d)?\s+\d{3})\b")
-    output = ["# RFC 9110: HTTP Semantics", ""]
+    output = [f"# {title}", ""]
     in_abnf = False
     for line in content:
         heading = heading_pattern.match(line)
@@ -227,7 +261,10 @@ def _fetch_rfc_plain_text(url: str) -> tuple[str, dict[str, object]] | None:
         source, receipt = _fetch_web_html(text_url)
     except WebFetchError:
         return None
-    return _format_rfc_plain_text(source), receipt
+    markdown = _format_rfc_plain_text(source)
+    if markdown.startswith("# RFC\n"):  # very old RFCs lack a parsable head; keep at least the number
+        markdown = f"# RFC {text_url.rsplit('rfc', 1)[1].removesuffix('.txt')}" + markdown[len("# RFC"):]
+    return markdown, receipt
 
 
 def estimate_html_body_chars(html: str) -> int:

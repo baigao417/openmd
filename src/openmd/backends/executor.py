@@ -395,7 +395,7 @@ class BackendExecutor:
                             status="verified",
                             source_level="native_text",
                             backend="rfc_editor.plain_text",
-                            title="RFC 9110: HTTP Semantics",
+                            title=rfc_markdown.splitlines()[0].lstrip("# ").strip() if rfc_markdown.strip() else None,
                             source_notes=["RFC Editor plain-text source converted with section headings and ABNF blocks preserved."],
                             metadata={"strategy": "rfc_editor_plain_text"},
                         )

@@ -399,3 +399,25 @@ def test_executor_marks_arxiv_abstract_partial_when_html_fulltext_is_missing(mon
     assert result.status == "partial"
     assert result.error_code == "arxiv_full_text_unavailable"
     assert "Abstract summary" in result.text
+
+
+def test_rfc_plain_text_route_is_not_specific_to_one_rfc() -> None:
+    """Coordinator review: the route must work for every RFC, not only the frozen RFC 9110 sample."""
+    from openmd.backends.web_article import _format_rfc_plain_text, _rfc_plain_text_url
+
+    assert _rfc_plain_text_url("https://www.rfc-editor.org/rfc/rfc9112") == "https://www.rfc-editor.org/rfc/rfc9112.txt"
+    assert _rfc_plain_text_url("https://rfc-editor.org/rfc/rfc0791.html") == "https://www.rfc-editor.org/rfc/rfc791.txt"
+    assert _rfc_plain_text_url("https://www.rfc-editor.org/info/rfc9112") is None
+    assert _rfc_plain_text_url("https://example.org/rfc/rfc9112") is None
+    source = (
+        "Internet Engineering Task Force (IETF)                  R. Fielding, Ed.\n\n"
+        "                            HTTP/1.1\n\n"
+        "1.  Introduction\n\nBody text.\n\n"
+        "Fielding, et al.            Standards Track                    [Page 5]\n"
+        "RFC 9112                        HTTP/1.1                      June 2022\n\n"
+        "2.  Message\n\n  HTTP-message = start-line CRLF\n\nMore text.\n"
+    )
+    markdown = _format_rfc_plain_text(source)
+    assert markdown.startswith("# RFC 9112: HTTP/1.1")
+    assert "[Page 5]" not in markdown and "June 2022" not in markdown
+    assert "Standards Track" not in markdown

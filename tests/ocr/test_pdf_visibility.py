@@ -51,6 +51,44 @@ class PDFVisibilityTests(unittest.TestCase):
             probe = probe_page(self.page, self.config)
         self.assertEqual(probe["route"], "textlayer")
 
+    def test_ruled_native_table_is_rendered_as_rows_and_removed_from_prose(self):
+        self.page.insert_text((20, 35), "Ordinary paragraph remains prose.", fontsize=10)
+        xs, ys = (20, 120, 220), (70, 100, 130)
+        for y in ys:
+            self.page.draw_line((xs[0], y), (xs[-1], y), width=0.7)
+        for x in xs:
+            self.page.draw_line((x, ys[0]), (x, ys[-1]), width=0.7)
+        for row, values in enumerate((("Name", "Value"), ("Alpha", "12"))):
+            for col, value in enumerate(values):
+                self.page.insert_text((xs[col] + 5, ys[row] + 20), value, fontsize=10)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ruled-table.pdf"
+            self.document.save(path)
+            result = extract_pdf(ContentItem(platform="pdf", input_type="single", url=path.as_uri()),
+                                 backend="pdf.textlayer", allow_ocr=False)
+        self.assertIn("Ordinary paragraph remains prose.", result.text)
+        self.assertIn("| Name | Value |", result.text)
+        self.assertIn("| Alpha | 12 |", result.text)
+        self.assertEqual(result.text.count("Alpha"), 1)
+
+    def test_hidden_native_text_inside_grid_is_never_table_output(self):
+        xs, ys = (20, 120, 220), (70, 100, 130)
+        for y in ys:
+            self.page.draw_line((xs[0], y), (xs[-1], y), width=0.7)
+        for x in xs:
+            self.page.draw_line((x, ys[0]), (x, ys[-1]), width=0.7)
+        self.page.insert_text((25, 90), "Visible", fontsize=10)
+        self.page.insert_text((125, 90), "Value", fontsize=10)
+        self.page.insert_text((25, 120), "Alpha", fontsize=10)
+        self.page.insert_text((125, 120), "Secret 9981", fontsize=10, render_mode=3)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "hidden-grid-text.pdf"
+            self.document.save(path)
+            result = extract_pdf(ContentItem(platform="pdf", input_type="single", url=path.as_uri()),
+                                 backend="pdf.textlayer", allow_ocr=False)
+        self.assertNotIn("Secret", result.text)
+        self.assertNotIn("9981", result.text)
+
     def test_scan_with_dense_hidden_layer_uses_ocr_and_never_returns_hidden_text(self):
         self.add_image(self.page.rect)
         for y in range(30, 380, 16):

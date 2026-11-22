@@ -427,3 +427,17 @@ def test_failure_hint_surfaces_provider_next_step_for_new_failure_codes() -> Non
     action = source_next_action("douyin_detail_read_failed")
     assert action and "抖音" in action and "browser-setup" in action
     assert interactive._failure_hint([{"error_code": "douyin_detail_read_failed"}]) == action
+
+
+def test_go_json_next_action_comes_from_the_row_error_code():
+    """Round14: douyin_detail_read_failed printed a hint but left JSON next_action empty."""
+    from types import SimpleNamespace
+    from openmd.cli_login import source_next_action
+    from openmd.interactive import _go_receipt_fields
+
+    result = SimpleNamespace(next_action=None, error_code=None, status="failed")
+    rows = [{"event_type": "item", "error_code": "douyin_detail_read_failed", "status": "failed"}]
+    fields = _go_receipt_fields(result, rows, ok=False)
+    assert fields["error_code"] == "douyin_detail_read_failed"
+    assert fields["next_action"] == source_next_action("douyin_detail_read_failed")
+    assert fields["next_action"]

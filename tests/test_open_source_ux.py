@@ -431,6 +431,8 @@ def test_failure_hint_surfaces_provider_next_step_for_new_failure_codes() -> Non
         action = source_next_action(code)
         assert action and "代理与直连重试" in action
         assert interactive._failure_hint([{"error_code": code}]) == action
+    action = source_next_action("arxiv_full_text_unavailable")
+    assert action and "只取得 arXiv 摘要页" in action
     action = source_next_action("web_error_page")
     assert action and "没有保存为正文" in action
 

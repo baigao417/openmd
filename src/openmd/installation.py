@@ -214,12 +214,12 @@ def cmd_lifecycle(args) -> int:
     manager = installation_manager()
     action = args.lifecycle_action
     data = data_directory()
-    runtime = data / "tools" / "opencli"
+    runtime = data / "tools"  # managed OpenCLI/Node and Defuddle: program parts, re-installed on first use
     if action == "uninstall":
         print(json.dumps({
             "command": "openmd uninstall",
             "manager": manager,
-            "remove": ["Openmd package and manager-owned environment", "Openmd managed OpenCLI/Node runtime", "browser native host registration and copied extension", "Openmd shell-menu integration"],
+            "remove": ["Openmd package and manager-owned environment", "Openmd managed tools (OpenCLI/Node runtime, Defuddle)", "browser native host registration and copied extension", "Openmd shell-menu integration"],
             "keep": ["Openmd data/configuration/login state/run records/models", "package-manager shared dependencies and caches", "Chrome unpacked extension registration (remove manually in chrome://extensions)"],
             "managed_runtime_exists": runtime.exists(),
             "purge_data": bool(args.purge_data),

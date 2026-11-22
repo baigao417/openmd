@@ -67,6 +67,8 @@ def test_uninstall_removes_only_managed_runtime_by_default(monkeypatch, tmp_path
     runtime = tmp_path / "tools" / "opencli"
     runtime.mkdir(parents=True)
     (runtime / "managed.txt").write_text("managed")
+    defuddle = tmp_path / "tools" / "defuddle"
+    defuddle.mkdir(parents=True)
     (tmp_path / "runs").mkdir()
     monkeypatch.setattr(installation, "installation_manager", lambda: "pip")
     monkeypatch.setattr(installation, "data_directory", lambda: tmp_path)
@@ -81,6 +83,7 @@ def test_uninstall_removes_only_managed_runtime_by_default(monkeypatch, tmp_path
 
     assert result == 0
     assert not runtime.exists()
+    assert not defuddle.exists()  # every managed tool is program, not user data
     assert (tmp_path / "runs").is_dir()
     assert "pip_shared_dependencies_retained" in capsys.readouterr().out
 

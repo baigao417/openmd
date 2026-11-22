@@ -1,3 +1,5 @@
+import pytest
+import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -108,6 +110,7 @@ def test_uv_lifecycle_commands_use_the_recorded_tool_directories(monkeypatch, tm
     assert installation.uv_environment({"manager": "pip"}) is None
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only deferred uninstall; WindowsPath cannot be built elsewhere")
 def test_windows_uv_uninstall_is_finished_after_openmd_exits(monkeypatch, tmp_path, capsys):
     import argparse
     import json

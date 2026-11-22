@@ -192,11 +192,12 @@ def test_public_routes_drop_maintainer_only_media_cards():
     assert not any(route["source"] == "bilibili" and "yutto.bilibili.media-asr" in route["chain"] for route in catalog.routes)
 
 
-def test_mcp_login_receipt_returns_png_path_without_qr_url():
+def test_mcp_login_receipt_returns_png_path_without_qr_url(tmp_path):
     from openmd.mcp_jobs import receipt
 
+    # An absolute path on every OS ("C:/..." is relative on POSIX and was dropped there).
     result = receipt({"status": "failed", "error_code": "login_required",
-                      "qr_path": "C:/safe/opencli/xiaoyuzhou-login.png",
+                      "qr_path": str(tmp_path / "opencli" / "xiaoyuzhou-login.png"),
                       "next_action": "synthetic-qr-payload"})
     assert result["qr_path"].endswith("xiaoyuzhou-login.png")
     assert "xiaoyuzhou-login.png" in result["next_action"]

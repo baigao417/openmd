@@ -344,7 +344,7 @@ def spawn_detached(command: list[str], *, env: dict[str, str] | None = None, cwd
     kwargs: dict[str, Any] = {"env": env, "cwd": None if cwd is None else str(cwd), "stdin": subprocess.DEVNULL,
                               "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
     if os.name != "nt":
-        return subprocess.Popen(command, start_new_session=True, **kwargs).pid
+        return subprocess.Popen(command, **process_options(), **kwargs).pid  # new session on POSIX
     # uv's openmd.exe launcher runs Openmd inside a kill-on-close job that does
     # not allow breakaway, so any child Popen creates dies with the launcher
     # (round14 real-machine uninstall). WMI creates the process from the WMI

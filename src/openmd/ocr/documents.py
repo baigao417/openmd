@@ -184,10 +184,15 @@ def _pixmap_rgb_array(pixmap, np):
     return rows[:, :pixmap.width * pixmap.n].reshape(pixmap.height, pixmap.width, pixmap.n)[:, :, :3]
 
 
-def _rendered_ink(pixmap, page, box, delta):
+def _rendered_ink(pixmap, page, box, delta, *, rgb_cache=None):
     np = _numpy_module()
     if np is not None:
-        rgb = _pixmap_rgb_array(pixmap, np)
+        cache_key = id(pixmap)
+        rgb = rgb_cache.get(cache_key) if rgb_cache is not None else None
+        if rgb is None:
+            rgb = _pixmap_rgb_array(pixmap, np)
+            if rgb_cache is not None:
+                rgb_cache[cache_key] = rgb
         scale_x, scale_y = pixmap.width / page.rect.width, pixmap.height / page.rect.height
         x0 = max(0, math.floor((box[0] - page.rect.x0) * scale_x))
         y0 = max(0, math.floor((box[1] - page.rect.y0) * scale_y))
@@ -546,6 +551,9 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                        and (getattr(entry, "opacity", 1) == -1
                             or getattr(entry, "opacity", 1) >= 0.999)]
     pixmap = page.get_pixmap(dpi=72, alpha=False, colorspace=pymupdf().csRGB)
+    # This cache lives only for this page's visibility pass. All character
+    # boxes share the same raster and rendering parameters.
+    rgb_cache = {}
     span_boxes = [span.get("bbox") for span in spans]
     span_grid = _BBoxGrid(span_boxes)
     paint_boxes = [entry[1] for entry in paint]
@@ -644,7 +652,7 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
         # conversion, where outlined glyphs may accompany the text trace. For
         # arbitrary PDFs, keep clear vector text on the vector-evidence path;
         # uncertain individual glyphs still use the shared page raster below.
-        ink = (_rendered_ink(pixmap, page, box, config["textlayer_background_delta"])
+        ink = (_rendered_ink(pixmap, page, box, config["textlayer_background_delta"], rgb_cache=rgb_cache)
                if office_generated else [])
         if office_generated and not later_paint and _office_vector_alternative(span, drawings, ink, page, pixmap):
             vector_alternatives += count
@@ -721,7 +729,8 @@ def _visibility(page, config: dict, images: list, *, office_generated: bool = Fa
                 or any(_intersection_area(charbox, rect) > 0 for rect in overlays)
                 or bool(intersecting_clips) or clip_unmapped or self_overlap or bool(span.get("layer"))
             )
-            ink216 = [(1,)] if not geometry_uncertain else _rendered_ink(pixmap, page, charbox, config["textlayer_background_delta"])
+            ink216 = [(1,)] if not geometry_uncertain else _rendered_ink(
+                pixmap, page, charbox, config["textlayer_background_delta"], rgb_cache=rgb_cache)
             if geometry_uncertain and not ink216:
                 ink216 = _rendered_ink_region(page, charbox, 216, config["textlayer_background_delta"])
                 visibility_dpi = 216
@@ -942,7 +951,6 @@ def extract_pdf(item, *, backend: str = "ocr.chain", allow_ocr: bool = False, _o
                     continue
                 probe = probe_page(page, config, _office_generated=office_generated)
                 text = probe.pop("text")
-                table_blocks = []  # round13-e table detection not shipped: F1 0 and one malformed table on real papers
                 native_unverified = probe["route"] == "textlayer" and probe.get("textlayer_unverified")
                 if (probe["route"] == "ocr" and backend == "pdf.textlayer" and not allow_ocr
                         and probe.get("filtered_text", "").strip()):
@@ -981,8 +989,6 @@ def extract_pdf(item, *, backend: str = "ocr.chain", allow_ocr: bool = False, _o
                 pages.append(record)
                 if text.strip():
                     bodies.append(text.strip())
-                if table_blocks:
-                    bodies.extend(block.strip() for block in table_blocks if block.strip())
         if not pages:
             return document_failure(backend, title, "pdf_empty", "PDF has no pages.")
         has_ocr = any(p["route"] == "ocr" and p.get("engine") != "PyMuPDF" for p in pages)

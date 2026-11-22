@@ -89,7 +89,7 @@ def _document_diagnostics() -> dict[str, Any]:
     elif not ollama.get("ready"):
         next_action = "Run openmd models install ocr:chain to prepare the missing local OCR model(s)."
     elif not layout.get("ready"):
-        next_action = "Install PP-DocLayoutV3 with openmd models install ocr:chain, then configure the separate local CPU layout runtime."
+        next_action = "Run openmd models install ocr:chain to install PP-DocLayoutV3 and its separate local CPU layout runtime."
     else:
         next_action = "Install the missing local document dependency, then rerun openmd doctor --profile documents."
     return {"markitdown_available": _module_available("markitdown"), "ocr_dependency_available": _module_available("rapidocr_onnxruntime"), **dependencies, "ollama": ollama, "layout_runtime": layout, "mineru": {**mineru, "install_policy": "user_managed_only", "next_action": None if mineru['ok'] else MinerUEngine.install_hint}, "libreoffice_available": soffice_path() is not None, "gpu_lock": {"path": str(gpu_lock_path()), "implementation": "OS file lock shared with ASR", "crash_recovery": "OS releases lease; persistent file is reused", "quarantine_exists": quarantine_path().exists(), "quarantine_recovery": "read-only wait for empty /api/ps; never unload other clients", "marker_only_reset": "openmd doctor --clear-gpu-quarantine"}, "ready": ready, "network_access": "configured_ollama_metadata_only", "next_action": next_action}

@@ -9,6 +9,7 @@ from importlib.resources import files
 from pathlib import Path
 import subprocess
 import sys
+import venv
 
 
 def hardware() -> dict:
@@ -77,7 +78,9 @@ def install_plan(tier: str, *, root: Path | None = None) -> dict:
         raise ValueError('model_tier_unknown')
     from openmd.core.preferences import data_directory
 
-    root = Path(root or os.getenv('OPENMD_MODEL_INSTALL_ROOT') or data_directory() / 'models').expanduser()
+    default_root = (Path('D:/openmd-runtime/models') if os.name == 'nt' and tier.startswith('ocr:')
+                    else data_directory() / 'models')
+    root = Path(root or os.getenv('OPENMD_MODEL_INSTALL_ROOT') or default_root).expanduser()
     if tier in {'ocr:chain', 'ocr:ovis3', 'ocr:minicpm'}:
         models = []
         for entry in catalog[tier]:
@@ -88,7 +91,7 @@ def install_plan(tier: str, *, root: Path | None = None) -> dict:
         return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
             'root': str(root), 'downloads': models,
             'estimated_size_bytes': recommendations.get('ocr_chain_estimated_bytes') if tier == 'ocr:chain' else None,
-            'runtime': {'required': ['torch', 'transformers', 'Pillow', 'numpy', 'torchvision'], 'install_command': 'python -m pip install torch transformers pillow numpy torchvision', 'status': 'separate CPU runtime; install into D-drive venv and configure OPENMD_OCR_PYTHON'} if needs_layout else None,
+            'runtime': {'required': ['torch==2.5.1+cpu', 'torchvision==0.20.1+cpu', 'transformers==5.13.1', 'Pillow==12.3.0', 'numpy==2.5.4'], 'install_command': 'openmd models install ocr:chain', 'status': 'separate D-drive CPU venv installed and import-probed by this command'} if needs_layout else None,
             'next_action': 'Review local model and runtime disk use, then confirm installation. Ollama weights use ollama pull; layout weights use resumable Hub snapshots with SHA-256 checks.'}
     return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
         'root': str(root), 'downloads': [{**entry, 'destination': str(root / entry['directory'])} for entry in catalog[tier]],
@@ -142,6 +145,47 @@ def rank_sources(item: dict, *, modelscope_allowed: bool) -> list[tuple[str, flo
                   key=lambda pair: (pair[1] is None, -(pair[1] or 0), order.index(pair[0])))
 
 
+def install_layout_runtime() -> dict:
+    """Install the pinned CPU-only layout worker into an isolated D-drive venv."""
+    configured = os.environ.get("OPENMD_OCR_LAYOUT_RUNTIME")
+    if configured:
+        target = Path(configured)
+    elif os.name == "nt":
+        target = Path("D:/openmd-runtime/python/openmd-ocr-layout")
+    else:
+        from openmd.core.preferences import data_directory
+        target = data_directory() / "tools" / "ocr-layout-runtime"
+    target = target.expanduser().resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    python = target / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not python.is_file():
+        venv.EnvBuilder(with_pip=True).create(target)
+    index = os.environ.get("OPENMD_PYPI_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
+    commands = [
+        [str(python), "-m", "pip", "install", "--index-url", index,
+         "--extra-index-url", "https://download.pytorch.org/whl/cpu",
+         "torch==2.5.1+cpu", "torchvision==0.20.1+cpu"],
+        [str(python), "-m", "pip", "install", "--index-url", index,
+         "transformers==5.13.1", "pillow==12.3.0", "numpy==2.5.4"],
+    ]
+    for command in commands:
+        subprocess.run(command, check=True)
+    probe = subprocess.run(
+        [str(python), "-c",
+         "import importlib.util,json,torch; names=('torch','transformers','PIL','numpy','torchvision'); "
+         "modules={n:importlib.util.find_spec(n) is not None for n in names}; "
+         "print(json.dumps({'modules':modules,'cuda_visible':torch.cuda.is_available()}))"],
+        check=True, capture_output=True, text=True,
+        env={**os.environ, "CUDA_VISIBLE_DEVICES": "-1"},
+    )
+    report = json.loads(probe.stdout.strip().splitlines()[-1])
+    if not all(report.get("modules", {}).values()) or report.get("cuda_visible"):
+        raise RuntimeError("layout_cpu_runtime_probe_failed")
+    os.environ["OPENMD_OCR_PYTHON"] = str(python)
+    return {"python": str(python), "probe": report,
+            "verified": "pinned CPU runtime imports; CUDA unavailable"}
+
+
 def cmd_models_install(args) -> int:
     plan = install_plan(args.tier, root=args.root)
     if getattr(args, "dry_run", False):
@@ -154,7 +198,7 @@ def cmd_models_install(args) -> int:
                 return 2
             total = plan.get('estimated_size_bytes') or sum(int(item.get('size_bytes', 0)) for item in plan['downloads'])
             size_text = f"约 {total / 1024**3:.1f} GiB（链路合计估算）" if total else "具体体积由 Ollama 下载进度显示"
-            print(f"将准备{size_text}的本地 OCR 模型与版面权重，权重目录：{plan['root']}。布局 CPU runtime 需要另行安装到 D 盘 venv。")
+            print(f"将准备{size_text}的本地 OCR 模型与版面权重，权重目录：{plan['root']}；并在 D 盘独立 venv 安装版面 CPU runtime。")
             if not getattr(args, "_confirmed", False):
                 answer = input("继续？[y/N] ")
                 if answer.strip().lower() not in {"y", "yes"}:
@@ -163,6 +207,7 @@ def cmd_models_install(args) -> int:
             import shutil
             import subprocess
             receipts = []
+            layout_runtime = None
             for item in plan['downloads']:
                 if item['kind'] == 'ollama':
                     executable = shutil.which('ollama')
@@ -197,8 +242,12 @@ def cmd_models_install(args) -> int:
                     hashes[filename] = digest
                 receipts.append({'kind': 'huggingface', 'repository': item['repository'], 'destination': str(destination), 'source': source,
                                  'verified': 'pinned file SHA-256', 'files': hashes})
+            if plan.get('runtime'):
+                layout_runtime = install_layout_runtime()
+            runtime_receipt = ({**plan['runtime'], **(layout_runtime or {})}
+                               if plan.get('runtime') else None)
             print(json.dumps({'schema': 'openmd.model-install-receipt/v1', 'tier': args.tier, 'downloads': receipts,
-                              'runtime': plan['runtime']}, ensure_ascii=True, sort_keys=True))
+                              'runtime': runtime_receipt}, ensure_ascii=True, sort_keys=True))
             return 0
         raise ValueError("model_tier_download_unsupported: OCR installation requires ocr:chain")
     if not sys.stdin.isatty() and not getattr(args, "_confirmed", False):

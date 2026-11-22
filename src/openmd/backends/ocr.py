@@ -60,7 +60,7 @@ class OCRRouterProvider:
                 total = int(plan.get("estimated_size_bytes") or 0)
                 size_text = f"约 {total / 1024**3:.1f} GiB（链路合计估算）" if total else "体积由 Ollama 下载进度显示"
                 question = (f"尚未安装扫描件 OCR 模型：Ovis3、MiniCPM 与 PP-DocLayoutV3，{size_text}；"
-                            f"布局权重将放在 {plan['root']}，Ollama 模型由 Ollama 自身管理。布局 CPU runtime 需单独安装到 D 盘。现在安装并继续吗？[y/N] ")
+                            f"权重将放在 {plan['root']}，Ollama 模型由 Ollama 自身管理；布局 CPU runtime 会安装到独立 D 盘 venv。现在安装并继续吗？[y/N] ")
                 if sys.stdin.isatty():
                     try:
                         answer = input(question)

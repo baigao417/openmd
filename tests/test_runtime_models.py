@@ -403,6 +403,64 @@ def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
     layout = next(item for item in plan["downloads"] if item["kind"] == "huggingface")
     assert layout["destination"].endswith("layout")
     assert layout["repository"] == "PaddlePaddle/PP-DocLayoutV3_safetensors"
+    assert plan["runtime"]["install_command"] == "openmd models install ocr:chain"
+    assert "torch==2.5.1+cpu" in plan["runtime"]["required"]
+
+
+def test_ocr_install_plan_defaults_to_d_drive_on_windows(monkeypatch):
+    from openmd.runtime import recommendations
+
+    monkeypatch.setattr(recommendations.os, "name", "nt")
+    plan = recommendations.install_plan("ocr:chain")
+
+    assert Path(plan["root"]) == Path("D:/openmd-runtime/models")
+
+
+def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    target = tmp_path / "layout-runtime"
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
+    calls = []
+    monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
+    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+        calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false}\n')
+    ))
+
+    receipt = recommendations.install_layout_runtime()
+
+    assert len(calls) == 3
+    assert "torch==2.5.1+cpu" in calls[0][0]
+    assert "torchvision==0.20.1+cpu" in calls[0][0]
+    assert calls[0][0].index("--extra-index-url") < calls[0][0].index("https://download.pytorch.org/whl/cpu")
+    assert calls[-1][1]["env"]["CUDA_VISIBLE_DEVICES"] == "-1"
+    suffix = "Scripts\\python.exe" if recommendations.os.name == "nt" else "bin/python"
+    assert receipt["python"].endswith(suffix)
+    assert __import__("os").environ["OPENMD_OCR_PYTHON"] == receipt["python"]
+
+
+def test_layout_runtime_discovers_managed_venv_and_model_root(monkeypatch, tmp_path):
+    from openmd.ocr.config import layout_runtime
+
+    runtime = tmp_path / "layout-runtime"
+    python = runtime / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"runtime")
+    model = tmp_path / "models" / "layout"
+    model.mkdir(parents=True)
+    (model / "config.json").write_text("{}", encoding="utf-8")
+    (model / "model.safetensors").write_bytes(b"weights")
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(runtime))
+    monkeypatch.setenv("OPENMD_MODEL_ROOTS", str(tmp_path / "models"))
+    monkeypatch.delenv("OPENMD_OCR_PYTHON", raising=False)
+    monkeypatch.delenv("OPENMD_OCR_LAYOUT_MODEL", raising=False)
+    monkeypatch.setattr("openmd.ocr.config.load_local_config", lambda: {})
+
+    resolved_python, resolved_model = layout_runtime()
+
+    assert resolved_python == python.resolve()
+    assert resolved_model == model.resolve()
 
 
 def test_auto_runtime_accepts_only_baseline_model(monkeypatch, tmp_path):

@@ -22,6 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
             f"高级命令（自动化 / 排障）：{', '.join(ADVANCED_COMMANDS)}；用 openmd <命令> -h 查看。"
         ),
     )
+    from . import __version__
+    parser.add_argument("-V", "--version", action="version", version=f"openmd {__version__}")
     subparsers = parser.add_subparsers(dest="command", metavar="{go,batch}", prog="openmd")
 
     from .mcp_server import cmd_mcp

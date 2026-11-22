@@ -137,3 +137,11 @@ def test_windows_uv_uninstall_is_finished_after_openmd_exits(monkeypatch, tmp_pa
     assert str(data) not in script.replace(str(data / "install.json"), "").replace(str(data / "runs"), "")  # never removes data
     assert data.is_dir()
     assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["scheduled"] is True
+
+
+def test_version_flag_prints_the_package_version(capsys):
+    from openmd import __version__
+    from openmd.cli import main
+
+    assert main(["--version"]) == 0
+    assert capsys.readouterr().out.strip() == f"openmd {__version__}"

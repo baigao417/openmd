@@ -363,6 +363,9 @@ def command_uses_browser(args: list[str], *, package_root: Path | None = None) -
 
 
 def managed_command(args: list[str]) -> list[str]:
+    # Install/prepare OpenCLI only when execution reaches an OpenCLI route.
+    # Merely appearing as a possible fallback must not start its browser bridge.
+    ensure_opencli()
     node = node_dir()
     if node is None:
         raise OSError("managed_opencli_node_missing")

@@ -255,11 +255,6 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         from dataclasses import replace
 
         items = [replace(item, raw_meta={**item.raw_meta, "include_thinking": True}) for item in items]
-    if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
-        from openmd.runtime.managed_tools import ensure_opencli
-
-        # One `pip install openmd-cli` is enough: fetch the pinned opencli on first need.
-        ensure_opencli()
     if command == "ingest":
         items = _prepare_compact_collection(args, items)
     elif command == "batch":

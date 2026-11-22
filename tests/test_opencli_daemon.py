@@ -151,22 +151,27 @@ def test_status_invalid_does_not_mean_stopped(monkeypatch, output):
         services._daemon_running(["node", "main.js"])
 
 
-def test_browser_controller_prestarts_before_outer_job(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("command", "status"),
+    [
+        (["python", "-I", "-m", "openmd", "go", "https://example.org", "--enable-browser-backends"], {"id": "fixture"}),
+        (["python", "-I", "-m", "openmd", "go", "https://example.org"], {"id": "fixture", "mcp": True, "permissions": {"browser": True}}),
+    ],
+)
+def test_browser_controller_does_not_prestart_for_browser_permission(monkeypatch, tmp_path, command, status):
     from openmd import browser_host
 
     events = []
     prestart = Mock(side_effect=lambda *args, **kwargs: events.append("prestart"))
     process = Mock(pid=123, returncode=0)
-    monkeypatch.setattr(browser_host, "ensure_opencli_daemon", prestart)
+    monkeypatch.setattr(services, "ensure_opencli_daemon", prestart)
     monkeypatch.setattr(browser_host, "owned_popen", Mock(side_effect=lambda *args, **kwargs: events.append("owned") or process))
     monkeypatch.setattr(browser_host, "_write_status", Mock())
     monkeypatch.setattr(browser_host, "communicate_interruptibly", Mock(return_value=("out", "err")))
     monkeypatch.setattr(browser_host, "terminate_quietly", Mock())
-    command = ["python", "-I", "-m", "openmd", "go", "https://example.org", "--enable-browser-backends"]
-    result = browser_host._run_openmd(command, tmp_path, {"id": "fixture"})
-    assert events == ["prestart", "owned"]
-    assert prestart.call_args.args[0] == ["opencli", "browser-job-read"]
-    assert prestart.call_args.kwargs["cwd"] == str(tmp_path)
+    result = browser_host._run_openmd(command, tmp_path, status)
+    assert events == ["owned"]
+    prestart.assert_not_called()
     assert result.returncode == 0 and result.stdout == "out" and result.stderr == "err"
 
 
@@ -175,7 +180,7 @@ def test_browser_controller_without_browser_gate_keeps_service_untouched(monkeyp
 
     prestart = Mock()
     process = Mock(pid=123, returncode=0)
-    monkeypatch.setattr(browser_host, "ensure_opencli_daemon", prestart)
+    monkeypatch.setattr(services, "ensure_opencli_daemon", prestart)
     monkeypatch.setattr(browser_host, "owned_popen", Mock(return_value=process))
     monkeypatch.setattr(browser_host, "_write_status", Mock())
     monkeypatch.setattr(browser_host, "communicate_interruptibly", Mock(return_value=("", "")))

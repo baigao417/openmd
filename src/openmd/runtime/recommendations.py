@@ -71,12 +71,25 @@ def recommend(machine: dict) -> dict:
 
 
 def install_plan(tier: str, *, root: Path | None = None) -> dict:
-    catalog = matrix()['tiers']
+    recommendations = matrix()
+    catalog = recommendations['tiers']
     if tier not in catalog:
         raise ValueError('model_tier_unknown')
     from openmd.core.preferences import data_directory
 
     root = Path(root or os.getenv('OPENMD_MODEL_INSTALL_ROOT') or data_directory() / 'models').expanduser()
+    if tier in {'ocr:chain', 'ocr:ovis3', 'ocr:minicpm'}:
+        models = []
+        for entry in catalog[tier]:
+            resource = dict(entry)
+            resource['destination'] = 'Ollama model store' if entry['kind'] == 'ollama' else str(root / entry['directory'])
+            models.append(resource)
+        needs_layout = any(item['kind'] == 'huggingface' for item in models)
+        return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
+            'root': str(root), 'downloads': models,
+            'estimated_size_bytes': recommendations.get('ocr_chain_estimated_bytes') if tier == 'ocr:chain' else None,
+            'runtime': {'required': ['torch', 'transformers', 'Pillow', 'numpy', 'torchvision'], 'install_command': 'python -m pip install torch transformers pillow numpy torchvision', 'status': 'separate CPU runtime; install into D-drive venv and configure OPENMD_OCR_PYTHON'} if needs_layout else None,
+            'next_action': 'Review local model and runtime disk use, then confirm installation. Ollama weights use ollama pull; layout weights use resumable Hub snapshots with SHA-256 checks.'}
     return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
         'root': str(root), 'downloads': [{**entry, 'destination': str(root / entry['directory'])} for entry in catalog[tier]],
         'next_action': 'Review model and dependency licenses, then install explicitly in a local runtime. This command only prints a plan.'}
@@ -135,7 +148,59 @@ def cmd_models_install(args) -> int:
         print(json.dumps(plan, ensure_ascii=True, sort_keys=True))
         return 0
     if not args.tier.startswith("asr:"):
-        raise ValueError("model_tier_download_unsupported: only ASR model downloads are currently supported")
+        if args.tier in {'ocr:chain', 'ocr:ovis3', 'ocr:minicpm'}:
+            if not sys.stdin.isatty() and not getattr(args, "_confirmed", False):
+                print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
+                return 2
+            total = plan.get('estimated_size_bytes') or sum(int(item.get('size_bytes', 0)) for item in plan['downloads'])
+            size_text = f"约 {total / 1024**3:.1f} GiB（链路合计估算）" if total else "具体体积由 Ollama 下载进度显示"
+            print(f"将准备{size_text}的本地 OCR 模型与版面权重，权重目录：{plan['root']}。布局 CPU runtime 需要另行安装到 D 盘 venv。")
+            if not getattr(args, "_confirmed", False):
+                answer = input("继续？[y/N] ")
+                if answer.strip().lower() not in {"y", "yes"}:
+                    print(f"以后可运行：openmd models install {args.tier}")
+                    return 1
+            import shutil
+            import subprocess
+            receipts = []
+            for item in plan['downloads']:
+                if item['kind'] == 'ollama':
+                    executable = shutil.which('ollama')
+                    if not executable:
+                        raise RuntimeError(f'ollama_not_installed: install Ollama, then rerun openmd models install {args.tier}')
+                    completed = subprocess.run([executable, 'pull', item['model']], check=False)
+                    if completed.returncode:
+                        raise RuntimeError(f"ollama_pull_failed: {item['model']}; rerun openmd models install {args.tier}")
+                    receipts.append({'kind': 'ollama', 'model': item['model'], 'verified': 'ollama pull exited successfully'})
+                    continue
+                from huggingface_hub import snapshot_download
+                destination = Path(item['destination'])
+                destination.mkdir(parents=True, exist_ok=True)
+                sources = rank_sources({'repository': item['repository'], 'revision': item['revision'], 'probe_file': 'model.safetensors'}, modelscope_allowed=False)
+                last_error = None
+                source = None
+                for endpoint, _speed in sources:
+                    try:
+                        snapshot_download(repo_id=item['repository'], revision=item['revision'], local_dir=str(destination), endpoint=endpoint,
+                                          allow_patterns=list(item['files']))
+                        source, last_error = endpoint.removeprefix('https://'), None
+                        break
+                    except Exception as exc:
+                        last_error = exc
+                if last_error:
+                    raise RuntimeError(f"model_download_failed: {item['repository']}; retry with openmd models install {args.tier}") from last_error
+                hashes = {}
+                for filename, expected in item['files'].items():
+                    digest = hashlib.sha256((destination / filename).read_bytes()).hexdigest()
+                    if digest.casefold() != expected.casefold():
+                        raise RuntimeError(f"model_integrity_check_failed: {filename} sha256 mismatch")
+                    hashes[filename] = digest
+                receipts.append({'kind': 'huggingface', 'repository': item['repository'], 'destination': str(destination), 'source': source,
+                                 'verified': 'pinned file SHA-256', 'files': hashes})
+            print(json.dumps({'schema': 'openmd.model-install-receipt/v1', 'tier': args.tier, 'downloads': receipts,
+                              'runtime': plan['runtime']}, ensure_ascii=True, sort_keys=True))
+            return 0
+        raise ValueError("model_tier_download_unsupported: OCR installation requires ocr:chain")
     if not sys.stdin.isatty() and not getattr(args, "_confirmed", False):
         print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
         return 2

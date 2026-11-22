@@ -1,6 +1,7 @@
 {
   "schema": "openmd.hardware-recommendations/v1",
   "policy": "No telemetry; conservative proposals, not availability guarantees. No cell generalizes one machine receipt to all hardware.",
+  "ocr_chain_estimated_bytes": 4141398184,
   "tiers": {
     "ocr:baseline": [
       {
@@ -34,14 +35,43 @@
         "directory": "minicpm/mmproj-model-f16-4x.gguf"
       }
     ],
+    "ocr:ovis3": [
+      {"kind": "ollama", "artifact": "Ovis3 OCR model via Ollama", "model": "ovis3-bf16", "license": "Review upstream model license", "size_kind": "Ollama reports actual size during pull", "directory": "ollama/ovis3-bf16"}
+    ],
+    "ocr:minicpm": [
+      {"kind": "ollama", "artifact": "MiniCPM OCR model via Ollama", "model": "minicpm-ocr-f16", "license": "Apache-2.0", "size_kind": "Ollama reports actual size during pull", "directory": "ollama/minicpm-ocr-f16"}
+    ],
     "ocr:chain": [
       {
+        "kind": "ollama",
+        "model": "ovis3-bf16",
         "artifact": "Ovis3 and MiniCPM OCR locally configured Ollama weights",
-        "repository": "ATH-MaaS/OvisOCR3; openbmb/MiniCPM-OCR-1.0-gguf; PaddlePaddle/PP-DocLayoutV3_safetensors",
-        "license": "Apache-2.0 for the pinned recognition checkpoints; review detector and runtime licenses",
-        "size_bytes": 4141398184,
-        "size_kind": "pinned main/projector total, layout weights and runtime extra",
-        "directory": "ollama"
+        "license": "Review upstream model license",
+        "size_kind": "part of the combined chain estimate",
+        "directory": "ollama/ovis3-bf16"
+      },
+      {
+        "kind": "ollama",
+        "model": "minicpm-ocr-f16",
+        "artifact": "MiniCPM OCR model via Ollama",
+        "license": "Apache-2.0",
+        "size_kind": "part of the combined chain estimate",
+        "directory": "ollama/minicpm-ocr-f16"
+      },
+      {
+        "kind": "huggingface",
+        "artifact": "PP-DocLayoutV3 layout weights",
+        "repository": "PaddlePaddle/PP-DocLayoutV3_safetensors",
+        "revision": "e4f489dc536556fc1be02b973ba06756e0d4a2ac",
+        "license": "Review upstream detector license",
+        "size_bytes": 133273481,
+        "size_kind": "exact pinned local files",
+        "directory": "layout",
+        "files": {
+          "config.json": "3cf834b91d23a756b1519bce4db42c09e852f3e35c35092dd5a3e253a50c071a",
+          "model.safetensors": "5ea422c6cc5fe759a47e1357c35639b58173508e025a3131cbe4b6ac59e2b85e",
+          "preprocessor_config.json": "519fe0187a43a1ca429e3ad8317bab8700f0d5e8fb3a6e3a0a413ffac078ba42"
+        }
       }
     ],
     "asr:baseline": [

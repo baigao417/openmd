@@ -392,6 +392,19 @@ def test_models_install_plan_defaults_under_data_directory(monkeypatch, tmp_path
     assert Path(plan["root"]) == (tmp_path / "data" / "models")
 
 
+def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
+    from openmd.runtime.recommendations import install_plan
+
+    plan = install_plan("ocr:chain", root=tmp_path / "ocr")
+    assert {item["kind"] for item in plan["downloads"]} == {"ollama", "huggingface"}
+    assert {item["model"] for item in plan["downloads"] if item["kind"] == "ollama"} == {
+        "ovis3-bf16", "minicpm-ocr-f16"
+    }
+    layout = next(item for item in plan["downloads"] if item["kind"] == "huggingface")
+    assert layout["destination"].endswith("layout")
+    assert layout["repository"] == "PaddlePaddle/PP-DocLayoutV3_safetensors"
+
+
 def test_auto_runtime_accepts_only_baseline_model(monkeypatch, tmp_path):
     import openmd.runtime.interpreters as module
     from openmd.runtime.models import ResolvedModel
@@ -461,6 +474,36 @@ def test_model_install_noninteractive_returns_action_without_download(monkeypatc
     assert recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=None, dry_run=False)) == 2
     assert "openmd models install asr:baseline" in capsys.readouterr().out
     assert not (tmp_path / "data" / "models").exists()
+
+
+def test_ocr_chain_install_noninteractive_returns_command_without_pull_or_download(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from openmd.runtime import recommendations
+
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: False)
+    assert recommendations.cmd_models_install(Namespace(tier="ocr:chain", root=tmp_path / "models", dry_run=False)) == 2
+    captured = capsys.readouterr()
+    plan = json.loads(captured.out)
+    assert "openmd models install ocr:chain" in plan["next_action"]
+    assert plan["download_started"] is False
+    assert not (tmp_path / "models").exists()
+
+
+def test_ocr_single_model_install_delegates_to_ollama_pull(monkeypatch, capsys):
+    from argparse import Namespace
+    import subprocess
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    calls = []
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    monkeypatch.setattr("shutil.which", lambda name: "ollama.exe" if name == "ollama" else None)
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: calls.append(argv) or SimpleNamespace(returncode=0))
+    assert recommendations.cmd_models_install(Namespace(tier="ocr:ovis3", root=None, dry_run=False)) == 0
+    assert calls == [["ollama.exe", "pull", "ovis3-bf16"]]
+    receipt = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert receipt["downloads"][0]["verified"] == "ollama pull exited successfully"
 
 
 def test_model_install_handles_eof_without_traceback_or_download(monkeypatch, capsys, tmp_path):

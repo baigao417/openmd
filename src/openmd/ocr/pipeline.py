@@ -216,7 +216,13 @@ class LocalOCRBackend(OCRBackend):
         merge.update({"tiles": len(texts), "repeated_spans": reps[:20], "merged_norm_chars": len(norm_view(text)[0])})
         if reps:
             merge["warnings"].append(f"{len(reps)} repeated 24-char spans in merged text (possible duplicate overlap)")
-        partial = not text.strip() or any(r["status"] != "verified" for r in receipts) or bool(merge["warnings"])
+        # A seam conflict is recorded in the merge receipt and both readings
+        # remain in the output. Repeated spans across that preserved conflict
+        # are expected and stay as warnings; they do not prove missing OCR text.
+        # Tile failures still make the page partial, and tile breakers
+        # independently control model fallback.
+        uncertain_seam = any(seam.get("status") != "merged" for seam in merge["seams"])
+        partial = not text.strip() or any(r["status"] != "verified" for r in receipts) or (bool(reps) and not uncertain_seam)
         attempts = [attempt for r in receipts for attempt in r["attempts"]] + merge["arbitration_attempts"]
         unsafe = any(a.get("unsafe_to_switch") for a in attempts)
         peaks = [a["peak_vram_mb"] for a in attempts if a.get("peak_vram_mb") is not None]

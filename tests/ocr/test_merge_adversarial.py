@@ -84,7 +84,7 @@ def test_uncertain_merge_preserves_original_whitespace():
     assert_preserved("  unique first input\n\n", "\n\n unique second input  ")
 
 
-def test_review_pipeline_repro_is_partial_and_keeps_unique_prefix():
+def test_review_pipeline_keeps_merge_warning_without_marking_complete_tiles_partial():
     prefix = "".join(chr(0x4E00 + n) for n in range(160))
     a = prefix + "COMMONSEQUENCE1234567890"
     b = "UNIQUE_B_PREFIX_THAT_IS_NOT_OVERLAP" + "COMMONSEQUENCE1234567890" + "BTAIL"
@@ -97,7 +97,7 @@ def test_review_pipeline_repro_is_partial_and_keeps_unique_prefix():
         result = backend._recognize_locked(
             Image.new("RGB", (400, 2000), "white"), "synthetic seam", 1, True, config
         )
-    assert result.status == "partial"
+    assert result.status == "verified"
     raw_readings = result.text.replace("\n\n<!-- openmd:seam-diff start -->\n\n[openmd variant A]\n\n", "").replace("\n\n[openmd variant B]\n\n", "").replace("\n\n<!-- openmd:seam-diff end -->\n\n", "")
     assert raw_readings == a + b
     assert result.metadata["pages"][0]["merge"]["seams"][0]["deleted_nonspace_chars"] == 0

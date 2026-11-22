@@ -903,7 +903,7 @@ def probe_page(page, config: dict, *, _office_generated: bool = False) -> dict:
             reasons.append("hard_hidden_text_removed")
         reasons = list(dict.fromkeys(reasons + sorted(hard_reasons | soft_reasons)))
     blank = not raw_chars and not images and not page.get_drawings()
-    return {"page": page.number + 1, "route": "textlayer" if (reliable or (locals().get("has_safe_text") and not locals().get("force_ocr"))) or blank else "ocr", "reliable": reliable or blank, "blank": blank, "text": text, "filtered_text": text, "text_chars": len(text.strip()), "native_reading_order": "pdf_content_stream", "image_area_ratio": round(min(1, image_area / area), 4), "text_area_ratio": round(min(1, text_area / area), 4), "textlayer_rejected_reason": reasons[0] if reasons else None, "textlayer_rejected_reasons": reasons, "textlayer_unverified": bool(locals().get("textlayer_unverified", False)), "broken_text_layer_lines": locals().get("bad_lines", 0), "broken_text_layer_chars": locals().get("bad_chars", 0), "_raw_text": raw_text, "_visibility_decisions": visibility.get("decisions", []), **visibility, "probe_seconds": round(time.monotonic() - start, 4)}
+    return {"page": page.number + 1, "route": "textlayer" if (reliable or (locals().get("has_safe_text") and not locals().get("force_ocr"))) or blank else "ocr", "reliable": reliable or blank, "blank": blank, "text": text, "filtered_text": text, "text_chars": len(text.strip()), "native_reading_order": "pdf_content_stream", "image_area_ratio": round(min(1, image_area / area), 4), "text_area_ratio": round(min(1, text_area / area), 4), "textlayer_rejected_reason": reasons[0] if reasons else None, "textlayer_rejected_reasons": reasons, "textlayer_unverified": bool(locals().get("textlayer_unverified", False)), "broken_text_layer_lines": locals().get("bad_lines", 0), "broken_text_layer_chars": locals().get("bad_chars", 0), **visibility, "probe_seconds": round(time.monotonic() - start, 4)}
 
 
 def inspect_pdf(path: Path, config: dict | None = None) -> list[dict]:
@@ -911,8 +911,7 @@ def inspect_pdf(path: Path, config: dict | None = None) -> list[dict]:
     with module.open(path) as document:
         if document.needs_pass:
             raise ValueError("pdf_password_required")
-        return [{key: value for key, value in probe_page(page, config or settings()).items()
-                 if key not in {"text", "_raw_text", "_visibility_decisions"}} for page in document]
+        return [{key: value for key, value in probe_page(page, config or settings()).items() if key != "text"} for page in document]
 
 
 def document_failure(backend: str, title: str, code: str, message: str) -> TranscriptResult:
@@ -952,8 +951,6 @@ def extract_pdf(item, *, backend: str = "ocr.chain", allow_ocr: bool = False, _o
                     continue
                 probe = probe_page(page, config, _office_generated=office_generated)
                 text = probe.pop("text")
-                raw_text = probe.pop("_raw_text", {})
-                visibility_decisions = probe.pop("_visibility_decisions", [])
                 native_unverified = probe["route"] == "textlayer" and probe.get("textlayer_unverified")
                 if (probe["route"] == "ocr" and backend == "pdf.textlayer" and not allow_ocr
                         and probe.get("filtered_text", "").strip()):

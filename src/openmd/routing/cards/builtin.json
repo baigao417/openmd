@@ -211,6 +211,19 @@
       "status_policy": "provider_defined"
     },
     {
+      "id": "openmd.x.logged_in_browser",
+      "provider": "openmd.x.logged_in_browser",
+      "sources": [
+        "x"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "provider_defined",
+      "status_policy": "provider_defined"
+    },
+    {
       "id": "opencli.twitter.thread",
       "provider": "opencli.twitter.thread",
       "sources": [
@@ -367,7 +380,8 @@
       "id": "web_article.trafilatura",
       "provider": "web_article.trafilatura",
       "sources": [
-        "web_article"
+        "web_article",
+        "x"
       ],
       "capability": "content",
       "gates": [
@@ -645,6 +659,22 @@
         "local_compute"
       ],
       "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "browser.kaze.snapshot",
+      "provider": "browser.kaze.snapshot",
+      "sources": [
+        "web_article",
+        "x"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
+      ],
+      "source_level": "browser_rendered",
       "requires_login": true,
       "cost_class": "unknown",
       "status_policy": "provider_defined"

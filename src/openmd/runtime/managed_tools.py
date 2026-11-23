@@ -363,6 +363,9 @@ def command_uses_browser(args: list[str], *, package_root: Path | None = None) -
 
 
 def managed_command(args: list[str]) -> list[str]:
+    # Install/prepare OpenCLI only when execution reaches an OpenCLI route.
+    # Merely appearing as a possible fallback must not start its browser bridge.
+    ensure_opencli()
     node = node_dir()
     if node is None:
         raise OSError("managed_opencli_node_missing")
@@ -414,6 +417,11 @@ def migrate_config(*, source: Path | None = None, destination: Path | None = Non
 
 def command_access(args: list[str]) -> str:
     """Read registry metadata without executing the requested adapter. Unknown fails closed."""
+    # OpenCLI's native Chrome bridge call has no site registry metadata. Keep
+    # the X reader's two methods explicitly read-only; every other method still
+    # requires the caller's existing write opt-in.
+    if len(args) >= 4 and args[:3] == ["browser", "chrome", "call"]:
+        return "read" if args[3] in {"tabs.query", "openmd.x.read"} else "unknown"
     if args == ["list"] or args[:1] == ["list"]:
         return "read"
     if args in (["doctor"], ["status"], ["daemon", "status"], ["--help"], ["-h"]):

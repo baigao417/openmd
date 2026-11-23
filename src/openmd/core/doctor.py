@@ -117,6 +117,10 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
     diagnostics['document_formats'] = document_formats()
     from openmd.browser_diagnostics import browser_host_diagnostics
     diagnostics['browser_host'] = browser_host_diagnostics()
+    if profile in {"all", "core", "web"}:
+        from openmd.backends.kaze_snapshot import probe_kaze
+
+        diagnostics["kaze_snapshot"] = probe_kaze().as_dict()
     from openmd.runtime.opencli_patches import patch_diagnostics
     diagnostics['opencli_patches'] = patch_diagnostics()
     from openmd.routing.loader import route_verification_status

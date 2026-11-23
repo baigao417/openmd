@@ -161,6 +161,9 @@ def modalities_for_item(item: ContentItem, profile: str) -> list[str]:
 def normalized_input_ref(item: ContentItem) -> str:
     value = str(item.url)
     if value.startswith("http://") or value.startswith("https://"):
+        from openmd.core.input_validation import normalize_http_url
+
+        value = normalize_http_url(value)
         return sanitize_url(value)
     return value
 

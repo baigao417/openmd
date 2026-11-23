@@ -1,6 +1,7 @@
 // OpenCLI Browser Bridge 1.0.27 (Apache-2.0, https://github.com/jackwener/opencli),
 // vendored by scripts/vendor_opencli_bridge.py. Modified by Openmd: see VENDOR.md.
 const OPENMD_BRIDGE_VERSION = "1.0.27";
+import { openmdXReadPage } from "../../x_browser_main.js";
 const CHROME_METHODS = {
   "tabs.query": "(queryInfo: object) => Tab[]",
   "tabs.get": "(tabId: number) => Tab",
@@ -50,7 +51,23 @@ async function describeChrome(method) {
     ...namespace === "tabGroups" ? { colors: ["grey", "blue", "red", "yellow", "green", "pink", "purple", "cyan", "orange"] } : {}
   };
 }
+async function openmdReadX(args) {
+  const fail = (error_code, next_action) => ({ok:false,error_code,next_action});
+  if (!Array.isArray(args) || args.length !== 1 || !/^\d+$/.test(String(args[0]))) throw nativeError("invalid_args", "openmd.x.read requires a numeric X post id.");
+  const tabs = await chrome.tabs.query({url:["https://x.com/*","https://twitter.com/*"]});
+  const tab = tabs.find(value => value.id !== void 0 && ["x.com","www.x.com","twitter.com","www.twitter.com"].includes(new URL(value.url).hostname.toLowerCase()));
+  if (!tab) return fail("x_browser_no_tab","Open x.com in Chrome and retry; Openmd will continue to the next browser route.");
+  if (typeof chrome.scripting?.executeScript !== "function") return fail("x_browser_permission_denied","Reload the Openmd extension and grant its requested permissions, then retry.");
+  try {
+    const [injection] = await chrome.scripting.executeScript({target:{tabId:tab.id},world:"MAIN",func:openmdXReadPage,args:[String(args[0])]});
+    return injection?.result ?? fail("x_browser_api_failed","Retry once; Openmd will continue to the next browser route.");
+  } catch (error) {
+    const permission = String(error?.message || error).toLowerCase().includes("permission");
+    return fail(permission?"x_browser_permission_denied":"x_browser_api_failed",permission?"Reload the Openmd extension and grant its requested permissions, then retry.":"Retry once; Openmd will continue to the next browser route.");
+  }
+}
 async function callChrome(method, args, protectedTabs, protectedGroups) {
+  if (method === "openmd.x.read") return await openmdReadX(args);
   const { receiver, fn } = resolve(method);
   if (!Array.isArray(args)) throw nativeError("invalid_args", "Chrome args must be an array of positional arguments.");
   if (typeof fn !== "function") throw nativeError("chrome_api_unavailable", `chrome.${method} is unavailable.`);

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import sys
 import time
@@ -94,6 +95,9 @@ def receipt(result: dict) -> dict:
 
 
 def _validate_source_url(value: str) -> str:
+    from openmd.core.input_validation import normalize_http_url
+
+    value = normalize_http_url(value)
     url = host._validate_url(value)
     parsed = urlsplit(url)
     if parsed.username is not None or parsed.password is not None or any(
@@ -188,11 +192,27 @@ def save_page(source_url: str, output_directory: str, *, html: str | None = None
         path = Path(html_path)
         if not path.is_absolute() or not path.is_file():
             raise ValueError("html_path_must_be_absolute_file")
-        with path.open("rb") as stream:
+        allowed_extensions = {".html", ".htm", ".mhtml", ".xhtml"}
+        if path.suffix.lower() not in allowed_extensions:
+            raise ValueError("html_path_not_html")
+        try:
+            resolved = path.resolve(strict=True)
+            absolute = Path(os.path.abspath(path))
+        except (OSError, RuntimeError):
+            raise ValueError("html_path_invalid") from None
+        if resolved != absolute:
+            raise ValueError("html_path_symlink_not_allowed")
+        with resolved.open("rb") as stream:
             raw = stream.read(MAX_HTML_BYTES + 1)
         if len(raw) > MAX_HTML_BYTES:
             raise ValueError("snapshot_too_large")
-        html = raw.decode("utf-8-sig")
+        try:
+            sniff = raw[:4096].decode("utf-8-sig", errors="ignore").lstrip().lower()
+            html = raw.decode("utf-8-sig")
+        except UnicodeError:
+            raise ValueError("html_path_not_html") from None
+        if not re.search(r"<!doctype\s+html\b|<(?:html|head|body|article|main|section)\b", sniff):
+            raise ValueError("html_path_not_html")
     if not isinstance(html, str) or not html:
         raise ValueError("empty_snapshot_html")
     if len(html.encode("utf-8")) > MAX_HTML_BYTES:

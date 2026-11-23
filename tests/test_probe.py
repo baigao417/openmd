@@ -182,7 +182,7 @@ def test_douyin_invalid_manifest_sample_does_not_claim_platform_broken():
     assert row.live_route_attempted is False
 
 
-def test_daemon_preflight_precedes_owned_platform_worker(tmp_path, monkeypatch):
+def test_probe_does_not_preflight_daemon_for_browser_permission(tmp_path, monkeypatch):
     events = []
     monkeypatch.setattr("openmd.runtime.services.ensure_opencli_daemon", lambda *args: events.append("preflight"))
 
@@ -192,7 +192,7 @@ def test_daemon_preflight_precedes_owned_platform_worker(tmp_path, monkeypatch):
 
     monkeypatch.setattr(probe, "_probe_isolated", worker)
     probe.run_probe({"x": probe.ProbeSample("https://x.com/example/status/123")}, out=tmp_path, platforms=("x",), options=BackendRuntimeOptions(enable_browser_backends=True))
-    assert events == ["preflight", "worker"]
+    assert events == ["worker"]
 
 
 def test_metadata_only_degraded_does_not_set_report_ok(tmp_path, monkeypatch):

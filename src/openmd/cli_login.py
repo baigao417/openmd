@@ -52,6 +52,34 @@ def source_next_action(error_code: str | None) -> str | None:
         return "文件结构不完整或已损坏（常见于没下载完）：请重新下载或用原软件另存一份后再试。"
     if error_code == "douyin_detail_read_failed":
         return "抖音需要借用浏览器读取：确认 Chrome / Edge 已登录抖音、Openmd 扩展已加载（openmd browser-setup）后重试。"
+    if error_code == "kaze_launcher_missing":
+        return "未找到 Kaze BrowserMCP 启动器；安装或修复 Kaze 后重试。"
+    if error_code == "kaze_not_running":
+        return "请启动 Kaze，并在 Kaze 设置中允许 External Agents 后重试。"
+    if error_code == "kaze_unavailable":
+        return "Kaze BrowserMCP 当前不可用；确认 Kaze 正在运行且 External Agents 已启用后重试。"
+    if error_code == "kaze_external_agents_disabled":
+        return "请在 Kaze 设置中允许 External Agents 后重试；Openmd 不会更改该设置。"
+    if error_code in {"kaze_unsupported_protocol", "kaze_tool_schema_changed"}:
+        return "Kaze 的 BrowserMCP 接口与 Openmd 不兼容；更新 Kaze 后重试，或使用其他 Openmd 路线。"
+    if error_code == "kaze_timeout":
+        return "Kaze BrowserMCP 响应超时；确认 Kaze 正在运行且 External Agents 已启用后重试。"
+    if error_code == "kaze_page_not_ready":
+        return "页面仍在加载；等 Kaze 页面完成加载后重试。"
+    if error_code == "kaze_tab_open_failed":
+        return "Kaze 未返回可用页面标签；确认 Kaze 可打开目标网址后重试。"
+    if error_code == "kaze_snapshot_transfer_failed":
+        return "Kaze 未能把页面快照写入 Openmd 临时目录；检查临时存储可用性后重试。"
+    if error_code == "kaze_snapshot_too_large":
+        return "Kaze 页面快照超过 Openmd 限制；请使用页面导出或缩小读取范围后重试。"
+    if error_code == "kaze_cleanup_failed":
+        return "Kaze 标签清理未能确认；先检查 Kaze 标签状态，再重试。"
+    if error_code == "kaze_page_url_mismatch":
+        return "Kaze 当前页面与请求链接不一致；请在 Kaze 打开目标链接后重试。"
+    if error_code == "kaze_login_required":
+        return "Kaze 当前页是登录墙；由用户在 Kaze 登录并打开目标页面后，再运行 Openmd。"
+    if error_code == "kaze_snapshot_failed":
+        return "Kaze 未能生成页面快照；检查当前页面和 BrowserMCP 状态后重试。"
     return None
 
 

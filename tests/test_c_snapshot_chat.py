@@ -122,6 +122,33 @@ def test_snapshot_managed_defuddle_and_explicit_fallback(monkeypatch, tmp_path):
     assert any("未使用 Defuddle，正文抽取为简易回退" in note for note in fallback.source_notes)
 
 
+def test_snapshot_prefers_more_complete_table_candidate(monkeypatch, tmp_path):
+    """A managed extractor must not win when the local parser retains more rows."""
+    html = "<html><body><main><p>Visible article body.</p><table><tr><td>one</td></tr></table></main></body></html>"
+    page = tmp_path / "tables.html"
+    page.write_text(html, encoding="utf-8")
+    managed = "# Article\n\n| managed | value |\n| --- | --- |\n| row | one |\n"
+    fallback = "# Article\n\n| first | value |\n| --- | --- |\n| row one | one |\n| row two | two |\n"
+    provider = SnapshotProvider(runner=lambda *_: {"contentMarkdown": managed})
+    monkeypatch.setattr(snapshot_backend, "html_to_markdown", lambda _: fallback)
+
+    text, used_managed = provider._html_to_markdown(page, html, "https://example.org/article")
+
+    assert text == fallback
+    assert used_managed is False
+
+    item = ContentItem(platform="page_snapshot", input_type="single", url="https://example.org/article",
+                       source_type="article", raw_meta={"snapshot_path": str(page)})
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *_: managed)
+    managed_available = SnapshotProvider().extract(BackendExtractRequest(item, ("page_snapshot.defuddle",)))
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *_: None)
+    managed_unavailable = SnapshotProvider().extract(BackendExtractRequest(item, ("page_snapshot.defuddle",)))
+    assert managed_available.text == managed_unavailable.text == fallback
+    assert (managed_available.status, managed_available.source_level) == (
+        managed_unavailable.status, managed_unavailable.source_level
+    )
+
+
 def test_xiaohongshu_loaded_snapshot_preserves_note_metadata_and_assets(tmp_path):
     from openmd.backends.loaded_chat import snapshot_item
     from openmd.core.sync_manifest import source_id_for

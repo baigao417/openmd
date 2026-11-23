@@ -323,17 +323,6 @@ def run_probe(
     attempted = 0
     # Rebuild options instead of trusting a caller to leave the heavy gates shut.
     bounded_options = BackendRuntimeOptions(enable_network_backends=options.enable_network_backends, enable_browser_backends=options.enable_browser_backends)
-    # Provider commands run inside owned platform workers. Start the one allowed
-    # persistent service here, before those outer Jobs can acquire descendants.
-    if bounded_options.enable_browser_backends and any(platform in samples for platform in platforms):
-        from openmd.runtime.services import ensure_opencli_daemon
-
-        try:
-            ensure_opencli_daemon(["opencli", "probe-platform-read"])
-        except OSError as exc:
-            # Preserve independent network-only routes if the browser daemon is
-            # unavailable. Each browser provider still reports its own failure.
-            report["browser_preflight_reason"] = _safe_reason(exc)
     for platform in platforms:
         sample = samples.get(platform)
         if sample is None:

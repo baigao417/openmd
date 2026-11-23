@@ -11,6 +11,12 @@ def _process_items(
 ) -> CliResult:
     from .cli import BackendExecutor, CliResult, CollectionCoverage, ContentItem, OutputWriteResult, PackageValidationError, _append_execution_entry, _append_guardrail_stop_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _guardrail_failure_streak_reached, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_resolved_item, _read_package_metadata, _requested_backend, _write_extraction_output, argparse, build_item_runlog_entry, create_default_registry, json, sys
 
+    # Discovery providers can return child URLs too; normalize each item before
+    # identity resolution, package lookup, or backend selection.
+    from dataclasses import replace
+    from openmd.core.input_validation import normalize_http_url
+
+    items = [replace(item, url=normalize_http_url(item.url)) for item in items]
     registry = create_default_registry()
     outputs: list[str] = []
     success_count = 0
@@ -208,6 +214,13 @@ def _process_items(
 def _process_input(input_url: str, args: argparse.Namespace, *, command: str) -> CliResult:
     from .cli import CliResult, OutputWriteResult, PackageValidationError, Path, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
 
+    from openmd.core.input_validation import normalize_http_url
+
+    input_url = normalize_http_url(input_url)
+    args.url = input_url
+    if getattr(args, "snapshot_url", None):
+        args.snapshot_url = normalize_http_url(args.snapshot_url)
+
     if getattr(args, "ocr_engine", None) == "mineru":
         args.fallback = False
 
@@ -242,11 +255,6 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         from dataclasses import replace
 
         items = [replace(item, raw_meta={**item.raw_meta, "include_thinking": True}) for item in items]
-    if getattr(args, "enable_network_backends", False) and any(b.startswith("opencli.") for b in selection.chain):
-        from openmd.runtime.managed_tools import ensure_opencli
-
-        # One `pip install openmd-cli` is enough: fetch the pinned opencli on first need.
-        ensure_opencli()
     if command == "ingest":
         items = _prepare_compact_collection(args, items)
     elif command == "batch":

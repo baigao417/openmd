@@ -27,6 +27,19 @@ def _browser_registered() -> bool | None:
     return host_files()[0].is_file()
 
 
+def _kaze_running() -> bool:
+    """Detect the supported Kaze desktop process without reading its settings."""
+    # A running Kaze serves named pipes "kaze-<id>-mcp"; listing them starts no
+    # process, so doctor stays within the hidden-window/managed-wait contract.
+    if os.name != "nt":
+        return False
+    try:
+        pipes = os.listdir(r"\\.\pipe" + "\\")
+    except OSError:
+        return False
+    return any(name.lower().startswith("kaze-") and name.lower().endswith("-mcp") for name in pipes)
+
+
 def _opencli_row() -> tuple[bool | None, str, str]:
     from openmd.runtime.managed_tools import status
 
@@ -45,6 +58,7 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
     asr_ready = bool(asr_probe.get("ready") or asr_probe.get("fallback_available"))
     documents = ((diagnostics.get("optional_profiles") or {}).get("documents") or {})
     formats = diagnostics.get('document_formats') or {}
+    kaze = diagnostics.get("kaze_snapshot") or {}
     native_ready = any(formats.get(suffix, {}).get('available') for suffix in ('pdf', 'docx', 'pptx', 'xlsx'))
     rows: list[tuple[bool | None, str, str]] = [
         (_has("trafilatura") and _has("youtube_transcript_api"), "网页文章、YouTube 有字幕的视频", "pip install --upgrade openmd-cli"),
@@ -57,6 +71,8 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
         ((bool(diagnostics['browser_host']['ready']) if diagnostics['browser_host']['supported'] else None)
          if 'browser_host' in diagnostics else _browser_registered(), "浏览器插件一键保存",
          (diagnostics.get('browser_host') or {}).get('next_action') or "openmd browser-setup"),
+        (bool(kaze.get("available")), "Kaze 已加载页面读取",
+         kaze.get("next_action") or "设置 OPENMD_KAZE=0 可关闭 Kaze 路线"),
     ]
     for tool in ((diagnostics.get("tools") or {}).get("tools") or []):
         rows.append((bool(tool.get("resolved")), f"可选工具 {tool.get('tool')}", "见 docs/tool-integration.md"))
@@ -76,9 +92,23 @@ def capability_rows(payload: dict[str, Any]) -> list[tuple[bool | None, str, str
 def render(payload: dict[str, Any]) -> str:
     rows = [row for row in capability_rows(payload) if row[0] is not None]
     lines = ["Openmd 体检", ""]
+    if _kaze_running():
+        lines += [
+            "  Kaze：请把 Openmd 固定到 Kaze 工具栏，才能看到保存徽标；Kaze 暂不支持 chrome.debugger，",
+            "      B 站字幕等需要调试接口的读取会自动尝试其他路线，无法读取时会提示。",
+        ]
     xiaoyuzhou = (payload.get("profile_diagnostics") or {}).get("xiaoyuzhou_login")
     if xiaoyuzhou:
         lines.append(f"  小宇宙：{xiaoyuzhou}")
+    kaze = (payload.get("profile_diagnostics") or {}).get("kaze_snapshot") or {}
+    if kaze:
+        version = lambda key: kaze.get(key) or "MCP 未提供"
+        lines.append(
+            "  Kaze 组件版本："
+            f"Kaze {version('kaze_version')}；Bridge {version('bridge_version')}；"
+            f"BrowserMCP server {version('server_version')}；协议 {version('protocol_version')}；"
+            f"工具 schema {kaze.get('schema_fingerprint') or '不可用'}"
+        )
     for ready, ability, how in rows:
         lines.append(f"  {'✓' if ready else '·'} {ability}" + ("" if ready else f"\n      → {how}"))
     missing = sum(1 for ready, *_ in rows if not ready)

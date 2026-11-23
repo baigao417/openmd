@@ -11,17 +11,52 @@ import os
 from pathlib import Path
 
 
-def detect(image, folder: Path, threshold: float) -> list[dict]:
+def select_device(requested: str, torch) -> str:
+    if requested not in {"auto", "cpu", "cuda"}:
+        raise ValueError("layout_device_invalid")
+    available = bool(torch.cuda.is_available())
+    if requested == "cuda" and not available:
+        raise RuntimeError("layout_cuda_unavailable")
+    return "cuda:0" if requested == "cuda" or (requested == "auto" and available) else "cpu"
+
+
+def probe_payload(torch, modules: dict, versions: dict, requested: str = "auto") -> dict:
+    if torch is None:
+        return {"schema": "openmd.layout-probe/v1", "ready": False, "modules": modules,
+                "versions": versions, "device": None, "cpu_only": None,
+                "cuda_visible": None, "torch_cuda_build": None,
+                "gpu_name": None, "gpu_memory_total_bytes": None,
+                "gpu_memory_free_bytes": None}
+    device = select_device(requested, torch)
+    cuda_build = getattr(getattr(torch, "version", None), "cuda", None)
+    memory_total = memory_free = None
+    gpu_name = None
+    if device.startswith("cuda"):
+        try:
+            memory_free, memory_total = torch.cuda.mem_get_info(0)
+            gpu_name = torch.cuda.get_device_name(0)
+        except (AttributeError, RuntimeError):
+            pass
+    return {"schema": "openmd.layout-probe/v1", "ready": all(modules.values()), "modules": modules,
+            "versions": versions, "device": device, "cpu_only": device == "cpu",
+            "cuda_visible": bool(torch.cuda.is_available()), "torch_cuda_build": cuda_build,
+            "gpu_name": gpu_name, "gpu_memory_total_bytes": memory_total,
+            "gpu_memory_free_bytes": memory_free}
+
+
+def detect(image, folder: Path, threshold: float, requested_device: str = "auto") -> list[dict]:
     import torch
     import transformers
     from .layout_filter import filter_overlap_boxes
 
-    assert_cpu_only(torch)
-    torch.set_num_threads(4)
+    device = select_device(requested_device, torch)
+    if device == "cpu":
+        torch.set_num_threads(4)
     processor_class = getattr(transformers, "PPDocLayoutV3ImageProcessorFast", transformers.AutoImageProcessor)
     processor = processor_class.from_pretrained(folder, local_files_only=True, trust_remote_code=False)
-    model = transformers.AutoModelForObjectDetection.from_pretrained(folder, local_files_only=True, trust_remote_code=False, torch_dtype=torch.float32).to("cpu").eval()
+    model = transformers.AutoModelForObjectDetection.from_pretrained(folder, local_files_only=True, trust_remote_code=False, torch_dtype=torch.float32).to(device).eval()
     inputs = processor(images=image, return_tensors="pt")
+    inputs = {key: value.to(device) if hasattr(value, "to") else value for key, value in inputs.items()}
     with torch.inference_mode():
         output = model(**inputs)
     result = processor.post_process_object_detection(output, target_sizes=[(image.height, image.width)], threshold=threshold)[0]
@@ -52,35 +87,33 @@ def assert_cpu_only(torch=None) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--input", type=Path)
     parser.add_argument("--model", type=Path)
     parser.add_argument("--result", type=Path)
     parser.add_argument("--threshold", type=float, default=0.5)
     args = parser.parse_args()
-    assert_cpu_only()
     os.environ.update({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "TOKENIZERS_PARALLELISM": "false"})
     if args.probe:
         modules = {name: importlib.util.find_spec(name) is not None for name in ("torch", "transformers", "PIL", "numpy", "torchvision")}
-        cuda_visible = None
+        torch_module = None
         if modules["torch"]:
-            import torch
+            import torch as torch_module
 
-            assert_cpu_only(torch)
-            cuda_visible = torch.cuda.is_available()
         versions = {}
         for name in ("torch", "transformers", "torchvision"):
             try:
                 versions[name] = importlib.metadata.version(name)
             except importlib.metadata.PackageNotFoundError:
                 versions[name] = None
-        print(json.dumps({"schema": "openmd.layout-probe/v1", "ready": all(modules.values()), "modules": modules, "versions": versions, "device": "cpu", "cpu_only": True, "cuda_visible": cuda_visible}))
+        print(json.dumps(probe_payload(torch_module, modules, versions, args.device)))
         return 0
     if args.input is None or args.model is None or args.result is None:
         parser.error("--input, --model and --result required")
     from PIL import Image
 
     with Image.open(args.input) as source:
-        regions = detect(source.convert("RGB"), args.model, args.threshold)
+        regions = detect(source.convert("RGB"), args.model, args.threshold, args.device)
     args.result.write_text(json.dumps({"schema": "openmd.layout/v1", "regions": regions}), encoding="utf-8")
     return 0
 

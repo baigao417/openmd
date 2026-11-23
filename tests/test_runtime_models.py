@@ -395,7 +395,7 @@ def test_models_install_plan_defaults_under_data_directory(monkeypatch, tmp_path
 def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
     from openmd.runtime.recommendations import install_plan
 
-    plan = install_plan("ocr:chain", root=tmp_path / "ocr")
+    plan = install_plan("ocr:chain", root=tmp_path / "ocr", device="cpu")
     assert {item["kind"] for item in plan["downloads"]} == {"ollama", "huggingface"}
     assert {item["model"] for item in plan["downloads"] if item["kind"] == "ollama"} == {
         "ovis3-bf16", "minicpm-ocr-f16"
@@ -424,12 +424,13 @@ def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch,
     target = tmp_path / "layout-runtime"
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
     calls = []
+    monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
     monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
     ))
 
-    receipt = recommendations.install_layout_runtime()
+    receipt = recommendations.install_layout_runtime("cpu")
 
     assert len(calls) == 3
     assert "torch==2.5.1+cpu" in calls[0][0]
@@ -474,13 +475,14 @@ def test_layout_runtime_uses_pre_downloaded_wheelhouse(monkeypatch, tmp_path):
     (wheelhouse / "torch-2.5.1+cpu-cp312.whl").write_bytes(b"pre-downloaded wheel")
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_WHEELHOUSE", str(wheelhouse))
+    monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
     calls = []
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
     monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
     ))
 
-    recommendations.install_layout_runtime()
+    recommendations.install_layout_runtime("cpu")
 
     assert len(calls) == 3
     assert "--no-index" in calls[0][0]

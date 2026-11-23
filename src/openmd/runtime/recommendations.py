@@ -5,6 +5,7 @@ import json
 import hashlib
 import os
 import platform
+import shutil
 from importlib.resources import files
 from pathlib import Path
 import subprocess
@@ -71,7 +72,38 @@ def recommend(machine: dict) -> dict:
         'reason': 'Conservative local baseline. Cell evidence applies only to its named machine and measured task; ASR and other devices remain unverified.'}
 
 
-def install_plan(tier: str, *, root: Path | None = None) -> dict:
+def _nvidia_driver_available() -> bool:
+    executable = shutil.which("nvidia-smi")
+    if not executable:
+        return False
+    try:
+        return subprocess.run([executable, "-L"], capture_output=True, text=True,
+                              check=False, timeout=5).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _layout_runtime_spec(device: str = "auto", *, gpu_driver: bool | None = None) -> dict:
+    if device not in {"auto", "cpu", "cuda"}:
+        raise ValueError("ocr_layout_device_invalid")
+    detected = (_nvidia_driver_available() if gpu_driver is None else gpu_driver) if device == "auto" else device == "cuda"
+    selected = "cuda" if device == "cuda" or (device == "auto" and detected) else "cpu"
+    if selected == "cuda":
+        return {"device": device, "selected_device": selected,
+                "required": ["torch==2.5.1+cu124", "torchvision==0.20.1+cu124",
+                             "transformers==5.13.1", "Pillow==12.3.0", "numpy==2.5.4"],
+                "pytorch_index": "https://download.pytorch.org/whl/cu124",
+                "estimated_download_bytes": 3_300_000_000,
+                "estimated_download": "about 3.1 GB (CUDA-enabled PyTorch and dependencies)"}
+    return {"device": device, "selected_device": selected,
+            "required": ["torch==2.5.1+cpu", "torchvision==0.20.1+cpu",
+                         "transformers==5.13.1", "Pillow==12.3.0", "numpy==2.5.4"],
+            "pytorch_index": "https://download.pytorch.org/whl/cpu",
+            "estimated_download_bytes": 207_000_000,
+            "estimated_download": "about 200 MB (CPU-only PyTorch and dependencies)"}
+
+
+def install_plan(tier: str, *, root: Path | None = None, device: str = "auto") -> dict:
     recommendations = matrix()
     catalog = recommendations['tiers']
     if tier not in catalog:
@@ -91,7 +123,7 @@ def install_plan(tier: str, *, root: Path | None = None) -> dict:
         return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
             'root': str(root), 'downloads': models,
             'estimated_size_bytes': recommendations.get('ocr_chain_estimated_bytes') if tier == 'ocr:chain' else None,
-            'runtime': {'required': ['torch==2.5.1+cpu', 'torchvision==0.20.1+cpu', 'transformers==5.13.1', 'Pillow==12.3.0', 'numpy==2.5.4'], 'install_command': 'openmd models install ocr:chain', 'status': 'separate D-drive CPU venv installed and import-probed by this command'} if needs_layout else None,
+            'runtime': {**_layout_runtime_spec(device), 'install_command': 'openmd models install ocr:chain', 'status': 'separate D-drive venv installed and import-probed by this command'} if needs_layout else None,
             'next_action': 'Review local model and runtime disk use, then confirm installation. Ollama weights use ollama pull; layout weights use resumable Hub snapshots with SHA-256 checks.'}
     return {'schema': 'openmd.model-install-plan/v1', 'tier': tier, 'plan_only': True, 'download_started': False,
         'root': str(root), 'downloads': [{**entry, 'destination': str(root / entry['directory'])} for entry in catalog[tier]],
@@ -145,8 +177,8 @@ def rank_sources(item: dict, *, modelscope_allowed: bool) -> list[tuple[str, flo
                   key=lambda pair: (pair[1] is None, -(pair[1] or 0), order.index(pair[0])))
 
 
-def install_layout_runtime() -> dict:
-    """Install the pinned CPU-only layout worker into an isolated D-drive venv."""
+def install_layout_runtime(device: str = "auto") -> dict:
+    """Install a pinned CPU or CUDA layout worker into an isolated venv."""
     configured = os.environ.get("OPENMD_OCR_LAYOUT_RUNTIME")
     if configured:
         target = Path(configured)
@@ -163,13 +195,18 @@ def install_layout_runtime() -> dict:
     index = os.environ.get("OPENMD_PYPI_INDEX_URL", "https://pypi.tuna.tsinghua.edu.cn/simple")
     cpu_index = os.environ.get("OPENMD_PYTORCH_CPU_INDEX_URL", "https://download.pytorch.org/whl/cpu")
     wheelhouse = Path(os.environ.get("OPENMD_OCR_LAYOUT_WHEELHOUSE") or target.parent / "ocr-layout-wheelhouse")
-    offline = wheelhouse.is_dir() and any(wheelhouse.glob("*.whl"))
+    spec = _layout_runtime_spec(device)
+    selected = spec["selected_device"]
+    marker = "+cu124" if selected == "cuda" else "+cpu"
+    required_wheels = tuple(wheelhouse.glob(f"torch-2.5.1{marker}-*.whl")) if wheelhouse.is_dir() else ()
+    offline = bool(required_wheels and tuple(wheelhouse.glob(f"torchvision-0.20.1{marker}-*.whl")))
     pip_source = ["--no-index", "--find-links", str(wheelhouse)] if offline else []
-    torch_source = pip_source or ["--index-url", cpu_index]
+    torch_index = os.environ.get("OPENMD_PYTORCH_CUDA_INDEX_URL" if selected == "cuda" else "OPENMD_PYTORCH_CPU_INDEX_URL", spec["pytorch_index"])
+    torch_source = pip_source or ["--index-url", torch_index]
     package_source = pip_source or ["--index-url", index]
     commands = [
         [str(python), "-m", "pip", "install", *torch_source,
-         "torch==2.5.1+cpu", "torchvision==0.20.1+cpu"],
+         f"torch==2.5.1{marker}", f"torchvision==0.20.1{marker}"],
         [str(python), "-m", "pip", "install", *package_source,
          "transformers==5.13.1", "pillow==12.3.0", "numpy==2.5.4"],
     ]
@@ -181,18 +218,24 @@ def install_layout_runtime() -> dict:
          "modules={n:importlib.util.find_spec(n) is not None for n in names}; "
          "print(json.dumps({'modules':modules,'cuda_visible':torch.cuda.is_available(),'torch_cuda_build':torch.version.cuda}))"],
         check=True, capture_output=True, text=True,
-        env={**os.environ, "CUDA_VISIBLE_DEVICES": "-1"},
+        env={**os.environ, **({"CUDA_VISIBLE_DEVICES": "-1"} if selected == "cpu" else {})},
     )
     report = json.loads(probe.stdout.strip().splitlines()[-1])
-    if not all(report.get("modules", {}).values()) or report.get("cuda_visible") or report.get("torch_cuda_build"):
+    if not all(report.get("modules", {}).values()):
+        raise RuntimeError("layout_runtime_probe_failed")
+    if selected == "cpu" and (report.get("cuda_visible") or report.get("torch_cuda_build")):
         raise RuntimeError("layout_cpu_runtime_probe_failed")
+    if selected == "cuda" and (not report.get("cuda_visible") or not report.get("torch_cuda_build")):
+        raise RuntimeError("layout_cuda_runtime_probe_failed")
     os.environ["OPENMD_OCR_PYTHON"] = str(python)
-    return {"python": str(python), "probe": report,
-            "verified": "pinned CPU runtime imports; CUDA unavailable"}
+    return {"python": str(python), "device": selected, "probe": report,
+            "verified": f"pinned {selected} runtime imports and device probe"}
+
 
 
 def cmd_models_install(args) -> int:
-    plan = install_plan(args.tier, root=args.root)
+    device = getattr(args, "device", None) or os.environ.get("OPENMD_OCR_LAYOUT_DEVICE", "auto")
+    plan = install_plan(args.tier, root=args.root, device=device)
     if getattr(args, "dry_run", False):
         print(json.dumps(plan, ensure_ascii=True, sort_keys=True))
         return 0
@@ -203,7 +246,9 @@ def cmd_models_install(args) -> int:
                 return 2
             total = plan.get('estimated_size_bytes') or sum(int(item.get('size_bytes', 0)) for item in plan['downloads'])
             size_text = f"约 {total / 1024**3:.1f} GiB（链路合计估算）" if total else "具体体积由 Ollama 下载进度显示"
-            print(f"将准备{size_text}的本地 OCR 模型与版面权重，权重目录：{plan['root']}；并在 D 盘独立 venv 安装版面 CPU runtime。")
+            runtime_spec = plan.get("runtime") or {}
+            runtime_text = (f"layout {runtime_spec.get('selected_device')} runtime 约 {runtime_spec.get('estimated_download')}，安装在 D 盘独立 venv。" if runtime_spec else "")
+            print(f"将准备{size_text}的本地 OCR 模型与版面权重，权重目录：{plan['root']}；{runtime_text}")
             if not getattr(args, "_confirmed", False):
                 answer = input("继续？[y/N] ")
                 if answer.strip().lower() not in {"y", "yes"}:
@@ -256,7 +301,7 @@ def cmd_models_install(args) -> int:
                 receipts.append({'kind': 'huggingface', 'repository': item['repository'], 'destination': str(destination), 'source': source,
                                  'verified': 'pinned file SHA-256', 'files': hashes})
             if plan.get('runtime'):
-                layout_runtime = install_layout_runtime()
+                layout_runtime = install_layout_runtime(device)
             runtime_receipt = ({**plan['runtime'], **(layout_runtime or {})}
                                if plan.get('runtime') else None)
             print(json.dumps({'schema': 'openmd.model-install-receipt/v1', 'tier': args.tier, 'downloads': receipts,

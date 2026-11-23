@@ -18,13 +18,15 @@ class LayoutUnavailable(RuntimeError):
     pass
 
 
-def _run(args: list[str], timeout: float, directory: Path):
+def _run(args: list[str], timeout: float, directory: Path, *, device: str = "cpu"):
     python, _ = layout_runtime()
     if python is None:
         raise LayoutUnavailable("fallback_unavailable: configure ocr_python / OPENMD_OCR_PYTHON")
     environment = worker_environment()
-    # Windows CUDA may treat an empty value as unset. -1 hides every device.
-    environment["CUDA_VISIBLE_DEVICES"] = "-1"
+    if device == "cpu":
+        # Windows CUDA may treat an empty value as unset. -1 hides every device.
+        environment["CUDA_VISIBLE_DEVICES"] = "-1"
+    args = [*args, "--device", device]
     with (directory / "layout.log").open("wb") as log:
         process = owned_popen(worker_command(python, *args, module="openmd.ocr.layout_worker"), cwd=directory, env=environment, stdin=subprocess.DEVNULL, stdout=log, stderr=log, **process_options())
         try:
@@ -49,7 +51,8 @@ def detect_regions(image, config: dict, deadline: float) -> tuple[list[dict], fl
             directory = Path(tmp)
             source, result = directory / "input.png", directory / "result.json"
             image.save(source)
-            _run(["--input", str(source), "--model", str(model), "--result", str(result), "--threshold", str(config["layout_threshold"])], min(config["layout_seconds"], remaining), directory)
+            device = config.get("layout_device", "auto")
+            _run(["--input", str(source), "--model", str(model), "--result", str(result), "--threshold", str(config["layout_threshold"])], min(config["layout_seconds"], remaining), directory, device=device)
             if not result.is_file() or result.stat().st_size > 4 * 1024 * 1024:
                 raise LayoutUnavailable("fallback_unavailable: invalid layout worker result")
             payload = json.loads(result.read_text(encoding="utf-8"))
@@ -74,8 +77,11 @@ def probe_layout() -> dict:
         with owned_temporary_directory(prefix="openmd-layout-probe-") as tmp:
             directory = Path(tmp)
             environment = worker_environment()
-            environment["CUDA_VISIBLE_DEVICES"] = "-1"
-            process = owned_popen(worker_command(python, "--probe", module="openmd.ocr.layout_worker"), cwd=directory, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **process_options())
+            from .config import settings
+            device = settings().get("layout_device", "auto")
+            if device == "cpu":
+                environment["CUDA_VISIBLE_DEVICES"] = "-1"
+            process = owned_popen(worker_command(python, "--probe", "--device", device, module="openmd.ocr.layout_worker"), cwd=directory, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **process_options())
             try:
                 stdout, _ = communicate_interruptibly(process, timeout=15)
             except BaseException:

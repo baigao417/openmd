@@ -22,10 +22,14 @@ def settings() -> dict:
     value.update(overrides)
     value["ovis_model"] = os.getenv("OPENMD_OCR_OVIS_MODEL") or value["ovis_model"]
     value["minicpm_model"] = os.getenv("OPENMD_OCR_MINICPM_MODEL") or value["minicpm_model"]
+    value["layout_device"] = os.getenv("OPENMD_OCR_LAYOUT_DEVICE") or value["layout_device"]
     for key, item in value.items():
         if key == 'engine':
             if item not in {'ocr.chain', 'ocr.ovis3', 'ocr.minicpm', 'ocr.rapidocr'}:
                 raise ValueError('ocr_engine_unknown')
+        elif key == 'layout_device':
+            if item not in {'auto', 'cpu', 'cuda'}:
+                raise ValueError('ocr_layout_device_invalid')
         elif key.endswith("_model"):
             if not isinstance(item, str) or not item.strip() or any(ord(c) < 32 for c in item):
                 raise ValueError(f"ocr_setting_invalid: {key}")

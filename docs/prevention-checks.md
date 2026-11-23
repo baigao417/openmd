@@ -18,6 +18,7 @@
 | Shared semantic surfaces have one owner: extension identity, OpenCLI patches, preferences, process startup, completeness summaries, AI chat titles and safe persisted job receipts | `python -m pytest tests/test_shared_surfaces.py tests/test_runtime_processes.py -q` | I080 |
 | Capability claims come from a fresh-user wheel, not the maintainer checkout: isolated HOME/USERPROFILE/OPENMD_DATA_DIR/OPENMD_CONFIG/model caches, narrow PATH, started outside the source tree, so `out/local-config.json`, hand-placed tokens and cached models cannot mask a broken public fallback | `python scripts/public_parity_check.py --repo <checkout> --output <dir>` before a release; README status follows its receipt | I081 |
 | Source-specific failures reach the user: one owner maps error codes to next steps, shared by the human line and JSON `next_action` | `python -m pytest tests/test_open_source_ux.py -q` | I082 |
+| Tests pass on Windows, macOS and Linux: no monkeypatched `os.name` (WindowsPath crash on POSIX), venv/launcher layouts built for the running OS, drive-letter strings never resolved as absolute paths | CI matrix (3 OS × Python 3.10/3.13) must be green on `main` before a tag; maintainers on Windows run the same commit's full suite under WSL Linux in the post-merge gate, before pushing | I083 |
 
 The gate wrapper validates a separately trusted user authority record and its
 hash. A worker or dispatcher cannot create new user authorization by relabeling

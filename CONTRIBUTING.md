@@ -69,6 +69,11 @@ Before pushing, each command accepts `--check` to confirm nothing is stale. When
 - Build paths with `pathlib`; don't join `\` or `/` by hand, and don't assume fixed locations such as `C:\` or `~/Library`.
 - Design file names for **255 bytes**, not characters: one Chinese character is 3 bytes in UTF-8.
 - Code that only holds on one OS gets an explicit branch, and its tests get a `skipif` with the reason.
+- **Tests must pass on Windows, macOS and Linux** (CI runs all three). These three patterns broke macOS/Linux CI in both 0.3.0 and 0.3.1:
+  - Never monkeypatch `os.name` (including `some_module.os.name`, which is the same `os` module): `pathlib.Path` then builds `WindowsPath` and crashes on macOS/Linux. Patch the module's own platform helper instead, or mark the test `@pytest.mark.skipif(sys.platform != "win32", reason="...")`.
+  - Don't lay out Windows-only files on disk in a test (`Scripts/python.exe`, `.cmd` shims); create the layout for the OS the test runs on, e.g. `"Scripts/python.exe" if os.name == "nt" else "bin/python"`.
+  - Don't feed `"C:/..."` or `"D:/..."` to code that resolves it as an absolute path: on POSIX it is relative. Use `tmp_path`. Drive-letter strings are fine only as opaque data that is compared or redacted.
+  - Developing on Windows: run the suite under WSL before sending a PR (`python scripts/dev_setup.py --no-venv && python -m pytest -q` inside WSL).
 - Don't rely on standard-library behavior of a particular Python minor version (for example, `html.parser` handles malformed HTML differently in 3.10, 3.12 and 3.14).
 
 ### Changes that need an issue first
@@ -181,6 +186,11 @@ Openmd 把看得到、拿不出的内容（链接、本地文件、AI 对话）�
 - 路径用 `pathlib`，不拼接 `\` 或 `/`；不要假设 `C:\`、`~/Library` 之类的固定位置。
 - 文件名长度按 **255 字节**（不是字符）设计：一个汉字在 UTF-8 下占 3 字节。
 - 只在某个系统上成立的代码要显式分支，并给测试加 `skipif`，注明原因。
+- **测试必须在 Windows、macOS、Linux 上都能通过**（CI 三个系统都跑）。下面三种写法在 0.3.0 和 0.3.1 两次弄坏了 macOS/Linux CI：
+  - 不要 monkeypatch `os.name`（包括 `某模块.os.name`，那就是同一个 `os` 模块）：之后 `pathlib.Path` 会构造 `WindowsPath`，在 macOS/Linux 上直接崩溃。改为替换该模块自己的平台判断函数，或给测试加 `@pytest.mark.skipif(sys.platform != "win32", reason="...")`。
+  - 不要在测试里往磁盘上造只属于 Windows 的结构（`Scripts/python.exe`、`.cmd` 启动器）；按测试所在系统造，例如 `"Scripts/python.exe" if os.name == "nt" else "bin/python"`。
+  - 不要把 `"C:/..."`、`"D:/..."` 交给会把它当绝对路径解析的代码：在 POSIX 上它是相对路径。用 `tmp_path`。盘符字符串只能作为只比较、只脱敏的普通数据。
+  - 在 Windows 上开发：提 PR 前在 WSL 里跑一遍全量测试（在 WSL 中执行 `python scripts/dev_setup.py --no-venv && python -m pytest -q`）。
 - 不依赖某个 Python 小版本的标准库行为（例如 `html.parser` 对畸形 HTML 的处理在 3.10 / 3.12 / 3.14 不同）。
 
 ### 哪些改动先开 issue

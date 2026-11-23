@@ -37,3 +37,13 @@ def test_empty_subtitle_retry_is_bounded_and_other_failures_are_not_retried(monk
     provider = OpenCliBilibiliSubtitleProvider(runner=lambda cmd, t: (calls.append(cmd), (1, "", "boom"))[1])
     provider.extract(_request())
     assert len(calls) == 1
+
+
+def test_bilibili_command_runner_injects_registered_loader(monkeypatch):
+    from openmd.backends import bilibili
+
+    captured = {}
+    monkeypatch.setattr(bilibili.shutil, "which", lambda _: "opencli")
+    monkeypatch.setattr(bilibili, "run_interruptibly", lambda command, **kwargs: captured.update(kwargs) or type("Done", (), {"returncode": 0, "stdout": "", "stderr": ""})())
+    assert bilibili._run_command(["opencli", "bilibili", "subtitle", "BV123"], 20) == (0, "", "")
+    assert "--import=data:text/javascript," in captured["env"]["NODE_OPTIONS"]

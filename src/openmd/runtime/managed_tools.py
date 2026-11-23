@@ -452,6 +452,10 @@ def passthrough(args: list[str], *, access: str | None = None) -> int:
         from .ai_chat_loading import detail_loading_environment
 
         env = detail_loading_environment(args[0], args[1])
+    elif len(args) >= 2 and args[:2] == ["bilibili", "subtitle"]:
+        from .ai_chat_loading import detail_loading_environment
+
+        env = detail_loading_environment(args[0], args[1])
     environment = command_environment() if env is None else command_environment(env)
     from .services import OPENMD_BRIDGE_PROFILE_PREFIX, _bridge_profiles
     command = managed_command(args)

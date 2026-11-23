@@ -998,9 +998,13 @@ def _default_fetch(url: str, params: dict[str, str], timeout: int) -> tuple[int,
 
 
 def _run_command(command: list[str], timeout: int) -> tuple[int, str, str]:
+    from openmd.runtime.ai_chat_loading import detail_loading_environment
+
     resolved = shutil.which(command[0]) or command[0]
+    env = detail_loading_environment("bilibili", "subtitle") if command[1:3] == ["bilibili", "subtitle"] else None
     completed = run_interruptibly(
         [resolved, *command[1:]],
+        env=env,
         capture_output=True,
         text=True,
         timeout=timeout,

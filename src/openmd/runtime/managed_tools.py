@@ -443,7 +443,7 @@ def command_access(args: list[str]) -> str:
     return "unknown"
 
 
-def passthrough(args: list[str]) -> int:
+def passthrough(args: list[str], *, access: str | None = None) -> int:
     """Inherit stdout/stderr directly, retaining the original exit status."""
     from .opencli_adapters import prepare_bundled_plugins
     prepare_bundled_plugins()
@@ -453,4 +453,17 @@ def passthrough(args: list[str]) -> int:
 
         env = detail_loading_environment(args[0], args[1])
     environment = command_environment() if env is None else command_environment(env)
-    return run_interruptibly(managed_command(args), env=environment, stdin=subprocess.DEVNULL).returncode
+    from .services import OPENMD_BRIDGE_PROFILE_PREFIX, _bridge_profiles
+    command = managed_command(args)
+    from .services import _opencli_launch
+
+    retry_profiles = []
+    if access == "read" and not environment.get("OPENCLI_PROFILE") and _opencli_launch(command, environment) is not None:
+        retry_profiles = sorted(profile for profile in _bridge_profiles() if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX))
+    if access == "read" and len(retry_profiles) > 1:
+        completed = run_interruptibly(command, env=environment, stdin=subprocess.DEVNULL,
+                                      capture_output=True, text=True, encoding="utf-8", errors="replace")
+        sys.stdout.write(completed.stdout or "")
+        sys.stderr.write(completed.stderr or "")
+        return completed.returncode
+    return run_interruptibly(command, env=environment, stdin=subprocess.DEVNULL).returncode

@@ -133,8 +133,10 @@ def owned_popen(*args, **kwargs):
             kwargs["env"] = command_environment(kwargs.get("env"))
     ensure_opencli_daemon(command, env=kwargs.get("env"), cwd=kwargs.get("cwd"))
     selected = bridge_profile_env(command, kwargs.get("env"))
+    selected_profile = None
     if selected is not None:
         kwargs["env"] = selected
+        selected_profile = selected.get("OPENCLI_PROFILE")
     if os.name == "nt":
         from ._windows_job import JobPopen
 
@@ -146,6 +148,7 @@ def owned_popen(*args, **kwargs):
             raise ValueError("Owned children must use their new session's process group")
         process = subprocess.Popen(*args, **kwargs)
         process._openmd_owner = _ProcessGroup(process.pid)
+    process._openmd_bridge_profile = selected_profile
     try:
         note_process_owner(process)
     except BaseException:
@@ -262,8 +265,28 @@ def communicate_interruptibly(process: subprocess.Popen, timeout: float | None =
             terminate_quietly(process)
 
 
+def _run_interruptibly_once(popenargs, *, input, timeout, kwargs):
+    process = owned_popen(*popenargs, **kwargs)
+    try:
+        stdout, stderr = communicate_interruptibly(process, timeout, input=input)
+        completed = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
+        completed.openmd_bridge_profile = getattr(process, "_openmd_bridge_profile", None)
+        return completed
+    except subprocess.TimeoutExpired as exc:
+        exc.openmd_bridge_profile = getattr(process, "_openmd_bridge_profile", None)
+        raise
+    finally:
+        terminate_quietly(process)
+
+
+def _output_text(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
+
+
 def run_interruptibly(*popenargs, input=None, capture_output=False, timeout=None, check=False, **kwargs):
-    """subprocess.run contract with short waits and owned-tree cleanup on cancellation/timeout."""
+    """Run an owned child; a read-only OpenCLI bridge read may switch profile once on browser errors."""
     if input is not None:
         if kwargs.get("stdin") is not None:
             raise ValueError("stdin and input arguments may not both be used.")
@@ -272,14 +295,56 @@ def run_interruptibly(*popenargs, input=None, capture_output=False, timeout=None
         if kwargs.get("stdout") is not None or kwargs.get("stderr") is not None:
             raise ValueError("stdout and stderr arguments may not be used with capture_output.")
         kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    process = owned_popen(*popenargs, **kwargs)
+    command = popenargs[0] if popenargs else kwargs.get("args")
+    initial_env = kwargs.get("env")
+    base_env = os.environ if initial_env is None else initial_env
+    explicit_profile = bool(base_env.get("OPENCLI_PROFILE"))
     try:
-        stdout, stderr = communicate_interruptibly(process, timeout, input=input)
-        if check and process.returncode:
-            raise subprocess.CalledProcessError(process.returncode, process.args, output=stdout, stderr=stderr)
-        return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
-    finally:
-        terminate_quietly(process)
+        result = _run_interruptibly_once(popenargs, input=input, timeout=timeout, kwargs=dict(kwargs))
+    except subprocess.TimeoutExpired as exc:
+        from .services import is_browser_layer_failure, next_openmd_profile_for_retry
+
+        error_text = _output_text(exc.stdout) + "\n" + _output_text(exc.stderr)
+        browser_failure = is_browser_layer_failure(error_text)
+        profiles = []
+        if not explicit_profile and browser_failure:
+            from .services import _bridge_profiles, OPENMD_BRIDGE_PROFILE_PREFIX
+
+            profiles = sorted(profile for profile in _bridge_profiles() if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX))
+        current_profile = getattr(exc, "openmd_bridge_profile", None)
+        if current_profile is None and profiles:
+            current_profile = profiles[0]
+        next_profile = (next_openmd_profile_for_retry(command, base_env, current_profile, explicit_profile=explicit_profile)
+                        if browser_failure and current_profile else None)
+        if next_profile is None:
+            raise
+        retry_kwargs = dict(kwargs)
+        retry_kwargs["env"] = {**base_env, "OPENCLI_PROFILE": next_profile}
+        result = _run_interruptibly_once(popenargs, input=input, timeout=timeout, kwargs=retry_kwargs)
+    else:
+        from .services import is_browser_layer_failure, next_openmd_profile_for_retry
+
+        error_text = _output_text(result.stderr)
+        if result.returncode:
+            error_text = _output_text(result.stdout) + "\n" + error_text
+        browser_failure = is_browser_layer_failure(error_text)
+        profiles = []
+        if not explicit_profile and browser_failure:
+            from .services import _bridge_profiles, OPENMD_BRIDGE_PROFILE_PREFIX
+
+            profiles = sorted(profile for profile in _bridge_profiles() if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX))
+        current_profile = getattr(result, "openmd_bridge_profile", None)
+        if current_profile is None and profiles:
+            current_profile = profiles[0]
+        next_profile = (next_openmd_profile_for_retry(command, base_env, current_profile, explicit_profile=explicit_profile)
+                        if browser_failure and current_profile else None)
+        if next_profile is not None:
+            retry_kwargs = dict(kwargs)
+            retry_kwargs["env"] = {**base_env, "OPENCLI_PROFILE": next_profile}
+            result = _run_interruptibly_once(popenargs, input=input, timeout=timeout, kwargs=retry_kwargs)
+    if check and result.returncode:
+        raise subprocess.CalledProcessError(result.returncode, result.args, output=result.stdout, stderr=result.stderr)
+    return result
 
 
 def terminate_quietly(process: subprocess.Popen, *, wait_s: float = 2) -> None:

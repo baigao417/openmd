@@ -37,7 +37,7 @@ if (openmdDebuggerAvailable) initialize();`
     void (async () => {` → `if (msg?.type === "getStatus") {
     if (!openmdDebuggerAvailable) { sendResponse({connected:false,reconnecting:false,contextId:null,extensionVersion:OPENMD_BRIDGE_VERSION,daemonVersion:null}); return false; }
     void (async () => {`
-- P-C/P-D owned blank-first muted window; offscreen/reuse/existing-window strategies: `  const win = await chrome.windows.create({
+- P-C/P-D owned blank-first muted window; minimized/reuse/existing-window strategies: `  const win = await chrome.windows.create({
     url: startUrl,
     focused: mode === "foreground",
     width: 1280,
@@ -183,6 +183,13 @@ async function handleCommand(cmd) {
     openmdOwnerPid: session.openmdOwnerPid ?? openmdOptions.ownerPid`
 - Persist controller identity across service worker suspension: `windowRole: session.windowRole,` → `windowRole: session.windowRole,
       openmdOwnerPid: session.openmdOwnerPid,`
+- Openmd owned background windows start minimized: `  const win = await chrome.windows.create({
+    url: "about:blank", focused: mode === "foreground", width:1280, height:900, type:"normal",
+    ...(mode !== "foreground" && openmdOptions.windowStrategy === "offscreen-reuse" ? {left: -32000, top: -32000} : {})
+  });` → `  const windowOptions = mode === "foreground"
+    ? {url:"about:blank", focused:true, width:1280, height:900, type:"normal"}
+    : {url:"about:blank", focused:false, state:"minimized", type:"normal"};
+  const win = await chrome.windows.create(windowOptions);`
 - import the fixed X page reader into the Browser Bridge module: `const CHROME_METHODS = {` → `import { openmdXReadPage } from "../../x_browser_main.js";
 const CHROME_METHODS = {`
 - allow only the fixed X read handler in an already-open X tab: `async function callChrome(method, args, protectedTabs, protectedGroups) {

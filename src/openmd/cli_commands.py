@@ -61,7 +61,7 @@ def cmd_opencli(args) -> int:
     if access != "read" and not allow_write:
         print("opencli_write_not_allowed: command access is write or unknown; use --allow-write", file=sys.stderr)
         return 2
-    return managed_tools.passthrough(argv)
+    return managed_tools.passthrough(argv, access=access)
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:

@@ -348,7 +348,7 @@ def test_host_package_failure_warns_once(tmp_path, monkeypatch, capsys):
     (["openmd-a1b2c3d4"], None, None),   # single bridge: opencli picks it itself
     (["x8k2m4pq"], None, None),                 # only the standalone OpenCLI extension
     (["openmd-a1b2c3d4", "x8k2m4pq"], "work", None),
-    (["openmd-a1b2c3d4", "openmd-e5f6g7h8", "x8k2m4pq"], None, "openmd-profile-conflict"),
+    (["openmd-z9y8x7w6", "openmd-a1b2c3d4", "x8k2m4pq"], None, "openmd-a1b2c3d4"),
 ])
 def test_bridge_profile_selection(monkeypatch, profiles, preset, expected) -> None:
     from openmd.runtime import services
@@ -434,17 +434,179 @@ def test_doctor_adds_kaze_extension_guidance_when_kaze_is_running(monkeypatch):
     text = doctor_view.render({"profile_diagnostics": {}})
     assert "固定到 Kaze 工具栏" in text
     assert "chrome.debugger" in text
-    assert "当前只使用 Chrome 与 Kaze 时，该 profile 来自 Chrome" in text
+    assert "profile 来自 Chrome" not in text
 
 
-def test_doctor_reports_opencli_profile_conflict_with_kaze(monkeypatch):
+def test_doctor_does_not_report_conflict_for_multiple_profiles(monkeypatch):
     from openmd import doctor_view
 
     monkeypatch.setattr(doctor_view, "_kaze_running", lambda: True)
     monkeypatch.setattr(doctor_view, "_openmd_bridge_profiles", lambda: ["openmd-a1b2c3d4", "openmd-e5f6g7h8"])
     text = doctor_view.render({"profile_diagnostics": {}})
-    assert "浏览器桥接 profile 冲突" in text
-    assert "仅保留 Chrome" in text
+    assert "profile 冲突" not in text
+    assert "该 profile 来自 Chrome" not in text
+
+
+def test_doctor_prompts_only_when_no_bridge_profile_exists(monkeypatch):
+    from openmd import doctor_view
+
+    monkeypatch.setattr(doctor_view, "_kaze_running", lambda: True)
+    monkeypatch.setattr(doctor_view, "_openmd_bridge_profiles", lambda: [])
+    text = doctor_view.render({"profile_diagnostics": {}})
+    assert "未检测到 debugger 可用的浏览器桥接 profile" in text
+
+
+@pytest.mark.parametrize(("message", "expected"), [
+    ("Pre-navigation to https://example.test failed: Browser navigate command timed out after 120s", True),
+    ("chrome.windows.create failed: Invalid value for state", True),
+    ("Invalid value for state", True),
+    ("openmd_chrome_bridge_unavailable: profile unavailable", True),
+    ("Could not establish connection. Receiving end does not exist. debugger attach failed", True),
+    ("Another debugger is already attached", True),
+    ("EMPTY_RESULT: no subtitles found", False),
+    ("login_required: sign in to continue", False),
+    ("Page not found", False),
+])
+def test_bridge_retry_classifier_distinguishes_browser_and_content_errors(message, expected):
+    from openmd.runtime.services import is_browser_layer_failure
+
+    assert is_browser_layer_failure(message) is expected
+
+
+def test_bridge_retry_selects_only_next_profile_for_registered_read_command(monkeypatch):
+    from openmd.runtime import managed_tools, services
+
+    profiles = ["openmd-z9y8x7w6", "openmd-a1b2c3d4", "openmd-m4n5o6p7"]
+    monkeypatch.setattr(services, "_bridge_profiles", lambda timeout=1.0: profiles)
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: (["node", "main.js"], ["node", "daemon.js"]))
+    monkeypatch.setattr(managed_tools, "command_access", lambda args: "read" if args == ["bilibili", "subtitle", "BV123"] else "write")
+
+    command = ["node", "C:/node_modules/@jackwener/opencli/dist/src/main.js", "bilibili", "subtitle", "BV123"]
+    retry = services.next_openmd_profile_for_retry(command, {"PATH": "x", "OPENCLI_PROFILE": "openmd-a1b2c3d4"}, "openmd-a1b2c3d4")
+    assert retry == "openmd-m4n5o6p7"
+    assert services.next_openmd_profile_for_retry(command, {"PATH": "x", "OPENCLI_PROFILE": profiles[0]}, profiles[0], explicit_profile=True) is None
+
+
+def test_bridge_retry_refuses_write_or_unknown_commands(monkeypatch):
+    from openmd.runtime import managed_tools, services
+
+    monkeypatch.setattr(services, "_bridge_profiles", lambda timeout=1.0: ["openmd-a1b2c3d4", "openmd-e5f6g7h8"])
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: (["node", "main.js"], ["node", "daemon.js"]))
+    monkeypatch.setattr(managed_tools, "command_access", lambda args: "write" if args[-1] == "publish" else "unknown")
+    command = ["node", "C:/node_modules/@jackwener/opencli/dist/src/main.js", "site", "publish"]
+    assert services.next_openmd_profile_for_retry(command, {"PATH": "x", "OPENCLI_PROFILE": "openmd-a1b2c3d4"}, "openmd-a1b2c3d4") is None
+    assert services.next_openmd_profile_for_retry(command, {"PATH": "x", "OPENCLI_PROFILE": "openmd-a1b2c3d4"}, "openmd-a1b2c3d4") is None
+
+
+def test_opencli_passthrough_captures_read_output_for_silent_retry(monkeypatch, capsys):
+    import subprocess
+    from openmd.runtime import managed_tools, opencli_adapters, services
+
+    monkeypatch.setattr(opencli_adapters, "prepare_bundled_plugins", lambda: None)
+    monkeypatch.setattr(managed_tools, "command_access", lambda args: "read")
+    monkeypatch.setattr(managed_tools, "command_environment", lambda env=None: {"PATH": "x"})
+    monkeypatch.setattr(managed_tools, "managed_command", lambda args: ["node", "opencli.js", *args])
+    monkeypatch.setattr(services, "_bridge_profiles", lambda timeout=1.0: ["openmd-a1b2c3d4", "openmd-e5f6g7h8"])
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: (["node", "main.js"], ["node", "daemon.js"]))
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(command, 0, "read result", "")
+
+    monkeypatch.setattr(managed_tools, "run_interruptibly", run)
+    assert managed_tools.passthrough(["bilibili", "subtitle", "BV123"], access="read") == 0
+    assert calls[0]["capture_output"] is True
+    assert capsys.readouterr().out == "read result"
+
+
+@pytest.mark.parametrize(("failure", "access", "expected_calls"), [
+    ("Pre-navigation to https://example.test failed: Browser navigate command timed out after 120s", "read", 2),
+    ("EMPTY_RESULT: subtitles are unavailable", "read", 1),
+    ("chrome.windows.create failed: Invalid value for state", "write", 1),
+])
+def test_readonly_opencli_retries_only_browser_layer_failures(monkeypatch, failure, access, expected_calls):
+    import subprocess
+    from openmd.runtime import interpreters, managed_tools, services
+
+    profiles = ["openmd-z9y8x7w6", "openmd-a1b2c3d4"]
+    monkeypatch.setattr(services, "_bridge_profiles", lambda timeout=1.0: profiles)
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: (["node", "main.js"], ["node", "daemon.js"]))
+    monkeypatch.setattr(managed_tools, "command_access", lambda args: access)
+    calls = []
+
+    def run_once(popenargs, *, input, timeout, kwargs):
+        command = popenargs[0]
+        selected = services.bridge_profile_env(command, kwargs.get("env")) or {}
+        profile = selected.get("OPENCLI_PROFILE", (kwargs.get("env") or {}).get("OPENCLI_PROFILE"))
+        calls.append(profile)
+        if len(calls) == 1:
+            completed = subprocess.CompletedProcess(command, 1, "", failure)
+        else:
+            completed = subprocess.CompletedProcess(command, 0, "ok", "")
+        completed.openmd_bridge_profile = profile or "openmd-a1b2c3d4"
+        return completed
+
+    monkeypatch.setattr(interpreters, "_run_interruptibly_once", run_once)
+    command = ["node", "C:/node_modules/@jackwener/opencli/dist/src/main.js", "bilibili", "subtitle", "BV123"]
+    result = interpreters.run_interruptibly(command, capture_output=True, env={"PATH": "x"})
+    assert len(calls) == expected_calls
+    if expected_calls == 2:
+        assert calls == ["openmd-a1b2c3d4", "openmd-z9y8x7w6"]
+    assert result.returncode == (0 if expected_calls == 2 else 1)
+
+
+def test_readonly_opencli_retries_browser_navigation_timeout_once(monkeypatch):
+    import subprocess
+    from openmd.runtime import interpreters, managed_tools, services
+
+    monkeypatch.setattr(services, "_bridge_profiles", lambda timeout=1.0: ["openmd-a1b2c3d4", "openmd-e5f6g7h8"])
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: (["node", "main.js"], ["node", "daemon.js"]))
+    monkeypatch.setattr(managed_tools, "command_access", lambda args: "read")
+    calls = []
+
+    def run_once(popenargs, *, input, timeout, kwargs):
+        calls.append((kwargs.get("env") or {}).get("OPENCLI_PROFILE"))
+        if len(calls) == 1:
+            error = subprocess.TimeoutExpired(popenargs[0], timeout, output=b"Pre-navigation failed: Browser navigate command timed out")
+            error.openmd_bridge_profile = "openmd-a1b2c3d4"
+            raise error
+        return subprocess.CompletedProcess(popenargs[0], 0, "ok", "")
+
+    monkeypatch.setattr(interpreters, "_run_interruptibly_once", run_once)
+    command = ["node", "C:/node_modules/@jackwener/opencli/dist/src/main.js", "bilibili", "subtitle", "BV123"]
+    result = interpreters.run_interruptibly(command, capture_output=True, env={"PATH": "x"})
+    assert calls == [None, "openmd-e5f6g7h8"]
+    assert result.returncode == 0
+
+
+def test_successful_content_that_mentions_browser_error_does_not_retry(monkeypatch):
+    import subprocess
+    from openmd.runtime import interpreters, services
+
+    monkeypatch.setattr(services, "_bridge_profiles", lambda timeout=1.0: ["openmd-a1b2c3d4", "openmd-e5f6g7h8"])
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: (["node", "main.js"], ["node", "daemon.js"]))
+    calls = []
+
+    def run_once(popenargs, *, input, timeout, kwargs):
+        calls.append(1)
+        completed = subprocess.CompletedProcess(popenargs[0], 0, "Article: debugger attach failed is discussed here", "")
+        completed.openmd_bridge_profile = "openmd-a1b2c3d4"
+        return completed
+
+    monkeypatch.setattr(interpreters, "_run_interruptibly_once", run_once)
+    command = ["node", "C:/node_modules/@jackwener/opencli/dist/src/main.js", "bilibili", "subtitle", "BV123"]
+    result = interpreters.run_interruptibly(command, capture_output=True, env={"PATH": "x"})
+    assert calls == [1]
+    assert result.returncode == 0
+
+
+def test_owned_window_background_uses_minimized_state_and_foreground_stays_visible():
+    bridge = (Path(__file__).resolve().parents[1] / "src/openmd/browser_extension/vendor/opencli-bridge/background.js").read_text(encoding="utf-8")
+    assert '{url:"about:blank", focused:false, state:"minimized", type:"normal"}' in bridge
+    assert '{url:"about:blank", focused:true, width:1280, height:900, type:"normal"}' in bridge
+    assert "left: -32000" not in bridge
+    assert "top: -32000" not in bridge
 
 
 @pytest.mark.parametrize("script", ["dev_setup.py", "vendor_opencli_bridge.py"])

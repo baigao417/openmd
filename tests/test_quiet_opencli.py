@@ -94,7 +94,8 @@ def test_generated_owned_lifecycle():
     assert "if (adapterPersistent) return IDLE_TIMEOUT_NONE" not in bridge
     assert "openmdMuteOwnedTab" in bridge
     assert "openmd-cleanup-orphans" in bridge
-    assert "left: -32000" in bridge
+    assert 'state:"minimized"' in bridge
+    assert "left: -32000" not in bridge
     assert "openmdOptions.windowStrategy" in bridge
     release = bridge.split('async function releaseLease(')[1].split('async function reconcileTargetLeaseRegistry')[0]
     assert "parkIdleInteractiveTab" not in release
@@ -112,6 +113,20 @@ def test_passthrough_blocks_write(monkeypatch, capsys):
     monkeypatch.setattr(managed_tools, "passthrough", run)
     assert cmd_opencli(Namespace(opencli_args=["twitter", "post", "hello"])) == 2
     run.assert_not_called()
+
+
+def test_passthrough_receives_registered_access_level(monkeypatch):
+    from openmd.cli_commands import cmd_opencli
+    from argparse import Namespace
+
+    monkeypatch.setattr(managed_tools, "ensure_opencli", lambda: "managed")
+    monkeypatch.setattr(managed_tools, "command_access", lambda args: "read")
+    from openmd.runtime import opencli_adapters
+    monkeypatch.setattr(opencli_adapters, "prepare_bundled_plugins", lambda: [])
+    run = Mock(return_value=0)
+    monkeypatch.setattr(managed_tools, "passthrough", run)
+    assert cmd_opencli(Namespace(opencli_args=["bilibili", "subtitle", "BV123"])) == 0
+    run.assert_called_once_with(["bilibili", "subtitle", "BV123"], access="read")
 
 
 @pytest.mark.parametrize("payload", [None, {"daemonVersion": "2.0.3"}, {"daemonVersion": "0.9.0"}])
@@ -266,7 +281,7 @@ def test_all_owned_creation_paths_use_blank_then_mute():
     assert source.count("chrome.tabs.create(") == 1
     assert source.count("chrome.windows.create(") == 1
     helper = source.split("async function openmdCreateOwnedTab(")[1].split("async function openmdControl(")[0]
-    assert helper.count('url: "about:blank"') == 2
+    assert helper.count('url: "about:blank"') == 1
     assert helper.count("await openmdMuteOwnedTab(") == 2
 
 

@@ -50,7 +50,7 @@ def test_ollama_create_uses_bundled_modelfile_and_reads_back_expected_digests(tm
         return show_miss if sum(row[0][1] == "show" for row in calls) < 3 else show_match
 
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr("openmd.runtime.recommendations.subprocess.run", run)
+        monkeypatch.setattr("openmd.runtime.recommendations.run_interruptibly", run)
         verified, seconds = _create_gguf_model("ollama.exe", item, tmp_path, hashes)
 
     assert verified == "ollama create and model/projector SHA-256 readback"
@@ -60,6 +60,12 @@ def test_ollama_create_uses_bundled_modelfile_and_reads_back_expected_digests(tm
     assert staged.is_file()
     assert "PARAMETER num_ctx 8192" in staged.read_text(encoding="utf-8")
     assert create_call[1]["cwd"] == tmp_path
+    assert create_call[1]["timeout"] == 4 * 60 * 60
+    assert "capture_output" not in create_call[1]
+    assert "creationflags" in create_call[1] or create_call[1].get("start_new_session") is True
+    show_call = next(row for row in calls if row[0][1] == "show")
+    assert show_call[1]["timeout"] == 60
+    assert show_call[1]["capture_output"] is True
 
 
 def test_existing_ollama_tag_with_matching_digest_skips_create(tmp_path, monkeypatch):
@@ -72,10 +78,13 @@ def test_existing_ollama_tag_with_matching_digest_skips_create(tmp_path, monkeyp
         stdout=f"FROM /models/blobs/sha256-{hashes['model.gguf']}\nPARAMETER num_ctx 8192\nPARAMETER temperature 0\n",
         stderr="",
     ))
-    monkeypatch.setattr(recommendations.subprocess, "run", run)
+    monkeypatch.setattr(recommendations, "run_interruptibly", run)
 
     verified, seconds = recommendations._create_gguf_model("ollama.exe", item, tmp_path, hashes)
 
     assert verified == "existing_model_digest_matches"
     assert seconds == 0
     assert run.call_count == 1
+    assert run.call_args.kwargs["timeout"] == 60
+    assert run.call_args.kwargs["capture_output"] is True
+    assert "creationflags" in run.call_args.kwargs or run.call_args.kwargs.get("start_new_session") is True

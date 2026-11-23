@@ -90,7 +90,7 @@ def test_cuda_runtime_installer_keeps_gpu_visible_and_uses_cu124(monkeypatch, tm
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
     calls = []
-    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+    monkeypatch.setattr(recommendations, "run_interruptibly", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":true,"torch_cuda_build":"12.4"}\n')
     ))
     monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: True)

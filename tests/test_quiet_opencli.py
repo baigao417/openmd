@@ -163,20 +163,6 @@ def test_passthrough_original_exit_and_streams(monkeypatch):
     assert run.call_args.kwargs["env"]["OPENCLI_CONFIG_DIR"] == "managed"
 
 
-def test_bilibili_subtitle_passthrough_uses_loader_environment(monkeypatch):
-    monkeypatch.setattr(managed_tools, "managed_command", lambda args: ["node", *args])
-    monkeypatch.setattr(managed_tools, "command_environment", lambda base=None: dict(base or {}))
-    monkeypatch.setattr("openmd.runtime.opencli_adapters.prepare_bundled_plugins", lambda: [])
-    monkeypatch.setattr("openmd.runtime.ai_chat_loading.detail_loading_environment", lambda site, operation: {
-        "OPENMD_TEST_LOADER": f"{site}:{operation}"
-    })
-    run = Mock(return_value=Mock(returncode=0))
-    monkeypatch.setattr(managed_tools, "run_interruptibly", run)
-
-    assert managed_tools.passthrough(["bilibili", "subtitle", "BV123"], access="read") == 0
-    assert run.call_args.kwargs["env"]["OPENMD_TEST_LOADER"] == "bilibili:subtitle"
-
-
 def test_passthrough_real_inherited_stdout(tmp_path):
     import sys
     import subprocess

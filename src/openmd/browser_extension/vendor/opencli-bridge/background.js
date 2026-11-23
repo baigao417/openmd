@@ -959,11 +959,11 @@ async function getCurrentContextId() {
       if (!local) return currentContextId;
       const raw = await local.get(CONTEXT_ID_KEY);
       const existing = raw[CONTEXT_ID_KEY];
-      if (typeof existing === "string" && existing.trim()) {
+      if (typeof existing === "string" && existing.startsWith("openmd-")) {
         currentContextId = existing.trim();
         return currentContextId;
       }
-      const generated = "openmd"; // Openmd patch: fixed Browser Bridge profile id
+      const generated = "openmd-" + generateContextId(); // Openmd: unique browser bridge profile
       await local.set({ [CONTEXT_ID_KEY]: generated });
       currentContextId = generated;
       return currentContextId;
@@ -1215,7 +1215,7 @@ function getLeaseLifecycle(key, kind) {
   return getSurfaceFromKey(key) === "browser" ? "persistent" : "ephemeral";
 }
 function getOwnedWindowRole(key) {
-  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";
+  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || !currentContextId.startsWith("openmd-")) ? "interactive" : "automation";
 }
 function getWindowRole(key, ownership) {
   return ownership === "borrowed" ? "borrowed-user" : getOwnedWindowRole(key);
@@ -1790,9 +1790,10 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
   }
   await persistRuntimeState();
 });
+const openmdDebuggerAvailable = ["attach", "detach", "sendCommand", "getTargets"].every(method => typeof chrome.debugger?.[method] === "function") && typeof chrome.debugger?.onEvent?.addListener === "function" && typeof chrome.debugger?.onDetach?.addListener === "function";
 let initialized = false;
 function initialize() {
-  if (initialized) return;
+  if (!openmdDebuggerAvailable || initialized) return;
   initialized = true;
   chrome.alarms.create("keepalive", { periodInMinutes: 0.5 });
   registerListeners();
@@ -1819,13 +1820,14 @@ function initialize() {
   console.log("[opencli] OpenCLI extension initialized");
 }
 chrome.runtime.onInstalled.addListener(() => {
-  initialize();
+  if (openmdDebuggerAvailable) initialize();
 });
 chrome.runtime.onStartup.addListener(() => {
-  initialize();
+  if (openmdDebuggerAvailable) initialize();
 });
-initialize();
+if (openmdDebuggerAvailable) initialize();
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (!openmdDebuggerAvailable) return;
   await workerReady;
   if (alarm.name === "keepalive") void connect();
   const leaseKey = leaseKeyFromAlarmName(alarm.name);
@@ -1838,6 +1840,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "getStatus") {
+    if (!openmdDebuggerAvailable) { sendResponse({connected:false,reconnecting:false,contextId:null,extensionVersion:OPENMD_BRIDGE_VERSION,daemonVersion:null}); return false; }
     void (async () => {
       const contextId = await getCurrentContextId();
       const connected = ws?.readyState === WebSocket.OPEN;
@@ -1911,7 +1914,7 @@ async function openmdCreateOwnedWindow(startUrl, mode) {
   return win;
 }
 async function openmdControl(cmd) {
-  if (currentContextId !== "openmd" || cmd.contextId !== "openmd") throw new CommandFailure("openmd_profile_required", "Cleanup is restricted to the openmd profile");
+  if (!currentContextId.startsWith("openmd-") || cmd.contextId !== currentContextId) throw new CommandFailure("openmd_profile_required", "Cleanup is restricted to the openmd profile");
   if (cmd.action === "openmd-configure") {
     if (Number.isFinite(cmd.idleMs) && cmd.idleMs >= 1000 && cmd.idleMs <= 86400000) openmdOptions.idleMs = cmd.idleMs;
     openmdOptions.sound = cmd.sound === true;
@@ -1920,7 +1923,7 @@ async function openmdControl(cmd) {
     if (["offscreen-reuse", "reuse", "existing-window"].includes(cmd.windowStrategy)) openmdOptions.windowStrategy = cmd.windowStrategy;
     return {id:cmd.id, ok:true, data:{...openmdOptions}};
   }
-  if (cmd.action === "openmd-owned-leases") return {id:cmd.id, ok:true, data:[...automationSessions.values()].filter(s=>s.owned && s.contextId === "openmd").map(s=>({ownerPid:s.openmdOwnerPid}))};
+  if (cmd.action === "openmd-owned-leases") return {id:cmd.id, ok:true, data:[...automationSessions.values()].filter(s=>s.owned && s.contextId.startsWith("openmd-")).map(s=>({ownerPid:s.openmdOwnerPid}))};
   if (cmd.action === "openmd-begin-job") {
     if (!Number.isInteger(cmd.ownerPid) || cmd.ownerPid <= 0) throw new CommandFailure("invalid_owner", "Missing job identity");
     const key = getLeaseKey("openmd-job:" + cmd.ownerPid, "adapter");
@@ -1932,7 +1935,7 @@ async function openmdControl(cmd) {
   const before = new Set((await chrome.windows.getAll()).map(w=>w.id));
   const active = new Set(Array.isArray(cmd.activeSessions) ? cmd.activeSessions : []);
   for (const [key, lease] of [...automationSessions]) {
-    if (!lease.owned || lease.contextId !== "openmd" || active.has(lease.session) || (activeCommandCounts.get(key) ?? 0) > 0) continue;
+    if (!lease.owned || !lease.contextId.startsWith("openmd-") || active.has(lease.session) || (activeCommandCounts.get(key) ?? 0) > 0) continue;
     // A multi-step browser lease with an unexpired deadline is still in use.
     if (cmd.action === "openmd-end-job") {
       if (lease.openmdOwnerPid !== cmd.ownerPid) continue;
@@ -1943,7 +1946,7 @@ async function openmdControl(cmd) {
   }
   const after = new Set((await chrome.windows.getAll()).map(w=>w.id));
   windowsClosed = [...before].filter(id=>!after.has(id)).length;
-  const remainingOwned = [...automationSessions.values()].filter(s=>s.owned && s.contextId === "openmd" && (cmd.action !== "openmd-end-job" || s.openmdOwnerPid === cmd.ownerPid)).length;
+  const remainingOwned = [...automationSessions.values()].filter(s=>s.owned && s.contextId.startsWith("openmd-") && (cmd.action !== "openmd-end-job" || s.openmdOwnerPid === cmd.ownerPid)).length;
   return {id:cmd.id, ok:true, data:{tabsClosed, windowsClosed, failures, remainingOwned}};
 }
 

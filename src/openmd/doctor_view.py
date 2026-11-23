@@ -40,6 +40,13 @@ def _kaze_running() -> bool:
     return any(name.lower().startswith("kaze-") and name.lower().endswith("-mcp") for name in pipes)
 
 
+def _openmd_bridge_profiles() -> list[str]:
+    """Read connected Openmd bridge IDs from the local daemon only."""
+    from openmd.runtime.services import OPENMD_BRIDGE_PROFILE_PREFIX, _bridge_profiles
+
+    return [profile for profile in _bridge_profiles() if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX)]
+
+
 def _opencli_row() -> tuple[bool | None, str, str]:
     from openmd.runtime.managed_tools import status
 
@@ -93,10 +100,17 @@ def render(payload: dict[str, Any]) -> str:
     rows = [row for row in capability_rows(payload) if row[0] is not None]
     lines = ["Openmd 体检", ""]
     if _kaze_running():
+        profiles = _openmd_bridge_profiles()
         lines += [
             "  Kaze：请把 Openmd 固定到 Kaze 工具栏，才能看到保存徽标；Kaze 暂不支持 chrome.debugger，",
             "      B 站字幕等需要调试接口的读取会自动尝试其他路线，无法读取时会提示。",
         ]
+        if len(profiles) == 1:
+            lines.append("  仅检测到一个 Openmd 浏览器桥接 profile；Kaze 缺少 chrome.debugger，不会注册桥接。当前只使用 Chrome 与 Kaze 时，该 profile 来自 Chrome。")
+        elif profiles:
+            lines.append("  浏览器桥接 profile 冲突：检测到多个 Openmd 浏览器连接；请关闭其他浏览器中的 Openmd 扩展连接，仅保留 Chrome 后重试。")
+        else:
+            lines.append("  未检测到 debugger 可用的浏览器桥接 profile；请在 Chrome 加载或重新加载 Openmd 扩展。")
     xiaoyuzhou = (payload.get("profile_diagnostics") or {}).get("xiaoyuzhou_login")
     if xiaoyuzhou:
         lines.append(f"  小宇宙：{xiaoyuzhou}")

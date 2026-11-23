@@ -344,10 +344,11 @@ def test_host_package_failure_warns_once(tmp_path, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize(("profiles", "preset", "expected"), [
-    (["openmd", "x8k2m4pq"], None, "openmd"),   # both bridges: prefer the built-in one
-    (["openmd"], None, None),                   # single bridge: opencli picks it itself
+    (["openmd-a1b2c3d4", "x8k2m4pq"], None, "openmd-a1b2c3d4"),
+    (["openmd-a1b2c3d4"], None, None),   # single bridge: opencli picks it itself
     (["x8k2m4pq"], None, None),                 # only the standalone OpenCLI extension
-    (["openmd", "x8k2m4pq"], "work", None),     # a user's explicit choice wins
+    (["openmd-a1b2c3d4", "x8k2m4pq"], "work", None),
+    (["openmd-a1b2c3d4", "openmd-e5f6g7h8", "x8k2m4pq"], None, "openmd-profile-conflict"),
 ])
 def test_bridge_profile_selection(monkeypatch, profiles, preset, expected) -> None:
     from openmd.runtime import services
@@ -359,20 +360,43 @@ def test_bridge_profile_selection(monkeypatch, profiles, preset, expected) -> No
     assert (selected or {}).get("OPENCLI_PROFILE") == expected
 
 
+@pytest.mark.parametrize("preset", [None, "user-selected"])
+def test_managed_opencli_environment_does_not_invent_shared_profile_id(tmp_path, monkeypatch, preset):
+    from openmd.runtime import managed_tools
+
+    monkeypatch.setattr(managed_tools, "config_directory", lambda: tmp_path / "opencli")
+    env = {} if preset is None else {"OPENCLI_PROFILE": preset}
+    result = managed_tools.command_environment(env)
+    assert result.get("OPENCLI_PROFILE") == preset
+
+
 def test_vendored_bridge_is_patched_licensed_and_packaged() -> None:
     import json
 
     root = Path(__file__).resolve().parents[1]
     extension = root / "src/openmd/browser_extension"
     bridge = (extension / "vendor/opencli-bridge/background.js").read_text(encoding="utf-8")
-    assert 'const generated = "openmd";' in bridge and "generateContextId();" not in bridge.split("function generateContextId")[0].split("const generated")[1][:40]
+    assert 'const generated = "openmd";' not in bridge
+    assert '"openmd-" + generateContextId()' in bridge
+    assert "openmdBrowserLabel" not in bridge and "navigator.userAgent" not in bridge
+    assert 'existing.startsWith("openmd-")' in bridge
+    assert 'currentContextId.startsWith("openmd-")' in bridge
     assert "chrome.runtime.getManifest().version" not in bridge
     assert "Apache License" in (extension / "vendor/opencli-bridge/LICENSE").read_text(encoding="utf-8")
     assert (extension / "idle.html").is_file()
     manifest = json.loads((extension / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["background"] == {"service_worker": "background.js", "type": "module"}
     assert {"debugger", "tabs", "cookies"} <= set(manifest["permissions"]) and manifest["host_permissions"] == ["<all_urls>"]
-    assert (extension / "background.js").read_text(encoding="utf-8").count('import "./vendor/opencli-bridge/background.js";') == 1
+    background = (extension / "background.js").read_text(encoding="utf-8")
+    assert background.count('import "./vendor/opencli-bridge/background.js";') == 1
+    assert "import(\"./vendor/opencli-bridge/background.js\")" not in background
+    assert 'const openmdDebuggerAvailable = ["attach", "detach", "sendCommand", "getTargets"]' in bridge
+    assert "if (!openmdDebuggerAvailable || initialized) return;" in bridge
+    assert "if (openmdDebuggerAvailable) initialize();" in bridge
+    for page in (extension / "popup.html", extension / "options.html"):
+        text = page.read_text(encoding="utf-8")
+        assert "此浏览器不承担 OpenCLI 读取" in text
+        assert "需要登录态的读取请在 Chrome 里执行" in text
     # tomllib is 3.11+; CI also runs 3.10.
     assert '"browser_extension/vendor/opencli-bridge/*"' in (root / "pyproject.toml").read_text(encoding="utf-8")
 
@@ -406,9 +430,21 @@ def test_doctor_adds_kaze_extension_guidance_when_kaze_is_running(monkeypatch):
     from openmd import doctor_view
 
     monkeypatch.setattr(doctor_view, "_kaze_running", lambda: True)
+    monkeypatch.setattr(doctor_view, "_openmd_bridge_profiles", lambda: ["openmd-a1b2c3d4"])
     text = doctor_view.render({"profile_diagnostics": {}})
     assert "固定到 Kaze 工具栏" in text
     assert "chrome.debugger" in text
+    assert "当前只使用 Chrome 与 Kaze 时，该 profile 来自 Chrome" in text
+
+
+def test_doctor_reports_opencli_profile_conflict_with_kaze(monkeypatch):
+    from openmd import doctor_view
+
+    monkeypatch.setattr(doctor_view, "_kaze_running", lambda: True)
+    monkeypatch.setattr(doctor_view, "_openmd_bridge_profiles", lambda: ["openmd-a1b2c3d4", "openmd-e5f6g7h8"])
+    text = doctor_view.render({"profile_diagnostics": {}})
+    assert "浏览器桥接 profile 冲突" in text
+    assert "仅保留 Chrome" in text
 
 
 @pytest.mark.parametrize("script", ["dev_setup.py", "vendor_opencli_bridge.py"])

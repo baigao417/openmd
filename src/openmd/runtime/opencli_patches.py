@@ -16,7 +16,7 @@ from urllib.parse import quote
 OPENCLI_TAG = 'v2.0.3'
 BRIDGE_VERSION = '1.0.27'
 BRIDGE_SHA256 = '8636d42a0fe44d7ba3b0603dbcd9581e8269ccbca950136d0dfc0ffc39a8a213'
-BRIDGE_GENERATED_SHA256 = 'fd4a2551765613dd81c1d90f71d454c4764d20793d3870dbc6081d627b99f6cd'  # populated from the already verified generated file
+BRIDGE_GENERATED_SHA256 = 'c97dd13b4f2211fd0e0934f5617458fdd513be0e5c8f12fe179427c1ffffbab2'  # populated from the already verified generated file
 # Previous generated source for this one patch, accepted only by the offline
 # repatch path when rebuilding from the already checksum-verified vendor tree.
 BRIDGE_LEGACY_X_READER = '''async function openmdReadX(args) {
@@ -32,12 +32,42 @@ BRIDGE_LEGACY_X_READER = '''async function openmdReadX(args) {
 async function callChrome(method, args, protectedTabs, protectedGroups) {
   if (method === "openmd.x.read") return await openmdReadX(args);
   const { receiver, fn } = resolve(method);'''
+BRIDGE_LEGACY_BROWSER_LABEL = '''async function openmdBrowserLabel() {
+  try {
+    const info = await chrome.runtime.getBrowserInfo();
+    return String(info?.browserName || "").toLowerCase().includes("chrome") ? "chrome" : "other";
+  } catch { return "other"; }
+}
+'''
+BRIDGE_LEGACY_REPLACEMENTS = {
+    "unique Openmd profile id for each connected browser": [
+        'const generated = "openmd"; // Openmd patch: fixed Browser Bridge profile id',
+        'const generated = "openmd-" + generateContextId(); // Openmd: unique browser bridge profile',
+        'const generated = "openmd-" + await openmdBrowserLabel() + "-" + generateContextId(); // Openmd: unique per browser extension',
+    ],
+    "Quiet Openmd browser and adapter surfaces share the automation container": [
+        'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";\n}',
+        'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || !currentContextId.startsWith("openmd-chrome-")) ? "interactive" : "automation";\n}',
+    ],
+    "migrate the former shared profile id to a fresh browser-specific id": [
+        'if (typeof existing === "string" && existing.startsWith("openmd-")) {',
+    ],
+    "scope owned cleanup to the current Openmd profile id": [
+        'if (!currentContextId.startsWith("openmd-chrome-") || cmd.contextId !== currentContextId)',
+    ],
+    "scope owned lease reporting to Openmd profiles": [
+        's.owned && s.contextId.startsWith("openmd-chrome-")',
+    ],
+    "limit orphan cleanup to the current Openmd profile": [
+        'if (!lease.owned || !lease.contextId.startsWith("openmd-chrome-") || active.has(lease.session)',
+    ],
+}
 # (description, original, replacement): each original must occur exactly as counted.
 BRIDGE_PATCHES = [
     (
-        "fixed profile id so Openmd can select this bridge even when the standalone OpenCLI extension is also connected",
+        "unique Openmd profile id for each connected browser",
         "const generated = generateContextId();",
-        'const generated = "openmd"; // Openmd patch: fixed Browser Bridge profile id',
+        'const generated = "openmd-" + generateContextId(); // Openmd: unique browser bridge profile',
         1,
     ),
     (
@@ -45,6 +75,36 @@ BRIDGE_PATCHES = [
         "chrome.runtime.getManifest().version",
         "OPENMD_BRIDGE_VERSION",
         2,
+    ),
+    (
+        "probe the debugger subset required by the bridge before initialization",
+        "let initialized = false;",
+        'const openmdDebuggerAvailable = ["attach", "detach", "sendCommand", "getTargets"].every(method => typeof chrome.debugger?.[method] === "function") && typeof chrome.debugger?.onEvent?.addListener === "function" && typeof chrome.debugger?.onDetach?.addListener === "function";\nlet initialized = false;',
+        1,
+    ),
+    (
+        "do not register or connect an OpenCLI profile without the debugger subset",
+        "function initialize() {\n  if (initialized) return;",
+        "function initialize() {\n  if (!openmdDebuggerAvailable || initialized) return;",
+        1,
+    ),
+    (
+        "gate bridge initialization events on debugger support",
+        'chrome.runtime.onInstalled.addListener(() => {\n  initialize();\n});\nchrome.runtime.onStartup.addListener(() => {\n  initialize();\n});\ninitialize();',
+        'chrome.runtime.onInstalled.addListener(() => {\n  if (openmdDebuggerAvailable) initialize();\n});\nchrome.runtime.onStartup.addListener(() => {\n  if (openmdDebuggerAvailable) initialize();\n});\nif (openmdDebuggerAvailable) initialize();',
+        1,
+    ),
+    (
+        "skip bridge alarms when debugger support is absent",
+        'chrome.alarms.onAlarm.addListener(async (alarm) => {\n  await workerReady;\n  if (alarm.name === "keepalive") void connect();',
+        'chrome.alarms.onAlarm.addListener(async (alarm) => {\n  if (!openmdDebuggerAvailable) return;\n  await workerReady;\n  if (alarm.name === "keepalive") void connect();',
+        1,
+    ),
+    (
+        "report disconnected without creating a profile when debugger is absent",
+        'if (msg?.type === "getStatus") {\n    void (async () => {',
+        'if (msg?.type === "getStatus") {\n    if (!openmdDebuggerAvailable) { sendResponse({connected:false,reconnecting:false,contextId:null,extensionVersion:OPENMD_BRIDGE_VERSION,daemonVersion:null}); return false; }\n    void (async () => {',
+        1,
     ),
 ('P-C/P-D owned blank-first muted window; offscreen/reuse/existing-window strategies', '  const win = await chrome.windows.create({\n    url: startUrl,\n    focused: mode === "foreground",\n    width: 1280,\n    height: 900,\n    type: "normal"\n  });', '  const win = await openmdCreateOwnedWindow(startUrl, mode);', 1),
     (
@@ -62,6 +122,12 @@ BRIDGE_PATCHES = [
 ]
 
 BRIDGE_PATCHES += [
+    (
+        "migrate the former shared profile id to a fresh browser-specific id",
+        'if (typeof existing === "string" && existing.trim()) {',
+        'if (typeof existing === "string" && existing.startsWith("openmd-")) {',
+        1,
+    ),
     (
         'P-A persistent adapter idle timeout is finite and configurable',
         """if (adapterPersistent) return IDLE_TIMEOUT_NONE;""",
@@ -282,11 +348,32 @@ BRIDGE_PATCHES += [
 
 BRIDGE_PATCHES += [('Restore controller identity with the exact recorded tab lease', 'owned: stored.owned,\n        preferredTabId: tabId', 'owned: stored.owned,\n        openmdOwnerPid: stored.openmdOwnerPid,\n        preferredTabId: tabId', 1)]
 
+BRIDGE_PATCHES += [
+    (
+        "scope owned cleanup to the current Openmd profile id",
+        'if (currentContextId !== "openmd" || cmd.contextId !== "openmd")',
+        'if (!currentContextId.startsWith("openmd-") || cmd.contextId !== currentContextId)',
+        1,
+    ),
+    (
+        "scope owned lease reporting to Openmd profiles",
+        's.owned && s.contextId === "openmd"',
+        's.owned && s.contextId.startsWith("openmd-")',
+        2,
+    ),
+    (
+        "limit orphan cleanup to the current Openmd profile",
+        'if (!lease.owned || lease.contextId !== "openmd" || active.has(lease.session)',
+        'if (!lease.owned || !lease.contextId.startsWith("openmd-") || active.has(lease.session)',
+        1,
+    ),
+]
+
 BRIDGE_PATCHES += [('Refresh job anchor with every real command', '  resetWindowIdleTimer(leaseKey);\n  activeCommandCounts.set(leaseKey,', '  resetWindowIdleTimer(leaseKey);\n  if (openmdOptions.ownerPid) resetWindowIdleTimer(getLeaseKey("openmd-job:" + openmdOptions.ownerPid, "adapter"));\n  activeCommandCounts.set(leaseKey,', 1), ('Long commands keep their job anchor alive', '  session.idleTimer = setTimeout(async () => {\n    if ((activeCommandCounts.get(leaseKey) ?? 0) > 0) {\n      return;\n    }', '  session.idleTimer = setTimeout(async () => {\n    const jobActive = session.session?.startsWith("openmd-job:") && [...automationSessions.entries()].some(([key, item]) => item.openmdOwnerPid === session.openmdOwnerPid && (activeCommandCounts.get(key) ?? 0) > 0);\n    if ((activeCommandCounts.get(leaseKey) ?? 0) > 0 || jobActive) {\n      resetWindowIdleTimer(leaseKey);\n      return;\n    }', 1)]
 
 BRIDGE_PATCHES += [('Quiet Openmd browser and adapter surfaces share the automation container',
              'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" ? "interactive" : "automation";\n}',
-             'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";\n}', 1)]
+             'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || !currentContextId.startsWith("openmd-")) ? "interactive" : "automation";\n}', 1)]
 
 # Chrome throttles page timers in inactive tabs. Schedule read polling in Node.
 # These helpers and every injection are checked as loader entries below.
@@ -473,6 +560,8 @@ def _bundled_bridge_source() -> str:
     if hashlib.sha256(source.encode()).hexdigest() != BRIDGE_GENERATED_SHA256:
         raise ValueError('opencli_bundled_bridge_hash_mismatch')
     source = source.split('\n', 3)[3]  # generator's three-line header
+    if BRIDGE_LEGACY_BROWSER_LABEL in source:
+        source = source.replace(BRIDGE_LEGACY_BROWSER_LABEL, '')
     for patch in reversed([p for p in PATCHES if p.kind == 'bridge']):
         if patch.description == "allow only the fixed X read handler in an already-open X tab":
             if source.count(BRIDGE_LEGACY_X_READER) == patch.count:
@@ -480,9 +569,19 @@ def _bundled_bridge_source() -> str:
                 continue
         if patch.description == "import the fixed X page reader into the Browser Bridge module" and source.count(patch.replacement) == 0:
             continue
-        if source.count(patch.replacement) != patch.count:
-            raise ValueError(f'opencli_patch_reverse_mismatch:{patch.id}')
-        source = source.replace(patch.replacement, patch.original)
+        if source.count(patch.replacement) == patch.count:
+            source = source.replace(patch.replacement, patch.original)
+            continue
+        legacy = next((value for value in BRIDGE_LEGACY_REPLACEMENTS.get(patch.description, [])
+                       if source.count(value) == patch.count), None)
+        if legacy is not None:
+            source = source.replace(legacy, patch.original)
+            continue
+        # The hash check above pins this historical artifact; a registered
+        # patch whose upstream text remains means it was added in this run.
+        if source.count(patch.original) == patch.count:
+            continue
+        raise ValueError(f'opencli_patch_reverse_mismatch:{patch.id}')
     return source
 
 

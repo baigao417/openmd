@@ -199,11 +199,11 @@ def test_owned_release_does_not_close_user_tab(tmp_path):
     script = r'''
 const assert = require('node:assert/strict');
 const removed=[],muted=[],groups=[];
-const currentContextId='openmd';const activeCommandCounts=new Map();
+const currentContextId='openmd-a1b2c3d4';const activeCommandCounts=new Map();
 const automationSessions=new Map([
- ['owned',{owned:true,contextId:'openmd',openmdOwnerPid:123,preferredTabId:10,windowId:1,session:'owned'}],
- ['user',{owned:false,contextId:'openmd',openmdOwnerPid:123,preferredTabId:20,windowId:1,session:'user'}],
- ['active',{owned:true,contextId:'openmd',openmdOwnerPid:456,idleDeadlineAt:Date.now()+120000,preferredTabId:30,windowId:1,session:'active'}],
+ ['owned',{owned:true,contextId:'openmd-a1b2c3d4',openmdOwnerPid:123,preferredTabId:10,windowId:1,session:'owned'}],
+ ['user',{owned:false,contextId:'openmd-a1b2c3d4',openmdOwnerPid:123,preferredTabId:20,windowId:1,session:'user'}],
+ ['active',{owned:true,contextId:'openmd-a1b2c3d4',openmdOwnerPid:456,idleDeadlineAt:Date.now()+120000,preferredTabId:30,windowId:1,session:'active'}],
  ['foreign',{owned:true,contextId:'other',openmdOwnerPid:123,preferredTabId:40,windowId:1,session:'foreign'}]
 ]);
 const sessionOverrides=new Map();const IDLE_TIMEOUT_NONE=0;
@@ -211,7 +211,7 @@ const scheduleIdleAlarm=()=>{},persistRuntimeState=async()=>{},safeDetach=async(
 const chrome={windows:{getAll:async()=>[{id:1}]},tabs:{onRemoved:{addListener:()=>{}},get:async id=>({id}),ungroup:async id=>groups.push(id),remove:async id=>removed.push(id),update:async(id,opts)=>muted.push([id,opts])}};
 '''+helper+release+r'''
 (async()=>{
- const reply=await openmdControl({id:'fixture',contextId:'openmd',action:'openmd-cleanup-orphans',deadPids:[123]});
+ const reply=await openmdControl({id:'fixture',contextId:'openmd-a1b2c3d4',action:'openmd-cleanup-orphans',deadPids:[123]});
  assert.equal(reply.data.tabsClosed,1);assert.equal(reply.data.failures,0);
  assert(automationSessions.has('user'));assert(automationSessions.has('active'));assert(automationSessions.has('foreign'));
  await releaseLease('user');assert.deepEqual(removed,[10]);assert.deepEqual(groups,[10]);assert.equal(muted.length,0);
@@ -321,6 +321,6 @@ def test_quiet_browser_and_adapter_surfaces_share_one_container(tmp_path):
     source = (Path(__file__).parents[1] / "src/openmd/browser_extension/vendor/opencli-bridge/background.js").read_text(encoding="utf-8")
     function = "function getOwnedWindowRole(" + source.split("function getOwnedWindowRole(")[1].split("function getWindowRole(")[0]
     script = tmp_path / "roles.cjs"
-    script.write_text("const assert=require('node:assert/strict');let currentContextId='openmd';const openmdOptions={show:false};const getSurfaceFromKey=k=>k;" + function + "assert.equal(getOwnedWindowRole('browser'),'automation');assert.equal(getOwnedWindowRole('adapter'),'automation');openmdOptions.show=true;assert.equal(getOwnedWindowRole('browser'),'interactive');currentContextId='other';openmdOptions.show=false;assert.equal(getOwnedWindowRole('browser'),'interactive');")
+    script.write_text("const assert=require('node:assert/strict');let currentContextId='openmd-a1b2c3d4';const openmdOptions={show:false};const getSurfaceFromKey=k=>k;" + function + "assert.equal(getOwnedWindowRole('browser'),'automation');assert.equal(getOwnedWindowRole('adapter'),'automation');openmdOptions.show=true;assert.equal(getOwnedWindowRole('browser'),'interactive');currentContextId='other';openmdOptions.show=false;assert.equal(getOwnedWindowRole('browser'),'interactive');")
     result = run_interruptibly([str(node / ("node.exe" if os.name == "nt" else "node")), str(script)], capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr

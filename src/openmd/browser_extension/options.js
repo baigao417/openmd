@@ -86,6 +86,9 @@ function render() {
 }
 
 async function init() {
+  const debuggerAvailable = ["attach", "detach", "sendCommand", "getTargets"].every((method) => typeof chrome.debugger?.[method] === "function")
+    && typeof chrome.debugger?.onEvent?.addListener === "function" && typeof chrome.debugger?.onDetach?.addListener === "function";
+  $("opencli-browser-note").hidden = debuggerAvailable;
   const stored = (await chrome.storage.local.get("settings")).settings;
   if (stored) settings = { videoMode: "note", includeThinking: false, allowFeedbackPackage: false, ...stored };
   const ping = await native({ type: "ping" });

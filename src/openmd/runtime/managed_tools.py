@@ -339,7 +339,6 @@ def command_environment(base=None) -> dict[str, str]:
             _create_junction(config, alias)
     env = dict(os.environ if base is None else base)
     env.update(OPENCLI_CONFIG_DIR=str(config), HOME=str(home), USERPROFILE=str(home))
-    env.setdefault("OPENCLI_PROFILE", "openmd")
     env.setdefault("OPENCLI_CLOSE_OWNED_TAB", "1")
     env.setdefault("OPENCLI_WINDOW", "foreground" if env.get("OPENMD_SHOW_BROWSER") == "1" else "background")
     env.setdefault("NODE_OPTIONS", "--max-old-space-size=1536")

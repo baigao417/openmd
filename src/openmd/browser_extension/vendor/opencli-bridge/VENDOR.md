@@ -7,8 +7,36 @@
 
 ## Modifications by Openmd
 
-- fixed profile id so Openmd can select this bridge even when the standalone OpenCLI extension is also connected: `const generated = generateContextId();` → `const generated = "openmd"; // Openmd patch: fixed Browser Bridge profile id`
+- unique Openmd profile id for each connected browser: `const generated = generateContextId();` → `const generated = "openmd-" + generateContextId(); // Openmd: unique browser bridge profile`
 - report the bridge's own version, not the host Openmd extension's manifest version: `chrome.runtime.getManifest().version` → `OPENMD_BRIDGE_VERSION`
+- probe the debugger subset required by the bridge before initialization: `let initialized = false;` → `const openmdDebuggerAvailable = ["attach", "detach", "sendCommand", "getTargets"].every(method => typeof chrome.debugger?.[method] === "function") && typeof chrome.debugger?.onEvent?.addListener === "function" && typeof chrome.debugger?.onDetach?.addListener === "function";
+let initialized = false;`
+- do not register or connect an OpenCLI profile without the debugger subset: `function initialize() {
+  if (initialized) return;` → `function initialize() {
+  if (!openmdDebuggerAvailable || initialized) return;`
+- gate bridge initialization events on debugger support: `chrome.runtime.onInstalled.addListener(() => {
+  initialize();
+});
+chrome.runtime.onStartup.addListener(() => {
+  initialize();
+});
+initialize();` → `chrome.runtime.onInstalled.addListener(() => {
+  if (openmdDebuggerAvailable) initialize();
+});
+chrome.runtime.onStartup.addListener(() => {
+  if (openmdDebuggerAvailable) initialize();
+});
+if (openmdDebuggerAvailable) initialize();`
+- skip bridge alarms when debugger support is absent: `chrome.alarms.onAlarm.addListener(async (alarm) => {
+  await workerReady;
+  if (alarm.name === "keepalive") void connect();` → `chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (!openmdDebuggerAvailable) return;
+  await workerReady;
+  if (alarm.name === "keepalive") void connect();`
+- report disconnected without creating a profile when debugger is absent: `if (msg?.type === "getStatus") {
+    void (async () => {` → `if (msg?.type === "getStatus") {
+    if (!openmdDebuggerAvailable) { sendResponse({connected:false,reconnecting:false,contextId:null,extensionVersion:OPENMD_BRIDGE_VERSION,daemonVersion:null}); return false; }
+    void (async () => {`
 - P-C/P-D owned blank-first muted window; offscreen/reuse/existing-window strategies: `  const win = await chrome.windows.create({
     url: startUrl,
     focused: mode === "foreground",
@@ -18,6 +46,7 @@
   });` → `  const win = await openmdCreateOwnedWindow(startUrl, mode);`
 - tab group names show Openmd: `interactive: "OpenCLI Browser",` → `interactive: "Openmd",`
 - tab group names show Openmd (automation): `automation: "OpenCLI Adapter"` → `automation: "Openmd"`
+- migrate the former shared profile id to a fresh browser-specific id: `if (typeof existing === "string" && existing.trim()) {` → `if (typeof existing === "string" && existing.startsWith("openmd-")) {`
 - P-A persistent adapter idle timeout is finite and configurable: `if (adapterPersistent) return IDLE_TIMEOUT_NONE;` → `if (adapterPersistent) return overrides?.idleTimeoutMs ?? openmdOptions.idleMs;`
 - Openmd owned lifecycle options and profile-scoped orphan control: `async function handleCommand(cmd) {` → `const openmdOptions = { idleMs: 120000, sound: false, show: false, ownerPid: null, windowStrategy: "offscreen-reuse" };
 const openmdCreatedTabs = new Set();
@@ -179,6 +208,9 @@ async function callChrome(method, args, protectedTabs, protectedGroups) {
         preferredTabId: tabId` → `owned: stored.owned,
         openmdOwnerPid: stored.openmdOwnerPid,
         preferredTabId: tabId`
+- scope owned cleanup to the current Openmd profile id: `if (currentContextId !== "openmd" || cmd.contextId !== "openmd")` → `if (!currentContextId.startsWith("openmd-") || cmd.contextId !== currentContextId)`
+- scope owned lease reporting to Openmd profiles: `s.owned && s.contextId === "openmd"` → `s.owned && s.contextId.startsWith("openmd-")`
+- limit orphan cleanup to the current Openmd profile: `if (!lease.owned || lease.contextId !== "openmd" || active.has(lease.session)` → `if (!lease.owned || !lease.contextId.startsWith("openmd-") || active.has(lease.session)`
 - Refresh job anchor with every real command: `  resetWindowIdleTimer(leaseKey);
   activeCommandCounts.set(leaseKey,` → `  resetWindowIdleTimer(leaseKey);
   if (openmdOptions.ownerPid) resetWindowIdleTimer(getLeaseKey("openmd-job:" + openmdOptions.ownerPid, "adapter"));
@@ -195,7 +227,7 @@ async function callChrome(method, args, protectedTabs, protectedGroups) {
 - Quiet Openmd browser and adapter surfaces share the automation container: `function getOwnedWindowRole(key) {
   return getSurfaceFromKey(key) === "browser" ? "interactive" : "automation";
 }` → `function getOwnedWindowRole(key) {
-  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";
+  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || !currentContextId.startsWith("openmd-")) ? "interactive" : "automation";
 }`
 
 Regenerate with `python scripts/vendor_opencli_bridge.py`; never edit `background.js` by hand.

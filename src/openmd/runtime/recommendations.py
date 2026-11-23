@@ -14,6 +14,13 @@ import time
 import venv
 
 
+def _run_process(*popenargs, **kwargs):
+    """Run an owned helper through Openmd's interruptible process contract."""
+    from .interpreters import run_interruptibly
+
+    return run_interruptibly(*popenargs, **kwargs)
+
+
 def hardware() -> dict:
     from .interpreters import run_interruptibly
     result = {'os': platform.system(), 'cpu': platform.processor(), 'ram_gib': None, 'gpus': [], 'errors': []}
@@ -78,7 +85,7 @@ def _nvidia_driver_available() -> bool:
     if not executable:
         return False
     try:
-        return subprocess.run([executable, "-L"], capture_output=True, text=True,
+        return _run_process([executable, "-L"], capture_output=True, text=True,
                               check=False, timeout=5).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -219,8 +226,8 @@ def install_layout_runtime(device: str = "auto") -> dict:
          "transformers==5.13.1", "pillow==12.3.0", "numpy==2.5.4"],
     ]
     for command in commands:
-        subprocess.run(command, check=True)
-    probe = subprocess.run(
+        _run_process(command, check=True)
+    probe = _run_process(
         [str(python), "-c",
          "import importlib.util,json,torch; names=('torch','transformers','PIL','numpy','torchvision'); "
          "modules={n:importlib.util.find_spec(n) is not None for n in names}; "
@@ -262,7 +269,7 @@ def _gguf_files_verified(destination: Path, item: dict) -> dict[str, str] | None
 
 
 def _ollama_model_matches(executable: str, item: dict, hashes: dict[str, str]) -> bool:
-    result = subprocess.run([executable, "show", "--modelfile", item["model"]],
+    result = _run_process([executable, "show", "--modelfile", item["model"]],
                             check=False, capture_output=True, text=True)
     if result.returncode:
         return False
@@ -276,7 +283,7 @@ def _create_gguf_model(executable: str, item: dict, destination: Path,
                        hashes: dict[str, str]) -> tuple[str, float]:
     if _ollama_model_matches(executable, item, hashes):
         return "existing_model_digest_matches", 0.0
-    probe = subprocess.run([executable, "show", "--modelfile", item["model"]],
+    probe = _run_process([executable, "show", "--modelfile", item["model"]],
                            check=False, capture_output=True, text=True)
     if probe.returncode == 0:
         raise RuntimeError(f"ollama_model_identity_conflict: {item['model']}")
@@ -286,7 +293,7 @@ def _create_gguf_model(executable: str, item: dict, destination: Path,
     modelfile = destination / "Modelfile.openmd"
     modelfile.write_text(resource.read_text(encoding="utf-8"), encoding="utf-8")
     started = time.monotonic()
-    created = subprocess.run([executable, "create", item["model"], "-f", str(modelfile)],
+    created = _run_process([executable, "create", item["model"], "-f", str(modelfile)],
                              cwd=destination, check=False, capture_output=True, text=True)
     if created.returncode:
         raise RuntimeError(f"ollama_create_failed: {item['model']}")
@@ -325,7 +332,7 @@ def cmd_models_install(args) -> int:
                     executable = shutil.which('ollama')
                     if not executable:
                         raise RuntimeError(f'ollama_not_installed: install Ollama, then rerun openmd models install {args.tier}')
-                    completed = subprocess.run([executable, 'pull', item['model']], check=False)
+                    completed = _run_process([executable, 'pull', item['model']], check=False)
                     if completed.returncode:
                         raise RuntimeError(f"ollama_pull_failed: {item['model']}; rerun openmd models install {args.tier}")
                     receipts.append({'kind': 'ollama', 'model': item['model'], 'verified': 'ollama pull exited successfully'})

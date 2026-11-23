@@ -502,6 +502,44 @@ PATCHES = tuple(
     Patch(f'bridge-{i:02d}', 'bridge', 'dist/background.js', before, after, count, description)
     for i, (description, before, after, count) in enumerate(BRIDGE_PATCHES, start=1)
 ) + _ai_loader_patches() + (
+    Patch('bilibili-subtitle-player-v2-array', 'loader', 'clis/bilibili/subtitle.js',
+          'const subtitles = payload.data?.subtitle?.subtitles;',
+          'let subtitles = payload.data?.subtitle?.subtitles;', 1,
+          'Bilibili subtitle: allow player/v2 fallback to replace an empty WBI subtitle list'),
+    Patch('bilibili-subtitle-player-v2-fallback', 'loader', 'clis/bilibili/subtitle.js',
+          """        if (subtitles.length === 0) {
+            if (needLoginSubtitle) {
+                throw new AuthRequiredError('bilibili.com', 'Bilibili subtitles are hidden behind login for this video. Please log in to bilibili.com in Chrome and retry.');
+            }
+            throw new EmptyResultError('bilibili subtitle', '此视频没有发现外挂或智能字幕。');
+        }""",
+          """        if (subtitles.length === 0) {
+            if (needLoginSubtitle) {
+                throw new AuthRequiredError('bilibili.com', 'Bilibili subtitles are hidden behind login for this video. Please log in to bilibili.com in Chrome and retry.');
+            }
+            for (let attempt = 0; attempt < 3 && subtitles.length === 0; attempt++) {
+                try {
+                    const fallback = await apiGet(page, '/x/player/v2', { params: { bvid, cid } });
+                    if (fallback?.data?.need_login_subtitle === true) {
+                        throw new AuthRequiredError('bilibili.com', 'Bilibili subtitles are hidden behind login for this video. Please log in to bilibili.com in Chrome and retry.');
+                    }
+                    const fallbackSubtitles = fallback?.code === 0 ? fallback.data?.subtitle?.subtitles : null;
+                    if (Array.isArray(fallbackSubtitles) && fallbackSubtitles.length > 0) {
+                        subtitles = fallbackSubtitles;
+                        console.error('openmd:bilibili-player-v2-fallback:hit');
+                        break;
+                    }
+                }
+                catch (err) {
+                    if (err instanceof AuthRequiredError) throw err;
+                }
+                if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 800));
+            }
+            if (subtitles.length === 0) {
+                throw new EmptyResultError('bilibili subtitle', '此视频没有发现外挂或智能字幕。');
+            }
+        }""", 1,
+          'Bilibili subtitle: retry unsigned player/v2 up to three times when signed WBI returns empty'),
     Patch('xiaoe-dispatch-registry-api', 'dispatcher', 'dist/src/registry-api.js',
           "export { cli, Strategy, getRegistry, fullName, registerCommand } from './registry.js';", '', 1,
           'Xiaoe/owned adapters import registry API through a scoped resolver', verification='exact ABI marker; no npm file mutation'),

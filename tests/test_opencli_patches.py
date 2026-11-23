@@ -38,3 +38,26 @@ def test_doctor_exposes_patch_readiness(monkeypatch):
     result = build_doctor_report('web')
     assert result['opencli_patches']['total'] == 42
     assert result['opencli_patches']['ok'] is False
+
+
+def test_bilibili_subtitle_loader_patch_retries_player_v2_and_preserves_empty_error():
+    from openmd.runtime.opencli_patches import PATCHES, apply_patch
+
+    patch = next(p for p in PATCHES if p.id == 'bilibili-subtitle-player-v2-fallback')
+    assert patch.kind == 'loader'
+    assert patch.target == 'clis/bilibili/subtitle.js'
+    assert patch.versions == ('2.0.3',)
+    patched = apply_patch(patch.original, patch, version='2.0.3')
+    assert 'need_login_subtitle' in patched
+    assert "'/x/player/v2'" in patched
+    assert 'attempt < 3' in patched
+    assert '800' in patched
+    assert 'throw new EmptyResultError' in patched
+
+
+def test_bilibili_subtitle_loader_environment_is_registered():
+    from openmd.runtime.opencli_patches import loader_environment
+
+    env = loader_environment('bilibili', 'subtitle', base={'NODE_OPTIONS': '--trace-warnings'})
+    assert '--import=data:text/javascript,' in env['NODE_OPTIONS']
+    assert '--trace-warnings' in env['NODE_OPTIONS']

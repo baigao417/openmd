@@ -50,7 +50,7 @@ def test_ollama_create_uses_bundled_modelfile_and_reads_back_expected_digests(tm
         return show_miss if sum(row[0][1] == "show" for row in calls) < 3 else show_match
 
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr("openmd.runtime.recommendations.subprocess.run", run)
+        monkeypatch.setattr("openmd.runtime.recommendations._run_process", run)
         verified, seconds = _create_gguf_model("ollama.exe", item, tmp_path, hashes)
 
     assert verified == "ollama create and model/projector SHA-256 readback"
@@ -72,7 +72,7 @@ def test_existing_ollama_tag_with_matching_digest_skips_create(tmp_path, monkeyp
         stdout=f"FROM /models/blobs/sha256-{hashes['model.gguf']}\nPARAMETER num_ctx 8192\nPARAMETER temperature 0\n",
         stderr="",
     ))
-    monkeypatch.setattr(recommendations.subprocess, "run", run)
+    monkeypatch.setattr(recommendations, "_run_process", run)
 
     verified, seconds = recommendations._create_gguf_model("ollama.exe", item, tmp_path, hashes)
 

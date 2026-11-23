@@ -36,3 +36,12 @@ def test_extension_zip_preserves_manifest_and_all_referenced_files(tmp_path):
                 references.extend(posixpath.normpath((Path(name).parent / ref).as_posix()) for ref in refs
                                   if not ref.startswith(('http:', 'https:', '#', 'data:')))
         assert all(name in bundle.namelist() for name in references)
+
+
+def test_popup_summarizes_latest_save_outcome():
+    source = ROOT / 'src/openmd/browser_extension'
+    popup = (source / 'popup.html').read_text(encoding='utf-8')
+    script = (source / 'popup.js').read_text(encoding='utf-8')
+    assert 'id="recent-summary"' in popup
+    assert "最近一次：已保存" in script and "latest.saved_to" in script
+    assert "最近一次：失败" in script and "latest.next_action" in script

@@ -75,8 +75,19 @@ async function init() {
 
 async function loadRecentJobs(settings) {
   const list = $("recent-jobs");
+  const summary = $("recent-summary");
   const reply = await chrome.runtime.sendMessage({ cmd: "recent_feedback" });
   const jobs = (reply?.jobs || []).filter((job) => ["done", "failed", "partial"].includes(job.state));
+  const latest = jobs[0];
+  if (latest?.state === "done") {
+    summary.textContent = `最近一次：已保存 ${latest.title || "当前页面"} → ${latest.saved_to || latest.save_to || "保存位置"}`;
+  } else if (latest) {
+    const reason = latest.error || (latest.state === "partial" ? "结果不完整" : "保存失败");
+    summary.textContent = `最近一次：失败：${reason}${latest.next_action ? ` / ${latest.next_action}` : ""}`;
+    summary.classList.add("failed");
+  } else {
+    summary.textContent = reply?.error ? `最近一次：${reply.error}` : "最近一次：暂无已完成的保存任务";
+  }
   if (!jobs.length) {
     list.innerHTML = "<li class=\"recent-empty\">暂无可检查的任务</li>";
     return;

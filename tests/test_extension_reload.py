@@ -154,6 +154,27 @@ const scenario = process.argv[3];
     const completed=s.run('maybeReloadExtension()'); await settle();
     release(); await Promise.all([check,completed]); await settle();
     assert.equal(s.reloads,1,'poll and handshake must not overwrite the persisted reload history');
+  } else if(scenario === 'missing_optional_apis') {
+    const events = s.events;
+    delete s.context.chrome.notifications;
+    delete s.context.chrome.contextMenus;
+    delete s.context.chrome.cookies;
+    s.store.jobs={job:{batch:'batch',title:'Synthetic'}};
+    s.store.batches={batch:{total:1,failed:[]}};
+    await s.run('poll()'); await settle();
+    assert(events.icon, 'action click listener must register when notifications are absent');
+    assert(events.message, 'runtime message listener must register when optional APIs are absent');
+    await events.installed(); await settle();
+    let cookieReply;
+    await events.message({cmd:'import_xiaoyuzhou'}, {}, value=>{cookieReply=value;});
+    assert.equal(cookieReply.ok,false, 'missing cookies API must return a usable error');
+    assert.match(cookieReply.error,/权限|支持/);
+    s.api.response={ok:true,jobs:[{id:'recent',state:'done',title:'Article',saved_to:'D:/saved.md'}]};
+    let recentReply;
+    events.message({cmd:'recent_feedback'}, {}, value=>{recentReply=value;});
+    await settle();
+    assert.equal(recentReply.jobs[0].title,'Article');
+    assert.equal(recentReply.jobs[0].saved_to,'D:/saved.md');
   } else { throw new Error('unknown scenario: '+scenario); }
   console.log(JSON.stringify({scenario,ok:true,reloads:s.reloads,requests:s.requests.length}));
 })().catch(error=>{console.error(error);process.exitCode=1;});
@@ -181,3 +202,7 @@ def test_extension_update_lifecycle(tmp_path, scenario):
 @pytest.mark.parametrize("scenario", ["protocol_repair", "protocol_unrepairable", "launcher_dead", "legacy_host", "sync_failure", "concurrent_handshake_poll"])
 def test_extension_protocol_and_setup_notice(tmp_path, scenario):
     run_scenario(tmp_path, scenario)
+
+
+def test_extension_degrades_without_optional_browser_apis(tmp_path):
+    run_scenario(tmp_path, "missing_optional_apis")

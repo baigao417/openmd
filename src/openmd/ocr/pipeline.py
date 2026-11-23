@@ -28,7 +28,7 @@ from .config import settings
 from .layout import LayoutUnavailable, detect_regions
 from .ollama import OllamaError, api_json, model_identity, running_models, stream_recognize, unload_model
 from .otsl import table_html
-from .tiling import merge_pair, norm_view, repeated_ngrams, split_image
+from .tiling import merge_pair, norm_view, repeated_ngrams, repeated_text_loop, split_image
 
 from openmd.runtime.tempdirs import owned_temporary_directory
 
@@ -213,7 +213,10 @@ class LocalOCRBackend(OCRBackend):
                     merge["warnings"].append("One or more tiles have no text; overlap merge was skipped.")
         text = text if texts else ""
         reps = repeated_ngrams(text)
-        merge.update({"tiles": len(texts), "repeated_spans": reps[:20], "merged_norm_chars": len(norm_view(text)[0])})
+        repeated_loop = repeated_text_loop(text)
+        merge.update({"tiles": len(texts), "repeated_spans": reps[:20],
+                      "repeated_loop_detected": repeated_loop,
+                      "merged_norm_chars": len(norm_view(text)[0])})
         if reps:
             merge["warnings"].append(f"{len(reps)} repeated 24-char spans in merged text (possible duplicate overlap)")
         # A seam conflict is recorded in the merge receipt and both readings
@@ -222,13 +225,16 @@ class LocalOCRBackend(OCRBackend):
         # Tile failures still make the page partial, and tile breakers
         # independently control model fallback.
         uncertain_seam = any(seam.get("status") != "merged" for seam in merge["seams"])
-        partial = not text.strip() or any(r["status"] != "verified" for r in receipts) or (bool(reps) and not uncertain_seam)
+        partial = (not text.strip() or any(r["status"] != "verified" for r in receipts)
+                   or (repeated_loop and not uncertain_seam))
         attempts = [attempt for r in receipts for attempt in r["attempts"]] + merge["arbitration_attempts"]
         unsafe = any(a.get("unsafe_to_switch") for a in attempts)
         peaks = [a["peak_vram_mb"] for a in attempts if a.get("peak_vram_mb") is not None]
         reasons = sorted({r["reason"] for r in receipts if r.get("reason")})
-        if merge["warnings"]:
+        if any(seam.get("status") != "merged" for seam in merge["seams"]):
             reasons.append("merge_uncertain")
+        if reps and not uncertain_seam:
+            reasons.append("repeated_ngrams_review")
         record = {"page": page, "route": "ocr", "status": "partial" if partial else "verified", "engine": sorted({a["engine"] for a in attempts}), "models": [{"name": a["model"], "digest": a["digest"]} for a in attempts], "fallback_used": any(r["fallback_used"] for r in receipts), "reason": "; ".join(reasons) or None, "ovis_seconds": round(sum(a["seconds"] for a in attempts if a["engine"] == "ocr.ovis3"), 3), "fallback_seconds": round(sum(a["seconds"] for a in attempts if a["engine"] == "ocr.minicpm"), 3), "seconds": round(time.monotonic() - started, 3), "peak_vram_mb": max(peaks) if peaks else None, "peak_vram_scope": "whole_device_observed", "han_ratio": han_ratio(text), "slice_parameters": params, "tiles": receipts, "merge": merge, "breakers": [a["breaker"] for a in attempts if a.get("breaker")]}
         version = "ollama-models:" + hashlib.sha256(json.dumps(record["models"], sort_keys=True).encode()).hexdigest()
         record["unprocessed_tiles"] = len(rectangles) - len(receipts)

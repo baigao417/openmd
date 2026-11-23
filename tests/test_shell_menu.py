@@ -376,3 +376,97 @@ def test_unix_shell_menu_never_overwrites_or_deletes_a_foreign_same_name_item(mo
     removed = uninstall(platform=platform)
     assert removed["removed"] is False and removed["error"] == "menu_not_owned"
     assert foreign.read_text(encoding="utf-8") == "user's own item"
+
+
+def test_right_click_scanned_pdf_uses_shared_first_use_confirmation(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openmd import shell_menu
+    from openmd.core.models import TranscriptResult
+
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"frozen scan marker")
+    monkeypatch.setattr("openmd.engines.registry.convert_document", lambda *_args, **_kwargs: TranscriptResult(
+        text="", status="failed", source_level="native_text", backend="openmd.pdf",
+        title="scan", error_code="document_empty_text"))
+    seen = []
+
+    class Provider:
+        def __init__(self, _name, _options):
+            pass
+
+        def extract(self, request, *, first_use_confirm=None):
+            seen.append((request.item.platform, bool(first_use_confirm), first_use_confirm("model size and path")))
+            return TranscriptResult(text="recognized scan", status="verified", source_level="ocr",
+                                    backend="ocr.chain", title="scan")
+
+    monkeypatch.setattr("openmd.backends.ocr.OCRRouterProvider", Provider)
+    target = tmp_path / "scan.md"
+    result = shell_menu._convert_file(source, target, ocr_confirm=lambda question: question.startswith("model size"))
+
+    assert result["status"] == "verified"
+    assert seen == [("pdf", True, True)]
+    assert target.read_text(encoding="utf-8") == "recognized scan"
+
+
+def test_right_click_scanned_image_uses_shared_first_use_confirmation(monkeypatch, tmp_path):
+    from openmd import shell_menu
+    from openmd.core.models import TranscriptResult
+    from openmd.ocr.first_use import first_use_question
+    from PIL import Image
+
+    source = tmp_path / "scan.png"
+    Image.new("RGB", (32, 48), "white").save(source)
+    assert source in shell_menu._candidate_files(source)
+    prompts = []
+    results = [
+        TranscriptResult(text="", status="failed", source_level="ocr", backend="ocr.chain",
+                         title="scan", error_code="ollama_model_missing"),
+        TranscriptResult(text="recognized image", status="verified", source_level="ocr",
+                         backend="ocr.chain", title="scan"),
+    ]
+    monkeypatch.setattr("openmd.ocr.pipeline.LocalOCRBackend.recognize",
+                        lambda *_args, **_kwargs: results.pop(0))
+    monkeypatch.setattr("openmd.runtime.recommendations.cmd_models_install", lambda _args: 0)
+    monkeypatch.setattr("openmd.runtime.recommendations.install_plan",
+                        lambda *_args, **_kwargs: {"estimated_size_bytes": 3, "root": str(tmp_path), "runtime": None})
+    monkeypatch.setattr("openmd.engines.registry.convert_document",
+                        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("image must use OCR")))
+    def confirm(question):
+        prompts.append(question)
+        return True
+
+    # Run through the real provider used by the menu; OCRRouterProvider must
+    # pass the same first-use question/install path used for CLI image OCR.
+    target = tmp_path / "scan.md"
+    converted = shell_menu._convert_file(source, target, ocr_confirm=confirm)
+
+    assert converted["status"] == "verified"
+    assert target.read_text(encoding="utf-8") == "recognized image"
+    assert prompts == [first_use_question({"estimated_size_bytes": 3, "root": str(tmp_path), "runtime": None})]
+
+
+def test_right_click_noninteractive_scan_returns_shared_install_command(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openmd import shell_menu
+    from openmd.core.models import TranscriptResult
+
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"frozen scan marker")
+    monkeypatch.setattr("openmd.engines.registry.convert_document", lambda *_args, **_kwargs: TranscriptResult(
+        text="", status="failed", source_level="native_text", backend="openmd.pdf",
+        title="scan", error_code="document_empty_text"))
+
+    class Provider:
+        def __init__(self, _name, _options):
+            pass
+
+        def extract(self, request, *, first_use_confirm=None):
+            return TranscriptResult(text="", status="failed", source_level="ocr", backend="ocr.chain",
+                                    title="scan", error_code="ollama_model_missing")
+
+    monkeypatch.setattr("openmd.backends.ocr.OCRRouterProvider", Provider)
+    result = shell_menu._convert_file(source, tmp_path / "scan.md")
+
+    assert result["status"] == "failed"
+    assert result["error"] == "ocr_install_required"
+    assert result["next_action"] == "openmd models install ocr:chain"

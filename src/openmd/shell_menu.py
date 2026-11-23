@@ -25,13 +25,13 @@ try:  # imported lazily in tests and absent on non-Windows hosts
 except ImportError:  # pragma: no cover - platform dependent
     _winreg = None
 
-from openmd.core.detector import DOCUMENT_EXTENSIONS
+from openmd.core.detector import DOCUMENT_EXTENSIONS, IMAGE_TEXT_EXTENSIONS
 from openmd.core.filename import safe_filename
 from openmd.core.models import ContentItem
 from openmd.core.sync_manifest import SyncManifest, source_id_for
 
 
-SUPPORTED_SUFFIXES = frozenset(DOCUMENT_EXTENSIONS)
+SUPPORTED_SUFFIXES = frozenset((*DOCUMENT_EXTENSIONS, *IMAGE_TEXT_EXTENSIONS))
 DEFAULT_MAX_FILES = 1000
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 _DATA_URI = re.compile(r"data:image/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)")
@@ -48,14 +48,15 @@ def _hash_source(path: Path) -> str:
 
 def _item(path: Path) -> ContentItem:
     absolute = path.resolve()
+    is_image = absolute.suffix.lower() in IMAGE_TEXT_EXTENSIONS
     identity = hashlib.sha256(str(absolute).encode("utf-8")).hexdigest()[:24]
     return ContentItem(
-        platform="pdf",
+        platform="screenshot" if is_image else "pdf",
         input_type="single",
         url=absolute.as_uri(),
         id=identity,
         title=path.stem,
-        source_type="document",
+        source_type="image_text" if is_image else "document",
         raw_meta={"local_path": str(absolute), "profile": "document", "permission_scope": "local_file"},
     )
 
@@ -84,15 +85,38 @@ def _materialize_images(text: str, destination: Path) -> str:
     return text
 
 
-def _convert_file(path: Path, output: Path) -> dict[str, Any]:
+def _convert_file(path: Path, output: Path, *, ocr_confirm: Callable[[str], bool] | None = None) -> dict[str, Any]:
     from openmd.engines.registry import convert_document
     from openmd.engines.base import EngineLimits
 
+    is_image = path.suffix.lower() in IMAGE_TEXT_EXTENSIONS
     if path.suffix.lower() == ".md":
         text = path.read_text(encoding="utf-8-sig")
         status, error = ("verified", None) if text.strip() else ("failed", "document_empty_text")
+    elif is_image:
+        from types import SimpleNamespace
+        from openmd.backends.ocr import OCRRouterProvider
+
+        options = SimpleNamespace(ocr_engine="ocr.chain", enable_network_backends=True)
+        result = OCRRouterProvider("ocr.chain", options).extract(
+            SimpleNamespace(item=_item(path)), first_use_confirm=ocr_confirm
+        )
+        if result.error_code == "ollama_model_missing":
+            return {"status": "failed", "error": "ocr_install_required",
+                    "next_action": "openmd models install ocr:chain"}
+        text, status, error = result.text, result.status, result.error_code
     else:
         result = convert_document(path, EngineLimits(max_file_bytes=max(DEFAULT_MAX_BYTES, path.stat().st_size)))
+        if path.suffix.lower() == ".pdf" and result.error_code == "document_empty_text":
+            from types import SimpleNamespace
+            from openmd.backends.ocr import OCRRouterProvider
+
+            options = SimpleNamespace(ocr_engine="ocr.chain", enable_network_backends=True)
+            request = SimpleNamespace(item=_item(path))
+            result = OCRRouterProvider("ocr.chain", options).extract(request, first_use_confirm=ocr_confirm)
+            if result.error_code == "ollama_model_missing":
+                return {"status": "failed", "error": "ocr_install_required",
+                        "next_action": "openmd models install ocr:chain"}
         text, status, error = result.text, result.status, result.error_code
     if status not in {"verified", "partial"} or not text.strip():
         return {"status": "failed", "error": error or "document_empty_text"}
@@ -121,6 +145,7 @@ def convert_path(
     max_bytes: int = DEFAULT_MAX_BYTES,
     confirm_large: bool = False,
     progress: Callable[[int, int, Path], None] | None = None,
+    ocr_confirm: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Convert one supported file or a folder into Markdown.
 
@@ -180,10 +205,13 @@ def convert_path(
                 continue
             staging = target.with_name(f".{target.name}.staging")
             staging.parent.mkdir(parents=True, exist_ok=True)
-            converted = _convert_file(path, staging)
+            converted = _convert_file(path, staging, ocr_confirm=ocr_confirm)
             if converted["status"] == "failed":
                 result["failed"] += 1
-                result["failures"].append({"path": str(path), "error": converted["error"]})
+                failure = {"path": str(path), "error": converted["error"]}
+                if converted.get("next_action"):
+                    failure["next_action"] = converted["next_action"]
+                result["failures"].append(failure)
                 staging.unlink(missing_ok=True)
                 if progress:
                     progress(index, len(files), path)
@@ -266,6 +294,7 @@ def _hide_manifest_directory(path: Path) -> None:
 def _failure_message(error: str) -> str:
     messages = {
         "document_empty_text": "文档中没有可转换的文本",
+        "ocr_install_required": "安装扫描件 OCR 模型后重试：openmd models install ocr:chain",
         "engine_unavailable": "缺少此格式所需的转换工具",
         "file_too_large": "文件超过可处理大小",
         "permission_denied": "没有读取该文件的权限",
@@ -794,7 +823,9 @@ def cmd_shell_menu(args) -> int:
             too_large = len(candidates) > args.max_files or any(p.stat().st_size > args.max_bytes for p in candidates)
             if too_large:
                 confirm_large = messagebox.askyesno("输入规模较大", f"输入超过默认限制（{args.max_files} 个文件 / 每个文件 {args.max_bytes // (1024 * 1024)} MiB）。仍要继续吗？", parent=window)
-        value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes, confirm_large=confirm_large, progress=progress)
+        ocr_confirm = (lambda question: messagebox.askyesno("首次安装扫描件 OCR", question, parent=window)) if window is not None else None
+        value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes,
+                             confirm_large=confirm_large, progress=progress, ocr_confirm=ocr_confirm)
         if window is not None and ui is not None:
             if ui["cancelled"]():
                 return 0 if value.get("ok") else 1

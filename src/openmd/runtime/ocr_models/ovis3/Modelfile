@@ -1,0 +1,5 @@
+FROM ./OvisOCR3.BF16.gguf
+FROM ./OvisOCR3.mmproj-bf16.gguf
+REQUIRES 0.40.12
+PARAMETER num_ctx 8192
+PARAMETER temperature 0

@@ -1,7 +1,7 @@
 {
   "schema": "openmd.hardware-recommendations/v1",
   "policy": "No telemetry; conservative proposals, not availability guarantees. No cell generalizes one machine receipt to all hardware.",
-  "ocr_chain_estimated_bytes": 4141398184,
+  "ocr_chain_estimated_bytes": 4274670665,
   "tiers": {
     "ocr:baseline": [
       {
@@ -36,27 +36,81 @@
       }
     ],
     "ocr:ovis3": [
-      {"kind": "ollama", "artifact": "Ovis3 OCR model via Ollama", "model": "ovis3-bf16", "license": "Review upstream model license", "size_kind": "Ollama reports actual size during pull", "directory": "ollama/ovis3-bf16"}
+      {
+        "kind": "gguf_ollama",
+        "artifact": "OvisOCR3 BF16 GGUF plus projector",
+        "model": "ovis3-bf16",
+        "repository": "prithivMLmods/ATH-MaaS-OvisOCR3-GGUF",
+        "revision": "c29551652e828085ca1e892092f1319dbee22d2f",
+        "license": "Apache-2.0",
+        "size_bytes": 1724091296,
+        "size_kind": "pinned exact model and projector files",
+        "directory": "ovis3",
+        "probe_file": "OvisOCR3.BF16.gguf",
+        "modelfile": "ocr_models/ovis3/Modelfile",
+        "files": {
+          "OvisOCR3.BF16.gguf": "3be3e4503e36a47778c4ed11f92c54c29124b078fc02ccbcc9474b982768fbf9",
+          "OvisOCR3.mmproj-bf16.gguf": "b75172bce7c24944f02b8dd6cf434b3d027b7cd89f94cde73dfd07f863d281ec"
+        }
+      }
     ],
     "ocr:minicpm": [
-      {"kind": "ollama", "artifact": "MiniCPM OCR model via Ollama", "model": "minicpm-ocr-f16", "license": "Apache-2.0", "size_kind": "Ollama reports actual size during pull", "directory": "ollama/minicpm-ocr-f16"}
+      {
+        "kind": "gguf_ollama",
+        "artifact": "MiniCPM-OCR 1.0 F16 GGUF plus projector",
+        "model": "minicpm-ocr-f16",
+        "repository": "openbmb/MiniCPM-OCR-1.0-gguf",
+        "revision": "0133ad8db635210441a55dcf421e25bfb9915142",
+        "modelscope_repository": "OpenBMB/MiniCPM-OCR-1.0-gguf",
+        "modelscope_revision": "857af228a0b3cc79588bb90635bb6c00dd9542da",
+        "license": "Apache-2.0",
+        "size_bytes": 2417305888,
+        "size_kind": "pinned exact model and projector files",
+        "directory": "minicpm",
+        "probe_file": "MiniCPM-OCR-1_0-F16.gguf",
+        "modelfile": "ocr_models/minicpm/Modelfile",
+        "files": {
+          "MiniCPM-OCR-1_0-F16.gguf": "49d08e4dfb3310df2873828257f23fec53d3defad1782ae1fc78cae76dda1859",
+          "mmproj-model-f16-4x.gguf": "ceed82261b3b1380c3165f8b37c10117a50093be1362cbfeeb692fa036444682"
+        }
+      }
     ],
     "ocr:chain": [
       {
-        "kind": "ollama",
+        "kind": "gguf_ollama",
+        "repository": "prithivMLmods/ATH-MaaS-OvisOCR3-GGUF",
+        "revision": "c29551652e828085ca1e892092f1319dbee22d2f",
+        "size_bytes": 1724091296,
         "model": "ovis3-bf16",
-        "artifact": "Ovis3 and MiniCPM OCR locally configured Ollama weights",
-        "license": "Review upstream model license",
-        "size_kind": "part of the combined chain estimate",
-        "directory": "ollama/ovis3-bf16"
+        "artifact": "OvisOCR3 BF16 GGUF plus projector",
+        "license": "Apache-2.0",
+        "size_kind": "pinned exact model and projector files",
+        "directory": "ovis3",
+        "probe_file": "OvisOCR3.BF16.gguf",
+        "modelfile": "ocr_models/ovis3/Modelfile",
+        "files": {
+          "OvisOCR3.BF16.gguf": "3be3e4503e36a47778c4ed11f92c54c29124b078fc02ccbcc9474b982768fbf9",
+          "OvisOCR3.mmproj-bf16.gguf": "b75172bce7c24944f02b8dd6cf434b3d027b7cd89f94cde73dfd07f863d281ec"
+        }
       },
       {
-        "kind": "ollama",
+        "kind": "gguf_ollama",
+        "repository": "openbmb/MiniCPM-OCR-1.0-gguf",
+        "revision": "0133ad8db635210441a55dcf421e25bfb9915142",
+        "modelscope_repository": "OpenBMB/MiniCPM-OCR-1.0-gguf",
+        "modelscope_revision": "857af228a0b3cc79588bb90635bb6c00dd9542da",
+        "size_bytes": 2417305888,
         "model": "minicpm-ocr-f16",
-        "artifact": "MiniCPM OCR model via Ollama",
+        "artifact": "MiniCPM-OCR 1.0 F16 GGUF plus projector",
         "license": "Apache-2.0",
-        "size_kind": "part of the combined chain estimate",
-        "directory": "ollama/minicpm-ocr-f16"
+        "size_kind": "pinned exact model and projector files",
+        "directory": "minicpm",
+        "probe_file": "MiniCPM-OCR-1_0-F16.gguf",
+        "modelfile": "ocr_models/minicpm/Modelfile",
+        "files": {
+          "MiniCPM-OCR-1_0-F16.gguf": "49d08e4dfb3310df2873828257f23fec53d3defad1782ae1fc78cae76dda1859",
+          "mmproj-model-f16-4x.gguf": "ceed82261b3b1380c3165f8b37c10117a50093be1362cbfeeb692fa036444682"
+        }
       },
       {
         "kind": "huggingface",

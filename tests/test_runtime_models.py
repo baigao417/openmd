@@ -396,8 +396,8 @@ def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
     from openmd.runtime.recommendations import install_plan
 
     plan = install_plan("ocr:chain", root=tmp_path / "ocr", device="cpu")
-    assert {item["kind"] for item in plan["downloads"]} == {"ollama", "huggingface"}
-    assert {item["model"] for item in plan["downloads"] if item["kind"] == "ollama"} == {
+    assert {item["kind"] for item in plan["downloads"]} == {"gguf_ollama", "huggingface"}
+    assert {item["model"] for item in plan["downloads"] if item["kind"] == "gguf_ollama"} == {
         "ovis3-bf16", "minicpm-ocr-f16"
     }
     layout = next(item for item in plan["downloads"] if item["kind"] == "huggingface")
@@ -423,8 +423,8 @@ def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch,
 
     target = tmp_path / "layout-runtime"
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
-    calls = []
     monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
+    calls = []
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
     monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
@@ -473,15 +473,16 @@ def test_layout_runtime_uses_pre_downloaded_wheelhouse(monkeypatch, tmp_path):
     wheelhouse = tmp_path / "wheelhouse"
     wheelhouse.mkdir()
     (wheelhouse / "torch-2.5.1+cpu-cp312.whl").write_bytes(b"pre-downloaded wheel")
+    (wheelhouse / "torchvision-0.20.1+cpu-cp312.whl").write_bytes(b"pre-downloaded wheel")
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_WHEELHOUSE", str(wheelhouse))
-    monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
     calls = []
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
     monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
     ))
 
+    monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
     recommendations.install_layout_runtime("cpu")
 
     assert len(calls) == 3
@@ -575,21 +576,31 @@ def test_ocr_chain_install_noninteractive_returns_command_without_pull_or_downlo
     assert not (tmp_path / "models").exists()
 
 
-def test_ocr_single_model_install_delegates_to_ollama_pull(monkeypatch, capsys):
+def test_ocr_single_model_install_uses_pinned_gguf_then_ollama_create(monkeypatch, capsys, tmp_path):
     from argparse import Namespace
-    import subprocess
     from types import SimpleNamespace
     from openmd.runtime import recommendations
 
-    calls = []
+    payload = b"gguf sample bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    item = {"kind": "gguf_ollama", "artifact": "test GGUF", "model": "ovis3-bf16",
+            "repository": "org/model", "revision": "a" * 40, "license": "Apache-2.0",
+            "size_bytes": len(payload), "directory": "ovis3", "probe_file": "model.gguf",
+            "modelfile": "ocr_models/ovis3/Modelfile", "files": {"model.gguf": digest}}
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"ocr:ovis3": [item]}})
+    monkeypatch.setattr(recommendations, "rank_sources", lambda *_args, **_kwargs: [("https://hf-mirror.com", 1.0)])
     monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _: "y")
     monkeypatch.setattr("shutil.which", lambda name: "ollama.exe" if name == "ollama" else None)
-    monkeypatch.setattr(subprocess, "run", lambda argv, **kwargs: calls.append(argv) or SimpleNamespace(returncode=0))
-    assert recommendations.cmd_models_install(Namespace(tier="ocr:ovis3", root=None, dry_run=False)) == 0
-    assert calls == [["ollama.exe", "pull", "ovis3-bf16"]]
+    snapshot_download = lambda **kwargs: (Path(kwargs["local_dir"]) / "model.gguf").write_bytes(payload)
+    monkeypatch.setitem(__import__("sys").modules, "huggingface_hub", SimpleNamespace(snapshot_download=snapshot_download))
+    created = []
+    monkeypatch.setattr(recommendations, "_create_gguf_model", lambda *args: (created.append(args) or "ollama create verified", 0.5))
+    assert recommendations.cmd_models_install(Namespace(tier="ocr:ovis3", root=tmp_path / "models", dry_run=False)) == 0
+    assert len(created) == 1
     receipt = json.loads(capsys.readouterr().out.splitlines()[-1])
-    assert receipt["downloads"][0]["verified"] == "ollama pull exited successfully"
+    assert receipt["downloads"][0]["source"] == "hf-mirror.com"
+    assert receipt["downloads"][0]["verified"] == "ollama create verified"
 
 
 def test_model_install_handles_eof_without_traceback_or_download(monkeypatch, capsys, tmp_path):

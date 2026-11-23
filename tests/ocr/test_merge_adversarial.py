@@ -6,7 +6,7 @@ from PIL import Image
 
 from openmd.ocr.config import settings
 from openmd.ocr.pipeline import LocalOCRBackend
-from openmd.ocr.tiling import merge_pair
+from openmd.ocr.tiling import merge_pair, repeated_ngrams, repeated_text_loop
 
 
 def assert_preserved(a, b, **kwargs):
@@ -103,3 +103,29 @@ def test_review_pipeline_keeps_merge_warning_without_marking_complete_tiles_part
     assert result.metadata["pages"][0]["merge"]["seams"][0]["deleted_nonspace_chars"] == 0
     assert result.metadata["pages"][0]["reason"] == "merge_uncertain"
     assert result.metadata["pages"][0]["merge"]["warnings"]
+
+
+def test_repeated_formula_is_diagnostic_but_not_a_model_loop():
+    formula = r"\frac{P_i-jQ_i}{U_i}=\sum_{j=1}^{n}(G_{ij}+jB_{ij})U_j"
+
+    assert repeated_ngrams(formula + "\n" + formula)
+    assert not repeated_text_loop(formula + "\n" + formula)
+
+
+def test_adjacent_repeated_model_output_remains_partial():
+    config = settings()
+    backend = LocalOCRBackend("ocr.chain")
+    loop = "This same complete model generated sentence repeats without any new source content."
+    repeated = "\n".join([loop] * 3)
+    tile = {"status": "verified", "fallback_used": False, "reason": None, "attempts": []}
+
+    with patch("openmd.ocr.pipeline.api_json", return_value={"models": [
+        {"name": config["ovis_model"], "digest": "synthetic"}
+    ]}), patch.object(backend, "_tile", return_value=(dict(tile), repeated)):
+        result = backend._recognize_locked(
+            Image.new("RGB", (400, 600), "white"), "synthetic repeated model output", 1, True, config
+        )
+
+    page = result.metadata["pages"][0]
+    assert result.status == "partial"
+    assert page["merge"]["repeated_loop_detected"] is True

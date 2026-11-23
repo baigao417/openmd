@@ -1,0 +1,5 @@
+FROM ./MiniCPM-OCR-1_0-F16.gguf
+FROM ./mmproj-model-f16-4x.gguf
+REQUIRES 0.40.12
+PARAMETER num_ctx 8192
+PARAMETER temperature 0

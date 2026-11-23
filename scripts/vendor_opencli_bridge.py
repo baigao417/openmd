@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 from openmd.runtime.opencli_patches import (
     BRIDGE_PATCHES as PATCHES, OPENCLI_TAG, BRIDGE_VERSION, BRIDGE_SHA256, patch_bridge,
+    _bundled_bridge_source,
 )
 
 LICENSE_SHA256 = "0210b8b66cf00358242cb921ba2be3a46dfe0190159b1b952388a3880ce1ff54"
@@ -90,13 +91,40 @@ def build(archive_path: Path | None = None, license_path: Path | None = None) ->
     }
 
 
+def rebuild_from_bundled() -> dict[str, bytes]:
+    """Reapply the pinned patch registry offline to the checksum-verified vendor tree."""
+    background = HEADER.format(version=BRIDGE_VERSION) + patch_bridge(_bundled_bridge_source())
+    current_vendor = (VENDOR / "VENDOR.md").read_text(encoding="utf-8")
+    license_bytes = (VENDOR / "LICENSE").read_bytes()
+    patches = "\n".join(f"- {description}: `{original}` → `{replacement}`" for description, original, replacement, _ in PATCHES)
+    vendor_md = (
+        f"# OpenCLI Browser Bridge (vendored)\n\n"
+        f"- Upstream: https://github.com/jackwener/opencli (Apache-2.0), release {OPENCLI_TAG}, "
+        f"extension {BRIDGE_VERSION}\n- Asset: {ZIP_URL}\n- SHA-256: `{BRIDGE_SHA256}`\n"
+        f"- Files: `dist/background.js` → `background.js`; upstream `idle.html` replaced by Openmd's own page at the extension root\n\n"
+        f"## Modifications by Openmd\n\n{patches}\n\n"
+        f"Regenerate with `python scripts/vendor_opencli_bridge.py`; never edit `background.js` by hand.\n"
+    )
+    if not current_vendor or not license_bytes:
+        raise SystemExit("verified bundled vendor metadata unavailable")
+    return {
+        "background.js": background.encode("utf-8"),
+        "LICENSE": license_bytes,
+        "VENDOR.md": vendor_md.encode("utf-8"),
+        "../../idle.html": IDLE_HTML.encode("utf-8"),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--check", action="store_true", help="compare the vendored files with a fresh build")
     parser.add_argument("--archive", type=Path, help="local official release archive, checked against the pinned SHA-256")
     parser.add_argument("--license-file", type=Path, help="local license, checked against the pinned SHA-256")
+    parser.add_argument("--repatch-bundled", action="store_true", help="rebuild offline from the checksum-verified currently bundled source")
     args = parser.parse_args()
-    files = build(args.archive, args.license_file)
+    if args.repatch_bundled and (args.archive or args.license_file):
+        parser.error("--repatch-bundled cannot be combined with --archive or --license-file")
+    files = rebuild_from_bundled() if args.repatch_bundled else build(args.archive, args.license_file)
     VENDOR.mkdir(parents=True, exist_ok=True)
     stale = []
     for name, data in files.items():

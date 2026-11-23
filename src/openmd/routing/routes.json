@@ -97,6 +97,7 @@
       "capability": "content",
       "chain": [
         "openmd.x.public",
+        "openmd.x.logged_in_browser",
         "opencli.twitter.thread",
         "browser.kaze.snapshot"
       ],

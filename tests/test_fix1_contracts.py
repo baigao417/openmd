@@ -59,3 +59,10 @@ def test_opencli_read_only_builtin_commands_are_allowed(monkeypatch):
     assert managed_tools.command_access(["daemon", "status"]) == "read"
     assert managed_tools.command_access(["douyin", "--help"]) == "read"
     assert managed_tools.command_access(["unknown-site", "--help"]) == "unknown"
+
+
+def test_opencli_read_only_x_browser_bridge_methods_are_allowlisted():
+    assert managed_tools.command_access(["browser", "chrome", "call", "tabs.query", "[{}]"]) == "read"
+    assert managed_tools.command_access(["browser", "chrome", "call", "openmd.x.read", "[51,\"123\"]"]) == "read"
+    assert managed_tools.command_access(["browser", "chrome", "call", "tabs.remove", "[51]"]) == "unknown"
+    assert managed_tools.command_access(["browser", "chrome", "call", "cookies.getAll", "[]"]) == "unknown"

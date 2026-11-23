@@ -16,7 +16,22 @@ from urllib.parse import quote
 OPENCLI_TAG = 'v2.0.3'
 BRIDGE_VERSION = '1.0.27'
 BRIDGE_SHA256 = '8636d42a0fe44d7ba3b0603dbcd9581e8269ccbca950136d0dfc0ffc39a8a213'
-BRIDGE_GENERATED_SHA256 = '1cf540a2b2199bdaeb2524f0a8a7f5844822650c6c7ebefb30c4282ec5c24f4c'  # populated from the already verified generated file
+BRIDGE_GENERATED_SHA256 = 'fd4a2551765613dd81c1d90f71d454c4764d20793d3870dbc6081d627b99f6cd'  # populated from the already verified generated file
+# Previous generated source for this one patch, accepted only by the offline
+# repatch path when rebuilding from the already checksum-verified vendor tree.
+BRIDGE_LEGACY_X_READER = '''async function openmdReadX(args) {
+  if (!Array.isArray(args) || args.length !== 2 || !Number.isInteger(args[0]) || !/^\\d+$/.test(String(args[1]))) throw nativeError("invalid_args", "openmd.x.read requires a numeric tab id and X post id.");
+  const tab = await chrome.tabs.get(args[0]);
+  let url;
+  try { url = new URL(tab.url || ""); } catch { throw nativeError("x_browser_invalid_tab", "The selected tab is not an X page."); }
+  if (!['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'].includes(url.hostname.toLowerCase()) || url.protocol !== "https:") throw nativeError("x_browser_invalid_tab", "The selected tab is not an X page.");
+  if (typeof chrome.scripting?.executeScript !== "function") throw nativeError("x_browser_permission_denied", "The scripting permission is unavailable.");
+  const [injection] = await chrome.scripting.executeScript({ target: { tabId: args[0] }, world: "MAIN", func: openmdXReadPage, args: [String(args[1])] });
+  return injection?.result ?? { ok: false, error_code: "x_browser_api_failed", next_action: "Retry once; Openmd will continue to the next browser route." };
+}
+async function callChrome(method, args, protectedTabs, protectedGroups) {
+  if (method === "openmd.x.read") return await openmdReadX(args);
+  const { receiver, fn } = resolve(method);'''
 # (description, original, replacement): each original must occur exactly as counted.
 BRIDGE_PATCHES = [
     (
@@ -250,6 +265,21 @@ async function handleCommand(cmd) {
     ),
 ]
 
+BRIDGE_PATCHES += [
+    (
+        "import the fixed X page reader into the Browser Bridge module",
+        "const CHROME_METHODS = {",
+        'import { openmdXReadPage } from "../../x_browser_main.js";\nconst CHROME_METHODS = {',
+        1,
+    ),
+    (
+        "allow only the fixed X read handler in an already-open X tab",
+        "async function callChrome(method, args, protectedTabs, protectedGroups) {\n  const { receiver, fn } = resolve(method);",
+        "async function openmdReadX(args) {\n  const fail = (error_code, next_action) => ({ok:false,error_code,next_action});\n  if (!Array.isArray(args) || args.length !== 1 || !/^\\d+$/.test(String(args[0]))) throw nativeError(\"invalid_args\", \"openmd.x.read requires a numeric X post id.\");\n  const tabs = await chrome.tabs.query({url:[\"https://x.com/*\",\"https://twitter.com/*\"]});\n  const tab = tabs.find(value => value.id !== void 0 && [\"x.com\",\"www.x.com\",\"twitter.com\",\"www.twitter.com\"].includes(new URL(value.url).hostname.toLowerCase()));\n  if (!tab) return fail(\"x_browser_no_tab\",\"Open x.com in Chrome and retry; Openmd will continue to the next browser route.\");\n  if (typeof chrome.scripting?.executeScript !== \"function\") return fail(\"x_browser_permission_denied\",\"Reload the Openmd extension and grant its requested permissions, then retry.\");\n  try {\n    const [injection] = await chrome.scripting.executeScript({target:{tabId:tab.id},world:\"MAIN\",func:openmdXReadPage,args:[String(args[0])]});\n    return injection?.result ?? fail(\"x_browser_api_failed\",\"Retry once; Openmd will continue to the next browser route.\");\n  } catch (error) {\n    const permission = String(error?.message || error).toLowerCase().includes(\"permission\");\n    return fail(permission?\"x_browser_permission_denied\":\"x_browser_api_failed\",permission?\"Reload the Openmd extension and grant its requested permissions, then retry.\":\"Retry once; Openmd will continue to the next browser route.\");\n  }\n}\nasync function callChrome(method, args, protectedTabs, protectedGroups) {\n  if (method === \"openmd.x.read\") return await openmdReadX(args);\n  const { receiver, fn } = resolve(method);",
+        1,
+    ),
+]
+
 BRIDGE_PATCHES += [('Restore controller identity with the exact recorded tab lease', 'owned: stored.owned,\n        preferredTabId: tabId', 'owned: stored.owned,\n        openmdOwnerPid: stored.openmdOwnerPid,\n        preferredTabId: tabId', 1)]
 
 BRIDGE_PATCHES += [('Refresh job anchor with every real command', '  resetWindowIdleTimer(leaseKey);\n  activeCommandCounts.set(leaseKey,', '  resetWindowIdleTimer(leaseKey);\n  if (openmdOptions.ownerPid) resetWindowIdleTimer(getLeaseKey("openmd-job:" + openmdOptions.ownerPid, "adapter"));\n  activeCommandCounts.set(leaseKey,', 1), ('Long commands keep their job anchor alive', '  session.idleTimer = setTimeout(async () => {\n    if ((activeCommandCounts.get(leaseKey) ?? 0) > 0) {\n      return;\n    }', '  session.idleTimer = setTimeout(async () => {\n    const jobActive = session.session?.startsWith("openmd-job:") && [...automationSessions.entries()].some(([key, item]) => item.openmdOwnerPid === session.openmdOwnerPid && (activeCommandCounts.get(key) ?? 0) > 0);\n    if ((activeCommandCounts.get(leaseKey) ?? 0) > 0 || jobActive) {\n      resetWindowIdleTimer(leaseKey);\n      return;\n    }', 1)]
@@ -444,6 +474,12 @@ def _bundled_bridge_source() -> str:
         raise ValueError('opencli_bundled_bridge_hash_mismatch')
     source = source.split('\n', 3)[3]  # generator's three-line header
     for patch in reversed([p for p in PATCHES if p.kind == 'bridge']):
+        if patch.description == "allow only the fixed X read handler in an already-open X tab":
+            if source.count(BRIDGE_LEGACY_X_READER) == patch.count:
+                source = source.replace(BRIDGE_LEGACY_X_READER, patch.original)
+                continue
+        if patch.description == "import the fixed X page reader into the Browser Bridge module" and source.count(patch.replacement) == 0:
+            continue
         if source.count(patch.replacement) != patch.count:
             raise ValueError(f'opencli_patch_reverse_mismatch:{patch.id}')
         source = source.replace(patch.replacement, patch.original)

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import re
+import posixpath
 import subprocess
 import sys
 from zipfile import ZipFile
@@ -32,6 +33,6 @@ def test_extension_zip_preserves_manifest_and_all_referenced_files(tmp_path):
             if name.endswith(('.html', '.js', '.css')):
                 text = bundle.read(name).decode('utf-8')
                 refs = re.findall(r'''(?:src=|href=|from\s+|import\s*)["']([^"']+)["']''', text)
-                references.extend((Path(name).parent / ref).as_posix() for ref in refs
+                references.extend(posixpath.normpath((Path(name).parent / ref).as_posix()) for ref in refs
                                   if not ref.startswith(('http:', 'https:', '#', 'data:')))
         assert all(name in bundle.namelist() for name in references)

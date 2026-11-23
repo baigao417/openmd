@@ -118,6 +118,7 @@
         "capability": "content",
         "chain": [
           "openmd.x.public",
+          "openmd.x.logged_in_browser",
           "opencli.twitter.thread",
           "browser.kaze.snapshot"
         ],
@@ -829,8 +830,21 @@
           "cost_class": "none",
           "status_policy": "provider_defined"
         },
-        {
-          "id": "opencli.twitter.thread",
+          {
+            "id": "openmd.x.logged_in_browser",
+            "provider": "openmd.x.logged_in_browser",
+            "sources": [
+              "x"
+            ],
+            "capability": "content",
+            "gates": [
+              "browser"
+            ],
+            "source_level": "provider_defined",
+            "status_policy": "provider_defined"
+          },
+          {
+            "id": "opencli.twitter.thread",
           "provider": "opencli.twitter.thread",
           "sources": [
             "x"

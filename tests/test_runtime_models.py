@@ -392,6 +392,106 @@ def test_models_install_plan_defaults_under_data_directory(monkeypatch, tmp_path
     assert Path(plan["root"]) == (tmp_path / "data" / "models")
 
 
+def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
+    from openmd.runtime.recommendations import install_plan
+
+    plan = install_plan("ocr:chain", root=tmp_path / "ocr", device="cpu")
+    assert {item["kind"] for item in plan["downloads"]} == {"gguf_ollama", "huggingface"}
+    assert {item["model"] for item in plan["downloads"] if item["kind"] == "gguf_ollama"} == {
+        "ovis3-bf16", "minicpm-ocr-f16"
+    }
+    layout = next(item for item in plan["downloads"] if item["kind"] == "huggingface")
+    assert layout["destination"].endswith("layout")
+    assert layout["repository"] == "PaddlePaddle/PP-DocLayoutV3_safetensors"
+    assert plan["runtime"]["install_command"] == "openmd models install ocr:chain"
+    assert "torch==2.5.1+cpu" in plan["runtime"]["required"]
+    assert "torchvision==0.20.1+cpu" in plan["runtime"]["required"]
+
+
+def test_ocr_install_plan_defaults_to_d_drive_on_windows(monkeypatch):
+    from openmd.runtime import recommendations
+
+    monkeypatch.setattr(recommendations.os, "name", "nt")
+    plan = recommendations.install_plan("ocr:chain")
+
+    assert Path(plan["root"]) == Path("D:/openmd-runtime/models")
+
+
+def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    target = tmp_path / "layout-runtime"
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
+    monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
+    calls = []
+    monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
+    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+        calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
+    ))
+
+    receipt = recommendations.install_layout_runtime("cpu")
+
+    assert len(calls) == 3
+    assert "torch==2.5.1+cpu" in calls[0][0]
+    assert "torchvision==0.20.1+cpu" in calls[0][0]
+    assert "https://download.pytorch.org/whl/cpu" in calls[0][0]
+    assert calls[-1][1]["env"]["CUDA_VISIBLE_DEVICES"] == "-1"
+    suffix = "Scripts\\python.exe" if recommendations.os.name == "nt" else "bin/python"
+    assert receipt["python"].endswith(suffix)
+    assert __import__("os").environ["OPENMD_OCR_PYTHON"] == receipt["python"]
+
+
+def test_layout_runtime_discovers_managed_venv_and_model_root(monkeypatch, tmp_path):
+    from openmd.ocr.config import layout_runtime
+
+    runtime = tmp_path / "layout-runtime"
+    python = runtime / "Scripts" / "python.exe"
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"runtime")
+    model = tmp_path / "models" / "layout"
+    model.mkdir(parents=True)
+    (model / "config.json").write_text("{}", encoding="utf-8")
+    (model / "model.safetensors").write_bytes(b"weights")
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(runtime))
+    monkeypatch.setenv("OPENMD_MODEL_ROOTS", str(tmp_path / "models"))
+    monkeypatch.delenv("OPENMD_OCR_PYTHON", raising=False)
+    monkeypatch.delenv("OPENMD_OCR_LAYOUT_MODEL", raising=False)
+    monkeypatch.setattr("openmd.ocr.config.load_local_config", lambda: {})
+
+    resolved_python, resolved_model = layout_runtime()
+
+    assert resolved_python == python.resolve()
+    assert resolved_model == model.resolve()
+
+
+def test_layout_runtime_uses_pre_downloaded_wheelhouse(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    target = tmp_path / "layout-runtime"
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    (wheelhouse / "torch-2.5.1+cpu-cp312.whl").write_bytes(b"pre-downloaded wheel")
+    (wheelhouse / "torchvision-0.20.1+cpu-cp312.whl").write_bytes(b"pre-downloaded wheel")
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_RUNTIME", str(target))
+    monkeypatch.setenv("OPENMD_OCR_LAYOUT_WHEELHOUSE", str(wheelhouse))
+    calls = []
+    monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
+    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+        calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
+    ))
+
+    monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
+    recommendations.install_layout_runtime("cpu")
+
+    assert len(calls) == 3
+    assert "--no-index" in calls[0][0]
+    assert calls[0][0][calls[0][0].index("--find-links") + 1] == str(wheelhouse)
+    assert "torch==2.5.1+cpu" in calls[0][0]
+    assert "torchvision==0.20.1+cpu" in calls[0][0]
+
+
 def test_auto_runtime_accepts_only_baseline_model(monkeypatch, tmp_path):
     import openmd.runtime.interpreters as module
     from openmd.runtime.models import ResolvedModel
@@ -461,6 +561,46 @@ def test_model_install_noninteractive_returns_action_without_download(monkeypatc
     assert recommendations.cmd_models_install(Namespace(tier="asr:baseline", root=None, dry_run=False)) == 2
     assert "openmd models install asr:baseline" in capsys.readouterr().out
     assert not (tmp_path / "data" / "models").exists()
+
+
+def test_ocr_chain_install_noninteractive_returns_command_without_pull_or_download(monkeypatch, tmp_path, capsys):
+    from argparse import Namespace
+    from openmd.runtime import recommendations
+
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: False)
+    assert recommendations.cmd_models_install(Namespace(tier="ocr:chain", root=tmp_path / "models", dry_run=False)) == 2
+    captured = capsys.readouterr()
+    plan = json.loads(captured.out)
+    assert "openmd models install ocr:chain" in plan["next_action"]
+    assert plan["download_started"] is False
+    assert not (tmp_path / "models").exists()
+
+
+def test_ocr_single_model_install_uses_pinned_gguf_then_ollama_create(monkeypatch, capsys, tmp_path):
+    from argparse import Namespace
+    from types import SimpleNamespace
+    from openmd.runtime import recommendations
+
+    payload = b"gguf sample bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+    item = {"kind": "gguf_ollama", "artifact": "test GGUF", "model": "ovis3-bf16",
+            "repository": "org/model", "revision": "a" * 40, "license": "Apache-2.0",
+            "size_bytes": len(payload), "directory": "ovis3", "probe_file": "model.gguf",
+            "modelfile": "ocr_models/ovis3/Modelfile", "files": {"model.gguf": digest}}
+    monkeypatch.setattr(recommendations, "matrix", lambda: {"tiers": {"ocr:ovis3": [item]}})
+    monkeypatch.setattr(recommendations, "rank_sources", lambda *_args, **_kwargs: [("https://hf-mirror.com", 1.0)])
+    monkeypatch.setattr(recommendations.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    monkeypatch.setattr("shutil.which", lambda name: "ollama.exe" if name == "ollama" else None)
+    snapshot_download = lambda **kwargs: (Path(kwargs["local_dir"]) / "model.gguf").write_bytes(payload)
+    monkeypatch.setitem(__import__("sys").modules, "huggingface_hub", SimpleNamespace(snapshot_download=snapshot_download))
+    created = []
+    monkeypatch.setattr(recommendations, "_create_gguf_model", lambda *args: (created.append(args) or "ollama create verified", 0.5))
+    assert recommendations.cmd_models_install(Namespace(tier="ocr:ovis3", root=tmp_path / "models", dry_run=False)) == 0
+    assert len(created) == 1
+    receipt = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert receipt["downloads"][0]["source"] == "hf-mirror.com"
+    assert receipt["downloads"][0]["verified"] == "ollama create verified"
 
 
 def test_model_install_handles_eof_without_traceback_or_download(monkeypatch, capsys, tmp_path):

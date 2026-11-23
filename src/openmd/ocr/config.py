@@ -22,10 +22,14 @@ def settings() -> dict:
     value.update(overrides)
     value["ovis_model"] = os.getenv("OPENMD_OCR_OVIS_MODEL") or value["ovis_model"]
     value["minicpm_model"] = os.getenv("OPENMD_OCR_MINICPM_MODEL") or value["minicpm_model"]
+    value["layout_device"] = os.getenv("OPENMD_OCR_LAYOUT_DEVICE") or value["layout_device"]
     for key, item in value.items():
         if key == 'engine':
             if item not in {'ocr.chain', 'ocr.ovis3', 'ocr.minicpm', 'ocr.rapidocr'}:
                 raise ValueError('ocr_engine_unknown')
+        elif key == 'layout_device':
+            if item not in {'auto', 'cpu', 'cuda'}:
+                raise ValueError('ocr_layout_device_invalid')
         elif key.endswith("_model"):
             if not isinstance(item, str) or not item.strip() or any(ord(c) < 32 for c in item):
                 raise ValueError(f"ocr_setting_invalid: {key}")
@@ -45,13 +49,20 @@ def settings() -> dict:
 
 def layout_runtime() -> tuple[Path | None, Path | None]:
     local = load_local_config()
-    python_value = os.getenv("OPENMD_OCR_PYTHON") or local.get("ocr_python")
+    managed = Path("D:/openmd-runtime/python/openmd-ocr-layout") / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    managed_value = os.getenv("OPENMD_OCR_LAYOUT_RUNTIME")
+    if managed_value:
+        managed = Path(managed_value).expanduser() / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python_value = os.getenv("OPENMD_OCR_PYTHON") or local.get("ocr_python") or (str(managed) if managed.is_file() else None)
     python = Path(python_value).expanduser().resolve() if python_value else None
     explicit = os.getenv("OPENMD_OCR_LAYOUT_MODEL")
     if explicit:
         candidates = [Path(explicit).expanduser()]
     else:
         roots = [*(Path(p).expanduser() for p in os.getenv("OPENMD_MODEL_ROOTS", "").split(os.pathsep) if p), *(Path(p).expanduser() for p in local.get("model_roots", []))]
+        managed_root = Path("D:/openmd-runtime/models")
+        if os.name == "nt" and managed_root.is_dir() and managed_root not in roots:
+            roots.append(managed_root)
         candidates = [p for root in roots for p in (root / "layout", root / "PP-DocLayoutV3", root / "PaddlePaddle/PP-DocLayoutV3", root)]
     model = next((p.resolve() for p in candidates if (p / "config.json").is_file() and any(p.glob("*.safetensors"))), None)
     return python if python and python.is_file() else None, model

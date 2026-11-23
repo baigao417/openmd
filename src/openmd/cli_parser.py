@@ -51,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     from pathlib import Path
     install.add_argument('--root', type=Path, help='model destination')
     install.add_argument('--dry-run', action='store_true', help='print the plan without downloading')
+    install.add_argument('--device', choices=('auto', 'cpu', 'cuda'), help='OCR layout runtime device; defaults to OPENMD_OCR_LAYOUT_DEVICE or automatic detection')
     install.set_defaults(func=cmd_models_install)
 
     from .cli_commands import cmd_opencli

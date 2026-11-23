@@ -1,6 +1,7 @@
 {
   "schema": "openmd.hardware-recommendations/v1",
   "policy": "No telemetry; conservative proposals, not availability guarantees. No cell generalizes one machine receipt to all hardware.",
+  "ocr_chain_estimated_bytes": 4274670665,
   "tiers": {
     "ocr:baseline": [
       {
@@ -34,14 +35,97 @@
         "directory": "minicpm/mmproj-model-f16-4x.gguf"
       }
     ],
+    "ocr:ovis3": [
+      {
+        "kind": "gguf_ollama",
+        "artifact": "OvisOCR3 BF16 GGUF plus projector",
+        "model": "ovis3-bf16",
+        "repository": "prithivMLmods/ATH-MaaS-OvisOCR3-GGUF",
+        "revision": "c29551652e828085ca1e892092f1319dbee22d2f",
+        "license": "Apache-2.0",
+        "size_bytes": 1724091296,
+        "size_kind": "pinned exact model and projector files",
+        "directory": "ovis3",
+        "probe_file": "OvisOCR3.BF16.gguf",
+        "modelfile": "ocr_models/ovis3/Modelfile",
+        "files": {
+          "OvisOCR3.BF16.gguf": "3be3e4503e36a47778c4ed11f92c54c29124b078fc02ccbcc9474b982768fbf9",
+          "OvisOCR3.mmproj-bf16.gguf": "b75172bce7c24944f02b8dd6cf434b3d027b7cd89f94cde73dfd07f863d281ec"
+        }
+      }
+    ],
+    "ocr:minicpm": [
+      {
+        "kind": "gguf_ollama",
+        "artifact": "MiniCPM-OCR 1.0 F16 GGUF plus projector",
+        "model": "minicpm-ocr-f16",
+        "repository": "openbmb/MiniCPM-OCR-1.0-gguf",
+        "revision": "0133ad8db635210441a55dcf421e25bfb9915142",
+        "modelscope_repository": "OpenBMB/MiniCPM-OCR-1.0-gguf",
+        "modelscope_revision": "857af228a0b3cc79588bb90635bb6c00dd9542da",
+        "license": "Apache-2.0",
+        "size_bytes": 2417305888,
+        "size_kind": "pinned exact model and projector files",
+        "directory": "minicpm",
+        "probe_file": "MiniCPM-OCR-1_0-F16.gguf",
+        "modelfile": "ocr_models/minicpm/Modelfile",
+        "files": {
+          "MiniCPM-OCR-1_0-F16.gguf": "49d08e4dfb3310df2873828257f23fec53d3defad1782ae1fc78cae76dda1859",
+          "mmproj-model-f16-4x.gguf": "ceed82261b3b1380c3165f8b37c10117a50093be1362cbfeeb692fa036444682"
+        }
+      }
+    ],
     "ocr:chain": [
       {
-        "artifact": "Ovis3 and MiniCPM OCR locally configured Ollama weights",
-        "repository": "ATH-MaaS/OvisOCR3; openbmb/MiniCPM-OCR-1.0-gguf; PaddlePaddle/PP-DocLayoutV3_safetensors",
-        "license": "Apache-2.0 for the pinned recognition checkpoints; review detector and runtime licenses",
-        "size_bytes": 4141398184,
-        "size_kind": "pinned main/projector total, layout weights and runtime extra",
-        "directory": "ollama"
+        "kind": "gguf_ollama",
+        "repository": "prithivMLmods/ATH-MaaS-OvisOCR3-GGUF",
+        "revision": "c29551652e828085ca1e892092f1319dbee22d2f",
+        "size_bytes": 1724091296,
+        "model": "ovis3-bf16",
+        "artifact": "OvisOCR3 BF16 GGUF plus projector",
+        "license": "Apache-2.0",
+        "size_kind": "pinned exact model and projector files",
+        "directory": "ovis3",
+        "probe_file": "OvisOCR3.BF16.gguf",
+        "modelfile": "ocr_models/ovis3/Modelfile",
+        "files": {
+          "OvisOCR3.BF16.gguf": "3be3e4503e36a47778c4ed11f92c54c29124b078fc02ccbcc9474b982768fbf9",
+          "OvisOCR3.mmproj-bf16.gguf": "b75172bce7c24944f02b8dd6cf434b3d027b7cd89f94cde73dfd07f863d281ec"
+        }
+      },
+      {
+        "kind": "gguf_ollama",
+        "repository": "openbmb/MiniCPM-OCR-1.0-gguf",
+        "revision": "0133ad8db635210441a55dcf421e25bfb9915142",
+        "modelscope_repository": "OpenBMB/MiniCPM-OCR-1.0-gguf",
+        "modelscope_revision": "857af228a0b3cc79588bb90635bb6c00dd9542da",
+        "size_bytes": 2417305888,
+        "model": "minicpm-ocr-f16",
+        "artifact": "MiniCPM-OCR 1.0 F16 GGUF plus projector",
+        "license": "Apache-2.0",
+        "size_kind": "pinned exact model and projector files",
+        "directory": "minicpm",
+        "probe_file": "MiniCPM-OCR-1_0-F16.gguf",
+        "modelfile": "ocr_models/minicpm/Modelfile",
+        "files": {
+          "MiniCPM-OCR-1_0-F16.gguf": "49d08e4dfb3310df2873828257f23fec53d3defad1782ae1fc78cae76dda1859",
+          "mmproj-model-f16-4x.gguf": "ceed82261b3b1380c3165f8b37c10117a50093be1362cbfeeb692fa036444682"
+        }
+      },
+      {
+        "kind": "huggingface",
+        "artifact": "PP-DocLayoutV3 layout weights",
+        "repository": "PaddlePaddle/PP-DocLayoutV3_safetensors",
+        "revision": "e4f489dc536556fc1be02b973ba06756e0d4a2ac",
+        "license": "Review upstream detector license",
+        "size_bytes": 133273481,
+        "size_kind": "exact pinned local files",
+        "directory": "layout",
+        "files": {
+          "config.json": "3cf834b91d23a756b1519bce4db42c09e852f3e35c35092dd5a3e253a50c071a",
+          "model.safetensors": "5ea422c6cc5fe759a47e1357c35639b58173508e025a3131cbe4b6ac59e2b85e",
+          "preprocessor_config.json": "519fe0187a43a1ca429e3ad8317bab8700f0d5e8fb3a6e3a0a413ffac078ba42"
+        }
       }
     ],
     "asr:baseline": [

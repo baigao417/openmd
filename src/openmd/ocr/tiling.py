@@ -607,3 +607,27 @@ def repeated_ngrams(text: str, n=24):
         seen.setdefault(g, i)
         i += 1
     return reps
+
+
+def repeated_text_loop(text: str, *, minimum_chars: int = 64, tolerance: int = 8) -> bool:
+    """Detect adjacent long repeats while ignoring isolated repeated formulas/cells.
+
+    ``repeated_ngrams`` remains a diagnostic for repeated content anywhere in a
+    page. Page status uses this stricter check so repeated equations, matrix
+    layouts, table values, and headers do not look like a model generation loop.
+    """
+    normalized, _ = norm_view(text)
+    seen: dict[str, int] = {}
+    for index in range(len(normalized) - 23):
+        gram = normalized[index:index + 24]
+        previous = seen.get(gram)
+        if previous is None:
+            seen[gram] = index
+            continue
+        length = 24
+        while (length < index - previous and index + length < len(normalized)
+               and normalized[previous + length] == normalized[index + length]):
+            length += 1
+        if length >= minimum_chars and abs((index - previous) - length) <= tolerance:
+            return True
+    return False

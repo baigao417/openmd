@@ -97,7 +97,14 @@ and reports `device=cpu`, `cpu_only=true`, `cuda_visible=false`, and
 
 ### Windows 本机部署示例
 
-本机可复用已经准备好的外部 OCR 环境和本地版面模型路径：
+首次使用可通过 `openmd models install ocr:chain` 一并准备 Ollama OCR 模型、
+PP-DocLayoutV3 权重和独立 CPU runtime。Windows 默认把权重放在
+`D:\openmd-runtime\models\layout`，把 runtime 放在
+`D:\openmd-runtime\python\openmd-ocr-layout`；doctor 会自动发现这两个路径。
+其他路径可用 `OPENMD_OCR_PYTHON`、`OPENMD_MODEL_ROOTS` 和
+`OPENMD_OCR_LAYOUT_MODEL` 覆盖。Ollama 服务仍由用户自行启动。
+
+也可以复用已经准备好的外部 OCR 环境和本地版面模型路径：
 
 ```powershell
 $env:OPENMD_OLLAMA_URL = 'http://127.0.0.1:18499'

@@ -9,6 +9,9 @@ function message(text, ok) {
 }
 
 async function init() {
+  const debuggerAvailable = ["attach", "detach", "sendCommand", "getTargets"].every((method) => typeof chrome.debugger?.[method] === "function")
+    && typeof chrome.debugger?.onEvent?.addListener === "function" && typeof chrome.debugger?.onDetach?.addListener === "function";
+  $("opencli-browser-note").hidden = debuggerAvailable;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const highlighted = await chrome.tabs.query({ highlighted: true, currentWindow: true });
   const tabs = (highlighted.length > 1 ? highlighted : [tab]).filter((t) => isWeb(t?.url));

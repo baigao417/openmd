@@ -111,7 +111,7 @@ def _start_opencli_daemon_detached(daemon_argv, *, env=None):
     return process
 
 
-OPENMD_BRIDGE_PROFILE = "openmd"
+OPENMD_BRIDGE_PROFILE_PREFIX = "openmd-"
 
 
 def _bridge_profiles(timeout: float = 1.0) -> list[str]:
@@ -145,8 +145,13 @@ def bridge_profile_env(command, env=None):
     while not profiles and time.monotonic() < deadline:  # bridges reconnect to a fresh daemon
         time.sleep(.2)
         profiles = _bridge_profiles()
-    if OPENMD_BRIDGE_PROFILE in profiles and len(profiles) > 1:
-        return {**base, "OPENCLI_PROFILE": OPENMD_BRIDGE_PROFILE}
+    openmd_profiles = [profile for profile in profiles if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX)]
+    if len(openmd_profiles) == 1 and len(profiles) > 1:
+        return {**base, "OPENCLI_PROFILE": openmd_profiles[0]}
+    if len(openmd_profiles) > 1:
+        # Fail closed: selecting an arbitrary Openmd browser would silently use
+        # whichever user's login state happened to win the connection race.
+        return {**base, "OPENCLI_PROFILE": "openmd-profile-conflict"}
     return None
 
 
@@ -218,8 +223,11 @@ def _bridge_request(action, **fields):
     import uuid
     import urllib.request
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    profiles = [profile for profile in _bridge_profiles() if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX)]
+    if len(profiles) != 1:
+        raise OSError("openmd_chrome_bridge_profile_conflict" if profiles else "openmd_chrome_bridge_unavailable")
     request = urllib.request.Request("http://127.0.0.1:19825/command",
-        data=json.dumps({"id": str(uuid.uuid4()), "contextId": "openmd", "action": action, **fields}).encode(),
+        data=json.dumps({"id": str(uuid.uuid4()), "contextId": profiles[0], "action": action, **fields}).encode(),
         headers={"Content-Type": "application/json", "X-OpenCLI": "1"})
     with opener.open(request, timeout=5) as response:
         return json.load(response)
@@ -228,7 +236,8 @@ def _bridge_request(action, **fields):
 def prepare_openmd_bridge(env=None):
     """Configure only our bridge; old loaded extensions get an honest deferred receipt."""
     global _BRIDGE_PREPARED
-    if (env or os.environ).get("OPENCLI_PROFILE", "openmd") != "openmd":
+    selected_profile = (env or os.environ).get("OPENCLI_PROFILE")
+    if selected_profile and not selected_profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX):
         return
     from openmd.core.local_config import load_local_config
     from openmd.core.preferences import data_directory
@@ -260,7 +269,7 @@ def prepare_openmd_bridge(env=None):
     path = data_directory() / "browser-cleanup.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps({"event_type": "browser_cleanup", "profile": "openmd", **receipt}) + "\n")
+        stream.write(json.dumps({"event_type": "browser_cleanup", "profile": selected_profile or "openmd-auto", **receipt}) + "\n")
 
 
 def finish_openmd_bridge():
@@ -282,6 +291,6 @@ def finish_openmd_bridge():
         path = data_directory() / "browser-cleanup.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"event_type": "browser_cleanup", "phase": "finish", "profile": "openmd", **receipt}) + "\n")
+            stream.write(json.dumps({"event_type": "browser_cleanup", "phase": "finish", "profile": os.environ.get("OPENCLI_PROFILE") or "openmd-auto", **receipt}) + "\n")
     except OSError:
         pass

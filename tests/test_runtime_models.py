@@ -426,7 +426,7 @@ def test_layout_runtime_installer_uses_pinned_cpu_wheels_and_probes(monkeypatch,
     monkeypatch.setattr(recommendations, "_nvidia_driver_available", lambda: False)
     calls = []
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
-    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+    monkeypatch.setattr(recommendations, "run_interruptibly", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
     ))
 
@@ -478,7 +478,7 @@ def test_layout_runtime_uses_pre_downloaded_wheelhouse(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENMD_OCR_LAYOUT_WHEELHOUSE", str(wheelhouse))
     calls = []
     monkeypatch.setattr(recommendations.venv.EnvBuilder, "create", lambda _self, path: target.mkdir(parents=True))
-    monkeypatch.setattr(recommendations.subprocess, "run", lambda command, **kwargs: (
+    monkeypatch.setattr(recommendations, "run_interruptibly", lambda command, **kwargs: (
         calls.append((command, kwargs)) or SimpleNamespace(stdout='{"modules":{"torch":true,"transformers":true,"PIL":true,"numpy":true,"torchvision":true},"cuda_visible":false,"torch_cuda_build":null}\n')
     ))
 

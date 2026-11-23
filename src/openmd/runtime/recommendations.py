@@ -13,9 +13,10 @@ import sys
 import time
 import venv
 
+from .interpreters import process_options, run_interruptibly
+
 
 def hardware() -> dict:
-    from .interpreters import run_interruptibly
     result = {'os': platform.system(), 'cpu': platform.processor(), 'ram_gib': None, 'gpus': [], 'errors': []}
     try:
         import psutil
@@ -40,7 +41,8 @@ def hardware() -> dict:
         except (AttributeError, OSError, ValueError, KeyError, TypeError):
             result['errors'].append('ram_unavailable')
     try:
-        proc = run_interruptibly(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=3)
+        proc = run_interruptibly(['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
+                                 capture_output=True, text=True, timeout=3, **process_options())
         if proc.returncode != 0:
             raise ValueError('gpu_probe_failed')
         for line in proc.stdout.splitlines():
@@ -78,8 +80,8 @@ def _nvidia_driver_available() -> bool:
     if not executable:
         return False
     try:
-        return subprocess.run([executable, "-L"], capture_output=True, text=True,
-                              check=False, timeout=5).returncode == 0
+        return run_interruptibly([executable, "-L"], capture_output=True, text=True,
+                                 check=False, timeout=5, **process_options()).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -219,14 +221,15 @@ def install_layout_runtime(device: str = "auto") -> dict:
          "transformers==5.13.1", "pillow==12.3.0", "numpy==2.5.4"],
     ]
     for command in commands:
-        subprocess.run(command, check=True)
-    probe = subprocess.run(
+        run_interruptibly(command, check=True, timeout=4 * 60 * 60, **process_options())
+    probe = run_interruptibly(
         [str(python), "-c",
          "import importlib.util,json,torch; names=('torch','transformers','PIL','numpy','torchvision'); "
          "modules={n:importlib.util.find_spec(n) is not None for n in names}; "
          "print(json.dumps({'modules':modules,'cuda_visible':torch.cuda.is_available(),'torch_cuda_build':torch.version.cuda}))"],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, timeout=60,
         env={**os.environ, **({"CUDA_VISIBLE_DEVICES": "-1"} if selected == "cpu" else {})},
+        **process_options(),
     )
     report = json.loads(probe.stdout.strip().splitlines()[-1])
     if not all(report.get("modules", {}).values()):
@@ -262,8 +265,9 @@ def _gguf_files_verified(destination: Path, item: dict) -> dict[str, str] | None
 
 
 def _ollama_model_matches(executable: str, item: dict, hashes: dict[str, str]) -> bool:
-    result = subprocess.run([executable, "show", "--modelfile", item["model"]],
-                            check=False, capture_output=True, text=True)
+    result = run_interruptibly([executable, "show", "--modelfile", item["model"]],
+                               check=False, capture_output=True, text=True,
+                               timeout=60, **process_options())
     if result.returncode:
         return False
     body = result.stdout.casefold()
@@ -276,8 +280,9 @@ def _create_gguf_model(executable: str, item: dict, destination: Path,
                        hashes: dict[str, str]) -> tuple[str, float]:
     if _ollama_model_matches(executable, item, hashes):
         return "existing_model_digest_matches", 0.0
-    probe = subprocess.run([executable, "show", "--modelfile", item["model"]],
-                           check=False, capture_output=True, text=True)
+    probe = run_interruptibly([executable, "show", "--modelfile", item["model"]],
+                              check=False, capture_output=True, text=True,
+                              timeout=60, **process_options())
     if probe.returncode == 0:
         raise RuntimeError(f"ollama_model_identity_conflict: {item['model']}")
     from importlib.resources import files
@@ -286,8 +291,9 @@ def _create_gguf_model(executable: str, item: dict, destination: Path,
     modelfile = destination / "Modelfile.openmd"
     modelfile.write_text(resource.read_text(encoding="utf-8"), encoding="utf-8")
     started = time.monotonic()
-    created = subprocess.run([executable, "create", item["model"], "-f", str(modelfile)],
-                             cwd=destination, check=False, capture_output=True, text=True)
+    created = run_interruptibly([executable, "create", item["model"], "-f", str(modelfile)],
+                                cwd=destination, check=False, timeout=4 * 60 * 60,
+                                **process_options())
     if created.returncode:
         raise RuntimeError(f"ollama_create_failed: {item['model']}")
     if not _ollama_model_matches(executable, item, hashes):
@@ -317,7 +323,6 @@ def cmd_models_install(args) -> int:
                     print(f"以后可运行：openmd models install {args.tier}")
                     return 1
             import shutil
-            import subprocess
             receipts = []
             layout_runtime = None
             for item in plan['downloads']:
@@ -325,7 +330,9 @@ def cmd_models_install(args) -> int:
                     executable = shutil.which('ollama')
                     if not executable:
                         raise RuntimeError(f'ollama_not_installed: install Ollama, then rerun openmd models install {args.tier}')
-                    completed = subprocess.run([executable, 'pull', item['model']], check=False)
+                    completed = run_interruptibly([executable, 'pull', item['model']],
+                                                  check=False, timeout=6 * 60 * 60,
+                                                  **process_options())
                     if completed.returncode:
                         raise RuntimeError(f"ollama_pull_failed: {item['model']}; rerun openmd models install {args.tier}")
                     receipts.append({'kind': 'ollama', 'model': item['model'], 'verified': 'ollama pull exited successfully'})

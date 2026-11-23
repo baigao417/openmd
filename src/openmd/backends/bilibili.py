@@ -53,6 +53,7 @@ from openmd.runtime.interpreters import run_interruptibly
 
 BILIBILI_HARVEST_BACKEND = "bilibili-harvest.core"
 BILIBILI_OPENCLI_SUBTITLE_BACKEND = "opencli.bilibili.subtitle"
+_OPENCLI_EMPTY_SUBTITLE_ATTEMPTS = 3
 BILIBILI_YTDLP_MEDIA_BACKEND = "yt-dlp.bilibili"
 BILIBILI_ASR_FALLBACK_BACKEND = "asr.fallback"
 BILIBILI_NATIVE_DISCOVERY_BACKEND = "bilibili-harvest.discovery"
@@ -398,10 +399,17 @@ class OpenCliBilibiliSubtitleProvider:
             return _failed_result(self.name, "invalid_input", "Bilibili BVID not found.")
 
         try:
-            exit_code, stdout, stderr = self._runner(
-                ["opencli", "bilibili", "subtitle", bvid, "-f", "json"],
-                self._timeout,
-            )
+            # B站's player API returns a varying subtitle list for the same logged-in
+            # request (2026-11-23: 1,1,0,0 / 1,12,1,1 on consecutive calls), so an
+            # empty answer (OpenCLI EMPTY_RESULT, exit 66) is asked again, bounded.
+            for attempt in range(_OPENCLI_EMPTY_SUBTITLE_ATTEMPTS):
+                exit_code, stdout, stderr = self._runner(
+                    ["opencli", "bilibili", "subtitle", bvid, "-f", "json"],
+                    self._timeout,
+                )
+                if exit_code != 66 or attempt + 1 == _OPENCLI_EMPTY_SUBTITLE_ATTEMPTS:
+                    break
+                time.sleep(1.0)
         except FileNotFoundError as exc:
             return _failed_result(self.name, "backend_not_found", exc)
         except subprocess.TimeoutExpired as exc:

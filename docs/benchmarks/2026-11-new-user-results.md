@@ -103,6 +103,21 @@
 
 ---
 
+## 2026-11-23 更新（0.3.1）
+
+| 测试项 | 基准 / 更新前 | 0.3.1 实测 |
+| --- | --- | --- |
+| 中文维基某页表格（直接抓取 vs 经 Kaze） | 31 行 | 55 行 |
+| 某 GitHub 页面（直接抓取 vs 经 Kaze） | 2,279 字 | 约 2.8 万字 |
+| 扫描件版面检测单页耗时（CPU vs RTX 4060 Laptop） | 44.2 秒 | 14.5 秒 |
+| 扫描件 12 页样本：不完整页 | 8/12 | 0/12 |
+| 扫描件 12 页样本：中文 / 英文综合分 | 33.01 / 31.93 | 95.52 / 92.28 |
+| 扫描件 12 页样本：合成样本 | 68.76 | 85.20 |
+
+以上扫描件数字来自新用户环境下同一 12 页样本与同一评分器的对比。扫描件中的表格（45.7 / 30.6）和公式（26.5 / 23.2）得分仍然偏弱。PDF 原生表格还原本版未包含（三篇测试中表格召回率为 45%，且会误造表格，故不发布）。
+
+评分器把被标为“不完整”的页记 0 分。0.3.0 把 8 页正常的重复内容（表格行、页眉、公式编号）误标为不完整，0.3.1 不再误标，所以分数提升主要来自这 8 页被正常计分，而不是识别本身变好三倍。
+
 <a id="english"></a>
 # Openmd new-user benchmark (2026-11-22, 0.3.0)
 
@@ -123,3 +138,18 @@ Only numbers from real runs are reported, including where Openmd falls behind.
 Scorers, sample lists and per-sample receipts are kept in the maintainer workspace; public sample links and scoring rules are available on request. Real failing links are welcome as issues.
 
 **Pre-release acceptance (2026-11-22 16:40–16:54).** A wheel built from main was installed with `[all]` into a fresh venv (177 s) and run in the new-user environment above, reading back each output: web article verified 32 s (including first-use Defuddle setup); YouTube with captions verified 58 s; Bilibili auto-captions verified 9 s; WeChat article verified 10 s; X long post with images verified 10 s; X short post verified 7 s; Xiaoyuzhou after QR login verified with the official transcript 2 s; a Xiaoe-tech course with a logged-in browser verified 128 s; a Xiaohongshu link without share parameters failed immediately with a next step 0.6 s; Douyin with the local speech model verified 176 s; a local paper PDF partial (a few pages with an unverifiable text layer, labelled as such) 11 s; the slowest paper (2303.08774) partial 53 s; RFC 9110 / RFC 9112 verified full text 11 s / 7 s; an arXiv abstract page verified via HTML full text 11 s; an EPUB partial (illustrations without OCR) 2 s; a damaged EPUB refused with a re-download hint 0.6 s; a Chinese speech file verified 28 s.
+
+## Update (0.3.1, 2026-11-23)
+
+| Test Item | Baseline / Before | 0.3.1 Measured |
+| --- | --- | --- |
+| Chinese Wikipedia page table (direct fetch vs. via Kaze) | 31 rows | 55 rows |
+| GitHub page (direct fetch vs. via Kaze) | 2,279 chars | ~28,000 chars |
+| Scanned-document layout detection per page (CPU vs. RTX 4060 Laptop) | 44.2 s | 14.5 s |
+| 12-page scanned sample: incomplete pages | 8/12 | 0/12 |
+| 12-page scanned sample: Chinese / English composite score | 33.01 / 31.93 | 95.52 / 92.28 |
+| 12-page scanned sample: synthetic sample | 68.76 | 85.20 |
+
+The scanned-document figures above come from the same 12-page sample and the same scorer in a fresh-user environment. Scores for tables (45.7 / 30.6) and formulas (26.5 / 23.2) in scanned documents remain weak. Native PDF table reconstruction is not included in this release (across three test documents, table recall was 45% and false tables were generated).
+
+The scorer counts a page marked incomplete as 0. 0.3.0 wrongly marked 8 pages incomplete because of normal repetition (table rows, headers, equation numbers); 0.3.1 no longer does, so most of the gain comes from those 8 pages now being scored, not from recognition becoming three times better.

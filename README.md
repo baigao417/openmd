@@ -251,7 +251,20 @@ You can also download the extension ZIP from [Releases](https://github.com/baiga
 
 - **Default browser behavior.** Reads happen without a popup in inactive background tabs in an existing window; owned tabs start muted and close automatically when the job finishes.
 
-Chrome may show a browser-provided bar saying that Openmd started debugging the browser; extensions cannot hide this notice.
+The Openmd extension uses Chrome's debugging interface when reading pages, so Chrome may display a banner at the top saying `"Openmd" started debugging this browser`. The extension itself cannot hide it. To hide it, you can optionally do the following:
+
+1. Exit Chrome completely (if background running is enabled, closing the window does not exit the process and newly added startup flags will not take effect).
+2. Append a space and `--silent-debugger-extension-api` to the end of "Properties → Target" on the Chrome shortcut, then launch Chrome from that shortcut.
+
+Note: This flag applies to all extensions, so other extensions using the debugging interface will no longer show this banner either; only use it if you trust all installed extensions. Verified to work in 2026-11 on Chrome 157 for Windows with no "unsupported command-line flag" warning; Edge has not been verified, and Chrome instances not launched via that shortcut (for example, launched by another program) will not carry this flag.
+
+### Using Openmd in Kaze Browser
+
+- Kaze is a Chromium-based browser. After running `openmd browser-setup`, load the same extension folder on Kaze's extensions page (Windows default: `%USERPROFILE%\.openmd\browser\extension`).
+- Click the extension to save the current page; the popup displays the latest save result.
+- While Kaze is running, Openmd can also read pages already loaded in Kaze via Kaze's built-in interface (set `OPENMD_KAZE=0` to disable).
+- Chrome and Kaze can both have the extension installed at the same time; Openmd automatically chooses which browser to use and switches to the other on failure.
+- For content that requires signing in (such as Bilibili AI subtitles), sign in within the browser that is actually used for reading.
 
 ---
 

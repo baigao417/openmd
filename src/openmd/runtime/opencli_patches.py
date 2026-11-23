@@ -16,7 +16,7 @@ from urllib.parse import quote
 OPENCLI_TAG = 'v2.0.3'
 BRIDGE_VERSION = '1.0.27'
 BRIDGE_SHA256 = '8636d42a0fe44d7ba3b0603dbcd9581e8269ccbca950136d0dfc0ffc39a8a213'
-BRIDGE_GENERATED_SHA256 = 'c97dd13b4f2211fd0e0934f5617458fdd513be0e5c8f12fe179427c1ffffbab2'  # populated from the already verified generated file
+BRIDGE_GENERATED_SHA256 = '781c5cef107d12dbb0b9ca4ba51167ac83bde6e6a568d49f9f327133a104b39b'  # populated from the already verified generated file
 # Previous generated source for this one patch, accepted only by the offline
 # repatch path when rebuilding from the already checksum-verified vendor tree.
 BRIDGE_LEGACY_X_READER = '''async function openmdReadX(args) {
@@ -32,36 +32,6 @@ BRIDGE_LEGACY_X_READER = '''async function openmdReadX(args) {
 async function callChrome(method, args, protectedTabs, protectedGroups) {
   if (method === "openmd.x.read") return await openmdReadX(args);
   const { receiver, fn } = resolve(method);'''
-BRIDGE_LEGACY_BROWSER_LABEL = '''async function openmdBrowserLabel() {
-  try {
-    const info = await chrome.runtime.getBrowserInfo();
-    return String(info?.browserName || "").toLowerCase().includes("chrome") ? "chrome" : "other";
-  } catch { return "other"; }
-}
-'''
-BRIDGE_LEGACY_REPLACEMENTS = {
-    "unique Openmd profile id for each connected browser": [
-        'const generated = "openmd"; // Openmd patch: fixed Browser Bridge profile id',
-        'const generated = "openmd-" + generateContextId(); // Openmd: unique browser bridge profile',
-        'const generated = "openmd-" + await openmdBrowserLabel() + "-" + generateContextId(); // Openmd: unique per browser extension',
-    ],
-    "Quiet Openmd browser and adapter surfaces share the automation container": [
-        'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || currentContextId !== "openmd") ? "interactive" : "automation";\n}',
-        'function getOwnedWindowRole(key) {\n  return getSurfaceFromKey(key) === "browser" && (openmdOptions.show || !currentContextId.startsWith("openmd-chrome-")) ? "interactive" : "automation";\n}',
-    ],
-    "migrate the former shared profile id to a fresh browser-specific id": [
-        'if (typeof existing === "string" && existing.startsWith("openmd-")) {',
-    ],
-    "scope owned cleanup to the current Openmd profile id": [
-        'if (!currentContextId.startsWith("openmd-chrome-") || cmd.contextId !== currentContextId)',
-    ],
-    "scope owned lease reporting to Openmd profiles": [
-        's.owned && s.contextId.startsWith("openmd-chrome-")',
-    ],
-    "limit orphan cleanup to the current Openmd profile": [
-        'if (!lease.owned || !lease.contextId.startsWith("openmd-chrome-") || active.has(lease.session)',
-    ],
-}
 # (description, original, replacement): each original must occur exactly as counted.
 BRIDGE_PATCHES = [
     (
@@ -106,7 +76,7 @@ BRIDGE_PATCHES = [
         'if (msg?.type === "getStatus") {\n    if (!openmdDebuggerAvailable) { sendResponse({connected:false,reconnecting:false,contextId:null,extensionVersion:OPENMD_BRIDGE_VERSION,daemonVersion:null}); return false; }\n    void (async () => {',
         1,
     ),
-('P-C/P-D owned blank-first muted window; offscreen/reuse/existing-window strategies', '  const win = await chrome.windows.create({\n    url: startUrl,\n    focused: mode === "foreground",\n    width: 1280,\n    height: 900,\n    type: "normal"\n  });', '  const win = await openmdCreateOwnedWindow(startUrl, mode);', 1),
+('P-C/P-D owned blank-first muted window; minimized/reuse/existing-window strategies', '  const win = await chrome.windows.create({\n    url: startUrl,\n    focused: mode === "foreground",\n    width: 1280,\n    height: 900,\n    type: "normal"\n  });', '  const win = await openmdCreateOwnedWindow(startUrl, mode);', 1),
     (
         "tab group names show Openmd",
         'interactive: "OpenCLI Browser",',
@@ -327,6 +297,21 @@ async function handleCommand(cmd) {
         """windowRole: session.windowRole,""",
         """windowRole: session.windowRole,
       openmdOwnerPid: session.openmdOwnerPid,""",
+        1,
+    ),
+]
+
+BRIDGE_PATCHES += [
+    (
+        "Openmd owned background windows start minimized",
+        '''  const win = await chrome.windows.create({
+    url: "about:blank", focused: mode === "foreground", width:1280, height:900, type:"normal",
+    ...(mode !== "foreground" && openmdOptions.windowStrategy === "offscreen-reuse" ? {left: -32000, top: -32000} : {})
+  });''',
+        '''  const windowOptions = mode === "foreground"
+    ? {url:"about:blank", focused:true, width:1280, height:900, type:"normal"}
+    : {url:"about:blank", focused:false, state:"minimized", type:"normal"};
+  const win = await chrome.windows.create(windowOptions);''',
         1,
     ),
 ]
@@ -560,8 +545,6 @@ def _bundled_bridge_source() -> str:
     if hashlib.sha256(source.encode()).hexdigest() != BRIDGE_GENERATED_SHA256:
         raise ValueError('opencli_bundled_bridge_hash_mismatch')
     source = source.split('\n', 3)[3]  # generator's three-line header
-    if BRIDGE_LEGACY_BROWSER_LABEL in source:
-        source = source.replace(BRIDGE_LEGACY_BROWSER_LABEL, '')
     for patch in reversed([p for p in PATCHES if p.kind == 'bridge']):
         if patch.description == "allow only the fixed X read handler in an already-open X tab":
             if source.count(BRIDGE_LEGACY_X_READER) == patch.count:
@@ -569,13 +552,13 @@ def _bundled_bridge_source() -> str:
                 continue
         if patch.description == "import the fixed X page reader into the Browser Bridge module" and source.count(patch.replacement) == 0:
             continue
-        if source.count(patch.replacement) == patch.count:
-            source = source.replace(patch.replacement, patch.original)
+        if patch.description == "Openmd owned background windows start minimized" and source.count(patch.original) == patch.count:
+            # The pinned E2 artifact predates this addition; its one source
+            # block remains present and should be patched on the forward pass.
             continue
-        legacy = next((value for value in BRIDGE_LEGACY_REPLACEMENTS.get(patch.description, [])
-                       if source.count(value) == patch.count), None)
-        if legacy is not None:
-            source = source.replace(legacy, patch.original)
+        found_replacement = source.count(patch.replacement)
+        if found_replacement == patch.count:
+            source = source.replace(patch.replacement, patch.original)
             continue
         # The hash check above pins this historical artifact; a registered
         # patch whose upstream text remains means it was added in this run.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -132,9 +133,9 @@ def _bridge_profiles(timeout: float = 1.0) -> list[str]:
 def bridge_profile_env(command, env=None):
     """Select Openmd's built-in bridge when it is connected.
 
-    With both the standalone OpenCLI extension and Openmd's built-in bridge
-    connected, opencli refuses to guess (profile_required). Prefer ours, keep a
-    user's explicit OPENCLI_PROFILE, and leave the single-bridge case untouched.
+    With multiple Openmd bridges, select the first profile in stable lexical
+    order. Keep a user's explicit OPENCLI_PROFILE and leave the single-bridge
+    case untouched.
     Returns a new env mapping, or None when nothing needs to change.
     """
     base = os.environ if env is None else env
@@ -145,14 +146,66 @@ def bridge_profile_env(command, env=None):
     while not profiles and time.monotonic() < deadline:  # bridges reconnect to a fresh daemon
         time.sleep(.2)
         profiles = _bridge_profiles()
-    openmd_profiles = [profile for profile in profiles if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX)]
+    openmd_profiles = sorted(profile for profile in profiles if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX))
     if len(openmd_profiles) == 1 and len(profiles) > 1:
         return {**base, "OPENCLI_PROFILE": openmd_profiles[0]}
     if len(openmd_profiles) > 1:
-        # Fail closed: selecting an arbitrary Openmd browser would silently use
-        # whichever user's login state happened to win the connection race.
-        return {**base, "OPENCLI_PROFILE": "openmd-profile-conflict"}
+        return {**base, "OPENCLI_PROFILE": openmd_profiles[0]}
     return None
+
+
+_BROWSER_LAYER_FAILURES = (
+    re.compile(r"browser navigate command timed out", re.IGNORECASE),
+    re.compile(r"(?:chrome\.)?windows\.create.*(?:failed|error|invalid value)|invalid value for state", re.IGNORECASE),
+    re.compile(r"(?:window creation failed|failed to create (?:a )?(?:browser )?window)", re.IGNORECASE),
+    re.compile(r"openmd_chrome_bridge_unavailable|profile_required|profile unavailable|profile is not connected|no connected browser profile|browser profile not found", re.IGNORECASE),
+    re.compile(r"debugger(?:\.attach| attach).*(?:failed|error)|could not establish connection\. receiving end does not exist|another debugger is already attached", re.IGNORECASE),
+)
+
+
+def is_browser_layer_failure(message: object) -> bool:
+    """Recognize bridge/profile/navigation failures, excluding page/content errors."""
+    text = str(message or "")
+    return any(pattern.search(text) for pattern in _BROWSER_LAYER_FAILURES)
+
+
+def _opencli_args(command) -> list[str] | None:
+    if isinstance(command, str):
+        try:
+            argv = [part.strip('"') for part in shlex.split(command, posix=False)]
+        except ValueError:
+            return None
+    elif isinstance(command, (list, tuple)):
+        argv = [os.fsdecode(part) for part in command]
+    else:
+        return None
+    if not argv:
+        return None
+    name = Path(argv[0]).name.lower()
+    if name in {"opencli", "opencli.cmd", "opencli.ps1", "opencli.exe", "opencli.bat"}:
+        return argv[1:]
+    if name in {"node", "node.exe"} and len(argv) > 1 and argv[1].replace("\\", "/").lower().endswith("/@jackwener/opencli/dist/src/main.js"):
+        return argv[2:]
+    return None
+
+
+def next_openmd_profile_for_retry(command, env, current_profile: str, *, explicit_profile: bool = False) -> str | None:
+    """Return one next profile only for registered read commands and browser errors."""
+    if explicit_profile or _opencli_launch(command, env) is None:
+        return None
+    args = _opencli_args(command)
+    if not args:
+        return None
+    from .managed_tools import command_access
+
+    if command_access(args) != "read":
+        return None
+    profiles = sorted(profile for profile in _bridge_profiles() if profile.startswith(OPENMD_BRIDGE_PROFILE_PREFIX))
+    try:
+        index = profiles.index(current_profile)
+    except ValueError:
+        return None
+    return profiles[index + 1] if index + 1 < len(profiles) else None
 
 
 def ensure_opencli_daemon(command, *, env=None, cwd=None) -> None:

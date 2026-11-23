@@ -105,11 +105,7 @@ def render(payload: dict[str, Any]) -> str:
             "  Kaze：请把 Openmd 固定到 Kaze 工具栏，才能看到保存徽标；Kaze 暂不支持 chrome.debugger，",
             "      B 站字幕等需要调试接口的读取会自动尝试其他路线，无法读取时会提示。",
         ]
-        if len(profiles) == 1:
-            lines.append("  仅检测到一个 Openmd 浏览器桥接 profile；Kaze 缺少 chrome.debugger，不会注册桥接。当前只使用 Chrome 与 Kaze 时，该 profile 来自 Chrome。")
-        elif profiles:
-            lines.append("  浏览器桥接 profile 冲突：检测到多个 Openmd 浏览器连接；请关闭其他浏览器中的 Openmd 扩展连接，仅保留 Chrome 后重试。")
-        else:
+        if not profiles:
             lines.append("  未检测到 debugger 可用的浏览器桥接 profile；请在 Chrome 加载或重新加载 Openmd 扩展。")
     xiaoyuzhou = (payload.get("profile_diagnostics") or {}).get("xiaoyuzhou_login")
     if xiaoyuzhou:

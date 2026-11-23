@@ -1900,10 +1900,10 @@ async function openmdCreateOwnedWindow(startUrl, mode) {
       return current;
     }
   }
-  const win = await chrome.windows.create({
-    url: "about:blank", focused: mode === "foreground", width:1280, height:900, type:"normal",
-    ...(mode !== "foreground" && openmdOptions.windowStrategy === "offscreen-reuse" ? {left: -32000, top: -32000} : {})
-  });
+  const windowOptions = mode === "foreground"
+    ? {url:"about:blank", focused:true, width:1280, height:900, type:"normal"}
+    : {url:"about:blank", focused:false, state:"minimized", type:"normal"};
+  const win = await chrome.windows.create(windowOptions);
   const initial = (await chrome.tabs.query({windowId:win.id}))[0];
   if (initial?.id) {
     openmdCreatedTabs.add(initial.id);

@@ -28,6 +28,10 @@ def create_server():
                 raise ToolError("openmd_tool_failed: check typed arguments, limits and local readiness") from None
 
     server = PrivateFastMCP("Openmd", log_level="CRITICAL")
+    # FastMCP (mcp==1.26.0) takes no version argument; without one the low-level
+    # server reports the SDK's own version as serverInfo.version.
+    from openmd import __version__
+    server._mcp_server.version = __version__
     writes = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=True)
     reads = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
 

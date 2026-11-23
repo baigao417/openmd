@@ -70,6 +70,21 @@ def test_sdk_exposes_resources_and_structured_output(tmp_path):
     asyncio.run(scenario())
 
 
+def test_initialize_reports_openmd_version_not_sdk_version():
+    pytest.importorskip("mcp")
+    from openmd import __version__
+
+    async def scenario():
+        async with create_connected_server_and_client_session(create_server()) as client:
+            result = await client.initialize()
+            assert result.serverInfo.name == "Openmd"
+            assert result.serverInfo.version == __version__
+
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    asyncio.run(scenario())
+
+
 def test_mcp_docs_cover_uvx_cursor_and_windows_paths():
     root = Path(__file__).resolve().parents[1]
     for name in ("README.md", "README.zh-CN.md", "README.ja.md", "README.ko.md"):

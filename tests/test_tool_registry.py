@@ -218,16 +218,16 @@ def test_overlay_updates_registry_capability_binding_gates_and_trace(monkeypatch
     config.write_text(json.dumps({"schema": "openmd.local/v1", "route_overlay": str(overlay)}), encoding="utf-8")
     monkeypatch.setenv("OPENMD_CONFIG", str(config))
     record = get_capability("x")
-    assert record.planned_provider == record.runtime_provider == "opencli.twitter.thread"
+    assert record.planned_provider == record.runtime_provider == "openmd.x.logged_in_browser"
     assert record.required_gates == ("browser",)
     assert record.card_id == "builtin" and record.overlay_applied
     assert create_default_registry().backend_chain("x")[0] == record.runtime_provider
     assert route_trace("x", record.runtime_provider) == {"card_id": "builtin", "route_version": load_catalog().version, "overlay_applied": True}
-    assert "openmd.x.public → opencli.twitter.thread" in render_routes_markdown()
-    assert "opencli.twitter.thread → browser.kaze.snapshot → openmd.x.public" in render_routes_markdown(effective=True)
+    assert "openmd.x.public → openmd.x.logged_in_browser → opencli.twitter.thread" in render_routes_markdown()
+    assert "openmd.x.logged_in_browser → opencli.twitter.thread → browser.kaze.snapshot → openmd.x.public" in render_routes_markdown(effective=True)
     from openmd.routing.view import main as view_main
     assert view_main(["--bundled", "--format", "markdown"]) == 0
-    assert "openmd.x.public → opencli.twitter.thread" in capsys.readouterr().out
+    assert "openmd.x.public → openmd.x.logged_in_browser → opencli.twitter.thread" in capsys.readouterr().out
 
 
 def test_tool_identity_mismatch_fails_before_execution(monkeypatch):

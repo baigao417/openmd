@@ -9,7 +9,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import shutil
-import subprocess
 from typing import Any
 
 
@@ -30,16 +29,15 @@ def _browser_registered() -> bool | None:
 
 def _kaze_running() -> bool:
     """Detect the supported Kaze desktop process without reading its settings."""
+    # A running Kaze serves named pipes "kaze-<id>-mcp"; listing them starts no
+    # process, so doctor stays within the hidden-window/managed-wait contract.
     if os.name != "nt":
         return False
     try:
-        result = subprocess.run(
-            ["tasklist", "/FI", "IMAGENAME eq Kaze.exe", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, timeout=2, check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        pipes = os.listdir(r"\\.\pipe" + "\\")
+    except OSError:
         return False
-    return result.returncode == 0 and '"Kaze.exe"' in result.stdout
+    return any(name.lower().startswith("kaze-") and name.lower().endswith("-mcp") for name in pipes)
 
 
 def _opencli_row() -> tuple[bool | None, str, str]:

@@ -463,6 +463,8 @@ def test_doctor_prompts_only_when_no_bridge_profile_exists(monkeypatch):
     ("openmd_chrome_bridge_unavailable: profile unavailable", True),
     ("Could not establish connection. Receiving end does not exist. debugger attach failed", True),
     ("Another debugger is already attached", True),
+    ("Pre-navigation to https://www.bilibili.com failed: Invalid value for bounds. Bounds must be at least 50% within visible screen space.", True),
+    ("Pre-navigation to https://example.test failed: net::ERR_NAME_NOT_RESOLVED", True),
     ("EMPTY_RESULT: no subtitles found", False),
     ("login_required: sign in to continue", False),
     ("Page not found", False),

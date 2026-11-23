@@ -155,6 +155,9 @@ def bridge_profile_env(command, env=None):
 
 
 _BROWSER_LAYER_FAILURES = (
+    # Any failure before the page is reached (window/tab/navigate) is browser-layer;
+    # Chrome 157 rejected off-screen bounds this way (2026-11-23).
+    re.compile(r"pre-navigation to \S+ failed|invalid value for bounds", re.IGNORECASE),
     re.compile(r"browser navigate command timed out", re.IGNORECASE),
     re.compile(r"(?:chrome\.)?windows\.create.*(?:failed|error|invalid value)|invalid value for state", re.IGNORECASE),
     re.compile(r"(?:window creation failed|failed to create (?:a )?(?:browser )?window)", re.IGNORECASE),

@@ -408,6 +408,7 @@ def test_ocr_chain_install_plan_exposes_ollama_and_layout_components(tmp_path):
     assert "torchvision==0.20.1+cpu" in plan["runtime"]["required"]
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows D: drive default; faking os.name breaks pathlib on POSIX")
 def test_ocr_install_plan_defaults_to_d_drive_on_windows(monkeypatch):
     from openmd.runtime import recommendations
 
@@ -446,7 +447,7 @@ def test_layout_runtime_discovers_managed_venv_and_model_root(monkeypatch, tmp_p
     from openmd.ocr.config import layout_runtime
 
     runtime = tmp_path / "layout-runtime"
-    python = runtime / "Scripts" / "python.exe"
+    python = runtime / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     python.parent.mkdir(parents=True)
     python.write_bytes(b"runtime")
     model = tmp_path / "models" / "layout"

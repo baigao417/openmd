@@ -21,7 +21,7 @@
         "track_type"
       ],
       "sources": [
-        "src/openmd/backends/bilibili.py:402"
+        "src/openmd/backends/bilibili.py:407"
       ],
       "argv": [
         [
@@ -48,7 +48,7 @@
         "bvid"
       ],
       "sources": [
-        "src/openmd/backends/bilibili.py:855"
+        "src/openmd/backends/bilibili.py:863"
       ],
       "argv": [
         [

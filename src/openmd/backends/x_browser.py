@@ -15,6 +15,7 @@ from openmd.core.models import ContentItem, TranscriptResult
 from openmd.core.secrets import sanitize_error_summary
 
 from .youtube_discovery import _run_opencli
+from .x import _normalize_x_timestamp
 
 X_BROWSER_BACKEND = "openmd.x.logged_in_browser"
 MAX_TOTAL_SECONDS = 8.0
@@ -91,8 +92,17 @@ class XLoggedInBrowserProvider:
             backend=X_BROWSER_BACKEND,
             title=title or item.title or f"X-{tweet_id}",
             author=str(result.get("author") or item.author or "") or None,
+            published_at=_normalize_x_timestamp(result.get("created_at")),
             source_notes=["Read-only X page API request executed inside the already-open X page.", "Authentication material stayed in the page context."],
-            metadata={"tweet_id": tweet_id, "api_layer": "logged_in_browser_x_api", "elapsed_seconds": round(elapsed, 3)},
+            metadata={
+                "tweet_id": tweet_id,
+                "api_layer": "logged_in_browser_x_api",
+                "elapsed_seconds": round(elapsed, 3),
+                **({"author_handle": str(result["author_handle"])} if result.get("author_handle") else {}),
+                **({"image_urls": list(result["images"])} if isinstance(result.get("images"), list) else {}),
+                **({"quote": {"text": str(result["quote_text"])} } if result.get("quote_text") else {}),
+                **({"quote_present": True} if result.get("quote_text") else {}),
+            },
         )
 
 

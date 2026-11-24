@@ -121,6 +121,7 @@ export async function openmdXReadPage(tweetId) {
       legacy_text: String(legacy.full_text || ""),
       title: text.split(/\r?\n/, 1)[0].slice(0, 120),
       author: String(user.name || user.screen_name || ""),
+      author_handle: user.screen_name ? `@${String(user.screen_name).replace(/^@/, "")}` : "",
       created_at: String(legacy.created_at || ""),
       images: media.map((entry) => String(entry.media_url_https || "")).filter(Boolean),
       quote_text: String(quote),

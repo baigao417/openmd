@@ -40,6 +40,10 @@ class FakeSession:
             return {"tabId": "owned-tab"}
         if name == "js":
             code = arguments["code"]
+            if "const settled" in code:
+                return _tool_payload({"structuredContent": {"ok": True, "value": {
+                    "ready": True, "body_chars": len(self.html), "visibility_state": "visible",
+                }}})
             if "captureSource" in code:
                 # Match Kaze's Tab.evaluate(script, opts) contract: callback
                 # arguments are supplied via opts.arg.
@@ -80,6 +84,37 @@ def test_kaze_provider_claims_matching_page_and_releases_without_closing(monkeyp
     assert not any(name == "close_tab" for name, _ in session.calls)
     assert session.closed
     assert "https://example.org" not in repr(result.metadata)
+
+
+def test_kaze_reopens_matching_tab_when_claimed_page_is_blank(monkeypatch):
+    class BlankClaimedPageSession(FakeSession):
+        def __init__(self):
+            super().__init__()
+            self.readiness_results = [
+                {"ready": False, "body_chars": 0, "visibility_state": "visible"},
+                {"ready": True, "body_chars": 57, "visibility_state": "visible"},
+            ]
+
+        def call(self, name, arguments, timeout):
+            if name == "js" and "const settled" in arguments["code"]:
+                self.calls.append((name, arguments))
+                return self.readiness_results.pop(0)
+            return super().call(name, arguments, timeout)
+
+    session = BlankClaimedPageSession()
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status in {"verified", "partial"}
+    assert ("claim_tab", {"url": "https://example.org/article", "expectedUrl": "https://example.org/article"}) in session.calls
+    assert ("release_tab", {"tabId": "borrowed-tab"}) in session.calls
+    assert ("open_tab", {"url": "https://example.org/article"}) in session.calls
+    assert ("close_tab", {"tabId": "owned-tab"}) in session.calls
 
 
 def test_kaze_unwraps_browsermcp_value_envelope():
@@ -140,7 +175,8 @@ def test_kaze_page_url_is_read_from_page_context(monkeypatch):
     KazeSnapshotProvider().extract(request)
 
     read_js = next(args["code"] for name, args in session.calls if name == "js" and "outerHTML" in args["code"])
-    assert "const url = await t.url()" in read_js
+    assert "const url = captured.url" in read_js
+    assert "await t.url()" not in read_js
     assert "({html" not in read_js
     assert "node:fs/promises" in read_js
     assert "fs.writeFile" in read_js
@@ -290,6 +326,8 @@ def test_kaze_evaluate_uses_options_arg_and_full_capture_timeout(monkeypatch):
     assert "{ arg: captureSource, timeoutMs: 60000 }" in capture_call["code"]
     assert capture_call["timeoutMs"] == 60_000
     assert capture_call["timeoutMs"] > 45_000
+    assert "const html = captured.html; const url = captured.url;" in capture_call["code"]
+    assert "await t.url()" not in capture_call["code"]
 
 
 def test_kaze_invalid_evaluate_arguments_are_reported_as_script_error(monkeypatch):

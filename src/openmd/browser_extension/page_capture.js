@@ -8,7 +8,8 @@
   const MAX_TIME_MS = 45_000;
   const MAX_HTML_BYTES = 50 * 1024 * 1024;
   const MIN_QUIET_MS = 150;
-  const MAX_QUIET_MS = 700;
+  const MAX_QUIET_MS = 2_000;
+  const MIN_STEP_SETTLE_MS = 1_400;
   const INDEX_ATTRIBUTES = ["data-index", "aria-rowindex", "data-item-index", "data-paragraph-index"];
 
   const numberValue = (value) => {
@@ -150,7 +151,7 @@
     return current;
   };
 
-  const waitQuiet = (container) => new Promise((resolve) => {
+  const waitQuiet = (container, minimumMs = MIN_QUIET_MS) => new Promise((resolve) => {
     const start = Date.now();
     let lastMutation = start;
     let timer;
@@ -159,7 +160,7 @@
     const finish = () => { observer?.disconnect(); clearTimeout(timer); resolve(); };
     const poll = () => {
       const elapsed = Date.now() - start;
-      if (elapsed >= MAX_QUIET_MS || (Date.now() - lastMutation >= MIN_QUIET_MS && elapsed >= MIN_QUIET_MS)) return finish();
+      if (elapsed >= MAX_QUIET_MS || (Date.now() - lastMutation >= MIN_QUIET_MS && elapsed >= minimumMs)) return finish();
       timer = setTimeout(poll, MIN_QUIET_MS);
     };
     timer = setTimeout(poll, MIN_QUIET_MS);
@@ -229,15 +230,18 @@
         const before = newCount;
         setScroll(container, next, originalPosition.left);
         steps += 1;
-        await waitQuiet(container);
+        await waitQuiet(container, MIN_STEP_SETTLE_MS);
         collect();
-        noProgress = newCount === before ? noProgress + 1 : 0;
-        if (noProgress >= 3) { stopReason = "no_progress"; break; }
         const after = container === document.documentElement || container === document.body ? window.scrollY : container.scrollTop;
-        const max = Math.max(0, total - height);
+        const moved = after > current + 1;
+        noProgress = newCount === before && !moved ? noProgress + 1 : 0;
+        if (noProgress >= 3) { stopReason = "no_progress"; break; }
+        const afterHeight = container === document.documentElement || container === document.body ? window.innerHeight : container.clientHeight;
+        const afterTotal = container === document.documentElement || container === document.body ? document.documentElement.scrollHeight : container.scrollHeight;
+        const max = Math.max(0, afterTotal - afterHeight);
         if (after >= max - 1) {
-          await waitQuiet(container); collect();
-          await waitQuiet(container); collect();
+          await waitQuiet(container, MIN_STEP_SETTLE_MS); collect();
+          await waitQuiet(container, MIN_STEP_SETTLE_MS); collect();
           break;
         }
       }
@@ -245,8 +249,14 @@
       else if (Date.now() - started >= MAX_TIME_MS) stopReason = "time_limit";
       const indexed = [...entries.values()].map((entry) => entry.index).filter((value) => value !== null).sort((a, b) => a - b);
       const unique = [...new Set(indexed)];
-      const oneBased = unique.length > 0 && unique[0] === 1 && signals.declaredTotal !== null && unique[unique.length - 1] <= signals.declaredTotal;
-      const expected = signals.declaredTotal !== null ? signals.declaredTotal : (unique.length ? unique[unique.length - 1] + 1 : 0);
+      const inferredOneBased = unique.length > 0 && unique[0] === 1 &&
+        stopReason === "end_reached" && unique.length === unique[unique.length - 1];
+      const oneBased = unique.length > 0 && unique[0] === 1 && (
+        (signals.declaredTotal !== null && unique[unique.length - 1] <= signals.declaredTotal) ||
+        (signals.declaredTotal === null && inferredOneBased)
+      );
+      const expected = signals.declaredTotal !== null ? signals.declaredTotal :
+        (unique.length ? unique[unique.length - 1] + (inferredOneBased ? 0 : 1) : 0);
       const indexSet = new Set(unique);
       if (unique.length) {
         const first = oneBased ? 1 : 0;

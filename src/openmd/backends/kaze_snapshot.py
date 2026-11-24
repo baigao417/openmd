@@ -350,28 +350,44 @@ class KazeSnapshotProvider:
                 owned_tab_id = tab_id
             if not tab_id:
                 raise KazeError("kaze_tab_open_failed", "Kaze did not return a page tab identifier.", "Check Kaze and retry the URL.")
-            ready_js = (
-                "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
-                "await t.expect({target:{selector:'body'},visible:true},{timeoutMs:" + str(PAGE_READY_TIMEOUT_MS) + "}); "
-                "const settled = await t.evaluate(async () => { "
-                "const deadline = Date.now() + " + str(SETTLE_MAX_MS) + "; let last = '', stable = 0; "
-                "while (Date.now() < deadline) { "
-                "const sig = document.readyState + ':' + ((document.body && document.body.innerText) || '').length + ':' + document.querySelectorAll('*').length; "
-                "stable = sig === last && document.readyState === 'complete' ? stable + " + str(SETTLE_POLL_MS) + " : 0; "
-                "if (stable >= " + str(SETTLE_STABLE_MS) + ") break; "
-                "last = sig; await new Promise((resolve) => setTimeout(resolve, " + str(SETTLE_POLL_MS) + ")); } "
-                "return document.readyState; }, {timeoutMs: " + str(SETTLE_MAX_MS + 2_000) + "}); "
-                "({ready: settled})"
-            )
-            try:
-                ready_budget_ms = PAGE_READY_TIMEOUT_MS + SETTLE_MAX_MS + 2_000
-                session.call("js", {"code": ready_js, "timeoutMs": ready_budget_ms,
-                                    "maxChars": 1024}, timeout=ready_budget_ms / 1000 + 1)
-            except Exception as exc:
-                if not isinstance(exc, TimeoutError) and "timeout" not in str(exc).lower():
-                    raise
-                raise KazeError("kaze_page_not_ready", "The requested page did not finish rendering in Kaze.",
-                                "Wait for the page to finish loading in Kaze, then retry.") from exc
+            def wait_for_page(target_tab_id: str) -> bool:
+                ready_js = (
+                    "const t = await browser.tabs.get(" + json.dumps(target_tab_id) + "); "
+                    "const settled = await t.evaluate(async () => { "
+                    "const deadline = Date.now() + " + str(PAGE_READY_TIMEOUT_MS) + "; let last = '', stable = 0; let bodyChars = 0; "
+                    "while (Date.now() < deadline) { "
+                    "const body = document.body; bodyChars = ((body && body.innerText) || '').length; "
+                    "const sig = document.readyState + ':' + bodyChars + ':' + document.querySelectorAll('*').length; "
+                    "stable = sig === last && document.readyState === 'complete' ? stable + " + str(SETTLE_POLL_MS) + " : 0; "
+                    "if (body && (body.childElementCount > 0 || bodyChars > 0) && stable >= " + str(SETTLE_STABLE_MS) + ") "
+                    "return {ready:true,body_chars:bodyChars,visibility_state:document.visibilityState}; "
+                    "last = sig; await new Promise((resolve) => setTimeout(resolve, " + str(SETTLE_POLL_MS) + ")); } "
+                    "return {ready:false,body_chars:bodyChars,visibility_state:document.visibilityState}; }, "
+                    "{timeoutMs: " + str(PAGE_READY_TIMEOUT_MS + 2_000) + "}); "
+                    "({ready:settled.ready,body_chars:settled.body_chars,visibility_state:settled.visibility_state})"
+                )
+                ready_budget_ms = PAGE_READY_TIMEOUT_MS + 2_000
+                ready = session.call("js", {"code": ready_js, "timeoutMs": ready_budget_ms,
+                                             "maxChars": 1024}, timeout=ready_budget_ms / 1000 + 1)
+                return ready.get("ready") is True
+
+            if not wait_for_page(tab_id):
+                if borrowed_tab_id:
+                    session.call("release_tab", {"tabId": borrowed_tab_id}, timeout=3)
+                    borrowed_tab_id = None
+                    opened = session.call("open_tab", {"url": url}, timeout=5)
+                    tab_id = str(opened.get("tabId") or opened.get("tab") or opened.get("id") or "") or None
+                    owned_tab_id = tab_id
+                    if not tab_id:
+                        raise KazeError("kaze_tab_open_failed", "Kaze did not return a page tab identifier.", "Check Kaze and retry the URL.")
+                    if wait_for_page(tab_id):
+                        pass
+                    else:
+                        raise KazeError("kaze_page_not_ready", "The requested page did not finish rendering in Kaze.",
+                                        "Wait for the page to finish loading in Kaze, then retry.")
+                else:
+                    raise KazeError("kaze_page_not_ready", "The requested page did not finish rendering in Kaze.",
+                                    "Wait for the page to finish loading in Kaze, then retry.")
             from openmd.backends.loaded_chat import snapshot_item
             from openmd.backends.snapshot import SnapshotProvider
 
@@ -383,7 +399,7 @@ class KazeSnapshotProvider:
                     "const captureSource = " + json.dumps(capture_source) + "; "
                     "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__(); }, "
                     "{ arg: captureSource, timeoutMs: " + str(CAPTURE_TIMEOUT_MS) + " }); "
-                    "const html = captured.html; const url = await t.url(); const title = captured.title; "
+                    "const html = captured.html; const url = captured.url; const title = captured.title; "
                     "if (Buffer.byteLength(html, 'utf8') > " + str(MAX_HTML_BYTES) + ") throw new Error('snapshot_too_large'); "
                     "const fs = await import('node:fs/promises'); "
                     "await fs.writeFile(" + json.dumps(str(path)) + ", html, 'utf8'); "

@@ -15,6 +15,7 @@ import shlex
 import shutil
 import stat
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -25,13 +26,15 @@ try:  # imported lazily in tests and absent on non-Windows hosts
 except ImportError:  # pragma: no cover - platform dependent
     _winreg = None
 
-from openmd.core.detector import DOCUMENT_EXTENSIONS, IMAGE_TEXT_EXTENSIONS
+from openmd.core.detector import DOCUMENT_EXTENSIONS, IMAGE_TEXT_EXTENSIONS, MEDIA_EXTENSIONS
 from openmd.core.filename import safe_filename
 from openmd.core.models import ContentItem
 from openmd.core.sync_manifest import SyncManifest, source_id_for
+from openmd.adapters.local_audio.adapter import AUDIO_EXTENSIONS
 
 
-SUPPORTED_SUFFIXES = frozenset((*DOCUMENT_EXTENSIONS, *IMAGE_TEXT_EXTENSIONS))
+MEDIA_SUFFIXES = frozenset((*MEDIA_EXTENSIONS, *AUDIO_EXTENSIONS))
+SUPPORTED_SUFFIXES = frozenset((*DOCUMENT_EXTENSIONS, *IMAGE_TEXT_EXTENSIONS, *MEDIA_SUFFIXES))
 DEFAULT_MAX_FILES = 1000
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 _DATA_URI = re.compile(r"data:image/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)")
@@ -85,14 +88,24 @@ def _materialize_images(text: str, destination: Path) -> str:
     return text
 
 
-def _convert_file(path: Path, output: Path, *, ocr_confirm: Callable[[str], bool] | None = None) -> dict[str, Any]:
+def _convert_file(
+    path: Path,
+    output: Path,
+    *,
+    ocr_confirm: Callable[[str], bool] | None = None,
+    asr_confirm: Callable[[str], bool] | None = None,
+) -> dict[str, Any]:
     from openmd.engines.registry import convert_document
     from openmd.engines.base import EngineLimits
 
-    is_image = path.suffix.lower() in IMAGE_TEXT_EXTENSIONS
-    if path.suffix.lower() == ".md":
+    suffix = path.suffix.lower()
+    is_image = suffix in IMAGE_TEXT_EXTENSIONS
+    is_media = suffix in MEDIA_SUFFIXES
+    if suffix == ".md":
         text = path.read_text(encoding="utf-8-sig")
         status, error = ("verified", None) if text.strip() else ("failed", "document_empty_text")
+    elif is_media:
+        return _convert_media_via_go(path, output, asr_confirm=asr_confirm)
     elif is_image:
         from types import SimpleNamespace
         from openmd.backends.ocr import OCRRouterProvider
@@ -107,7 +120,7 @@ def _convert_file(path: Path, output: Path, *, ocr_confirm: Callable[[str], bool
         text, status, error = result.text, result.status, result.error_code
     else:
         result = convert_document(path, EngineLimits(max_file_bytes=max(DEFAULT_MAX_BYTES, path.stat().st_size)))
-        if path.suffix.lower() == ".pdf" and result.error_code == "document_empty_text":
+        if suffix == ".pdf" and result.error_code == "document_empty_text":
             from types import SimpleNamespace
             from openmd.backends.ocr import OCRRouterProvider
 
@@ -123,6 +136,52 @@ def _convert_file(path: Path, output: Path, *, ocr_confirm: Callable[[str], bool
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(_materialize_images(text, output), encoding="utf-8", newline="\n")
     return {"status": status, "error": None}
+
+
+def _convert_media_via_go(
+    path: Path,
+    output: Path,
+    *,
+    asr_confirm: Callable[[str], bool] | None = None,
+) -> dict[str, Any]:
+    """Run local media through the same extraction/executor path as ``openmd go``."""
+    from openmd.cli import _process_input
+    from openmd.cli_parser import build_parser
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".openmd-shell-media-", dir=output.parent) as temporary:
+        args = build_parser().parse_args([
+            "go", str(path), "--out", temporary, "--enable-asr", "--json",
+        ])
+        args.runlog = str(Path(temporary) / "runlog.jsonl")
+        args.first_use_confirm = asr_confirm
+        result = _process_input(path.as_uri(), args, command="go")
+        error = result.error_code
+        if not result.ok or not result.outputs:
+            if not error:
+                runlog = Path(args.runlog)
+                if runlog.is_file():
+                    try:
+                        rows = [json.loads(line) for line in runlog.read_text(encoding="utf-8").splitlines() if line.strip()]
+                    except (OSError, ValueError):
+                        rows = []
+                    error = next((str(row["error_code"]) for row in reversed(rows) if row.get("error_code")), None)
+            error = error or "media_conversion_failed"
+            if error == "asr_model_missing":
+                return {"status": "failed", "error": "asr_install_required",
+                        "next_action": "openmd models install asr:baseline"}
+            if error in {"asr_runtime_unavailable", "asr_backend_missing"}:
+                return {"status": "failed", "error": error,
+                        "next_action": "openmd doctor --profile media"}
+            return {"status": "failed", "error": error}
+        converted = Path(result.outputs[-1])
+        if not converted.is_file():
+            return {"status": "failed", "error": "media_output_missing"}
+        text = converted.read_text(encoding="utf-8")
+        if not text.strip():
+            return {"status": "failed", "error": "document_empty_text"}
+        output.write_text(text, encoding="utf-8", newline="\n")
+        return {"status": result.status or "verified", "error": None}
 
 
 def _candidate_files(root: Path) -> list[Path]:
@@ -146,6 +205,7 @@ def convert_path(
     confirm_large: bool = False,
     progress: Callable[[int, int, Path], None] | None = None,
     ocr_confirm: Callable[[str], bool] | None = None,
+    asr_confirm: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Convert one supported file or a folder into Markdown.
 
@@ -205,7 +265,7 @@ def convert_path(
                 continue
             staging = target.with_name(f".{target.name}.staging")
             staging.parent.mkdir(parents=True, exist_ok=True)
-            converted = _convert_file(path, staging, ocr_confirm=ocr_confirm)
+            converted = _convert_file(path, staging, ocr_confirm=ocr_confirm, asr_confirm=asr_confirm)
             if converted["status"] == "failed":
                 result["failed"] += 1
                 failure = {"path": str(path), "error": converted["error"]}
@@ -295,6 +355,12 @@ def _failure_message(error: str) -> str:
     messages = {
         "document_empty_text": "文档中没有可转换的文本",
         "ocr_install_required": "安装扫描件 OCR 模型后重试：openmd models install ocr:chain",
+        "asr_install_required": "缺少本地语音模型",
+        "asr_model_missing": "缺少本地语音模型",
+        "asr_runtime_unavailable": "本地语音运行环境未就绪",
+        "asr_backend_missing": "本地语音后端未安装或未启用",
+        "asr_insufficient_memory": "可用内存不足，请关闭其他程序后重试",
+        "local_audio_path_unresolved": "无法解析本地音视频文件",
         "engine_unavailable": "缺少此格式所需的转换工具",
         "file_too_large": "文件超过可处理大小",
         "permission_denied": "没有读取该文件的权限",
@@ -355,10 +421,19 @@ def _gui_summary(value: dict[str, Any]) -> str:
 
 
 def _gui_failure_lines(failures: list[dict[str, Any]], limit: int = 5) -> list[str]:
-    return [
-        f"{Path(row.get('path', '')).name}：{_failure_message(str(row.get('error', '')))}"
-        for row in failures[:limit]
-    ]
+    safe_actions = {
+        "openmd doctor --profile media",
+        "openmd models install asr:baseline",
+        "openmd models install ocr:chain",
+    }
+    lines = []
+    for row in failures[:limit]:
+        line = f"{Path(row.get('path', '')).name}：{_failure_message(str(row.get('error', '')))}"
+        next_action = row.get("next_action")
+        if isinstance(next_action, str) and next_action.strip() in safe_actions:
+            line += f"；下一步：{next_action.strip()}"
+        lines.append(line)
+    return lines
 
 
 def _gui_completion_heading(value: dict[str, Any]) -> str:
@@ -824,8 +899,9 @@ def cmd_shell_menu(args) -> int:
             if too_large:
                 confirm_large = messagebox.askyesno("输入规模较大", f"输入超过默认限制（{args.max_files} 个文件 / 每个文件 {args.max_bytes // (1024 * 1024)} MiB）。仍要继续吗？", parent=window)
         ocr_confirm = (lambda question: messagebox.askyesno("首次安装扫描件 OCR", question, parent=window)) if window is not None else None
+        asr_confirm = (lambda question: messagebox.askyesno("首次安装本地语音模型", question, parent=window)) if window is not None else None
         value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes,
-                             confirm_large=confirm_large, progress=progress, ocr_confirm=ocr_confirm)
+                             confirm_large=confirm_large, progress=progress, ocr_confirm=ocr_confirm, asr_confirm=asr_confirm)
         if window is not None and ui is not None:
             if ui["cancelled"]():
                 return 0 if value.get("ok") else 1

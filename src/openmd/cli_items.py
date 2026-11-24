@@ -3,6 +3,17 @@ from __future__ import annotations
 
 from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields, source_next_action
 
+
+def batch_status(*, item_count: int, success_count: int, failed_count: int,
+                 paused_count: int = 0, partial_count: int = 0) -> str:
+    """Return the aggregate status used by machine-readable batch receipts."""
+    if item_count <= 0 or success_count == 0:
+        return "failed"
+    if failed_count or paused_count or success_count < item_count or partial_count:
+        return "partial"
+    return "verified"
+
+
 def _process_items(
     items: list[ContentItem],
     args: argparse.Namespace,
@@ -27,6 +38,7 @@ def _process_items(
     skipped_count = 0
     source_level_counts: dict[str, int] = {}
     failure_code_counts: dict[str, int] = {}
+    partial_count = 0
     coverage = CollectionCoverage()
     paused_count = 0
 
@@ -122,7 +134,13 @@ def _process_items(
             from openmd.runtime.recommendations import cmd_models_install
             import sys
             install_command = "openmd models install asr:baseline"
-            if sys.stdin.isatty() and item.url and input("未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？[y/N] ").strip().lower() in {"y", "yes"}:
+            question = "未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？"
+            first_use_confirm = getattr(args, "first_use_confirm", None)
+            confirmed = bool(first_use_confirm(question)) if callable(first_use_confirm) else (
+                sys.stdin.isatty() and item.url
+                and input(question + "[y/N] ").strip().lower() in {"y", "yes"}
+            )
+            if confirmed:
                 install_args = argparse.Namespace(tier="asr:baseline", root=None, dry_run=False, _confirmed=True)
                 if cmd_models_install(install_args) == 0:
                     result = extract_with_login(executor, item, item_selection.chain, args)
@@ -131,6 +149,8 @@ def _process_items(
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
+        if result.status == "partial":
+            partial_count += 1
         output: OutputWriteResult | None = None
         if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
@@ -206,6 +226,9 @@ def _process_items(
         failure_code_counts=failure_code_counts,
         coverage=coverage.as_dict(),
         paused_count=paused_count,
+        status=batch_status(item_count=processed_count, success_count=success_count,
+                            failed_count=failed_count, paused_count=paused_count,
+                            partial_count=partial_count),
         **recovery,
         message="completed" if ok else ("guardrail stopped" if processed_count < len(items) else "completed with failures"),
     )

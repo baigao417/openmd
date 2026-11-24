@@ -349,6 +349,7 @@ def test_batch_file_multiple_video_inputs_use_same_transcript_backend(monkeypatc
     inputs.write_text("\n".join(entry.url for entry in collection_items()), encoding="utf-8")
     assert cli.main(["batch", str(inputs), "--out", str(tmp_path / "out")]) == 0
     assert len(provider.calls) == 3
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["status"] == "verified"
 
 
 def test_rate_limit_is_shared_across_douyin_extractions(monkeypatch):

@@ -8,9 +8,6 @@
     {"id": "bilibili-BV1KLGE6FEoJ-transcript", "source": "bilibili", "capability": "transcript", "url": "https://www.bilibili.com/video/BV1KLGE6FEoJ", "evidence": "backup_trials.py:SAMPLES.bilibili"},
     {"id": "bilibili-BV1KLGE6FEoJ-media", "source": "bilibili", "capability": "media", "url": "https://www.bilibili.com/video/BV1KLGE6FEoJ", "evidence": "backup_trials.py:SAMPLES.bilibili"},
     {"id": "xiaoyuzhou-6a2c327643a22a695582d135-transcript", "source": "xiaoyuzhou", "capability": "transcript", "url": "https://www.xiaoyuzhoufm.com/episode/6a2c327643a22a695582d135", "evidence": "backup_trials.py:SAMPLES.xiaoyuzhou"},
-    {"id": "xiaoyuzhou-6a2c327643a22a695582d135-media", "source": "xiaoyuzhou", "capability": "media", "url": "https://www.xiaoyuzhoufm.com/episode/6a2c327643a22a695582d135", "evidence": "backup_trials.py:SAMPLES.xiaoyuzhou"},
-    {"id": "youtube-zh-5YIT-byVUOY", "source": "youtube", "capability": "transcript", "url": "https://www.youtube.com/watch?v=5YIT-byVUOY", "reference": "../asr/references/zh/5YIT-byVUOY.zh-TW.vtt", "metric": "cer", "language": "zh", "evidence": "../asr/samples.json"},
-    {"id": "youtube-zh-4HLSBvlv0Ug", "source": "youtube", "capability": "transcript", "url": "https://www.youtube.com/watch?v=4HLSBvlv0Ug", "reference": "../asr/references/zh/4HLSBvlv0Ug.zh-TW.vtt", "metric": "cer", "language": "zh", "evidence": "../asr/samples.json"},
-    {"id": "youtube-en-LNHBMFCzznE", "source": "youtube", "capability": "transcript", "url": "https://www.youtube.com/watch?v=LNHBMFCzznE", "reference": "../asr/references/en/LNHBMFCzznE.en.vtt", "metric": "wer", "language": "en", "evidence": "../asr/samples.json"}
+    {"id": "xiaoyuzhou-6a2c327643a22a695582d135-media", "source": "xiaoyuzhou", "capability": "media", "url": "https://www.xiaoyuzhoufm.com/episode/6a2c327643a22a695582d135", "evidence": "backup_trials.py:SAMPLES.xiaoyuzhou"}
   ]
 }

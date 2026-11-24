@@ -159,3 +159,22 @@ def test_lock_open_gives_up_at_deadline(tmp_path, monkeypatch):
     with pytest.raises(TimeoutError):
         with sync_manifest._file_lock(tmp_path / "m.lock", timeout=0.1):
             pass
+
+
+def test_atomic_write_retries_transient_windows_replace_error(tmp_path, monkeypatch):
+    from openmd.core import sync_manifest
+
+    real_replace = sync_manifest.os.replace
+    calls = {"count": 0}
+
+    def flaky_replace(source, target):
+        calls["count"] += 1
+        if calls["count"] < 3:
+            raise PermissionError(13, "Permission denied")
+        return real_replace(source, target)
+
+    monkeypatch.setattr(sync_manifest.os, "replace", flaky_replace)
+    target = tmp_path / "manifest.json"
+    sync_manifest._atomic_write(target, b"{}")
+    assert target.read_bytes() == b"{}"
+    assert calls["count"] == 3

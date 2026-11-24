@@ -150,6 +150,18 @@ def test_doubao_status_bubble_is_not_an_assistant_turn_and_can_be_included_as_th
     assert included.metadata['status_included_count'] == 1
 
 
+def test_doubao_hashed_thinking_box_is_counted_and_omitted_by_default():
+    html = (FIXTURES / "doubao-thinking-box.html").read_text(encoding="utf-8")
+    default = extract(html, 'doubao')
+    assert [turn.role for turn in default.blocks] == ['user', 'assistant']
+    assert 'Synthetic reasoning.' not in default.text
+    assert default.metadata['thinking_omitted_count'] == 1
+    included = extract(html, 'doubao', include_thinking=True)
+    assert 'Synthetic reasoning.' in included.blocks[1].text
+    assert included.blocks[1].text.index('Synthetic reasoning.') < included.blocks[1].text.index('Synthetic final answer.')
+    assert included.metadata['thinking_included_count'] == 1
+
+
 def test_doubao_short_answer_with_status_testid_is_preserved():
     html = '''<main data-testid="message-list">
       <div data-testid="union_message">

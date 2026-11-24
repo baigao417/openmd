@@ -133,6 +133,25 @@ vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,
     assert len([item for item in payload["notices"] if item["id"].startswith("openmd-feedback:")]) == 1
     assert payload["native"][-1]["type"] == "feedback_report"
 
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node is needed for the extension harness")
+def test_partial_notification_is_unconditional_and_uses_partial_badge(tmp_path):
+    script = tmp_path / "partial.cjs"
+    script.write_text(r'''
+const fs=require('fs'), vm=require('vm');
+const listeners={}; const event=n=>({addListener:f=>(listeners[n]??=[]).push(f)});
+const notices=[], badges=[]; const store={settings:{allowFeedbackPackage:false}};
+const chrome={runtime:{onInstalled:event('installed'),onMessage:event('message'),onStartup:event('startup'),sendNativeMessage:(_h,m,cb)=>cb({ok:true})},alarms:{create:()=>{},onAlarm:event('alarm')},notifications:{create:(id,n)=>notices.push({id,n}),onButtonClicked:event('notification'),onClosed:event('closed')},contextMenus:{onClicked:event('context')},storage:{local:{get:async()=>store,set:async()=>{}},onChanged:event('storage')},action:{onClicked:event('icon'),setPopup:async()=>{},setTitle:async()=>{},setBadgeText:async v=>badges.push(v),setBadgeBackgroundColor:async()=>{}},tabs:{query:async()=>[]}};
+const ctx=vm.createContext({chrome,URL,setTimeout:()=>{},crypto:{randomUUID:()=> 'synthetic'},console});
+vm.runInContext(fs.readFileSync(process.argv[2],'utf8').replace(/^import .*;$/m,''),ctx);
+(async()=>{await vm.runInContext('notifyPartial({id:"job",result:{status:"partial",capture:{collected_count:8,declared_total:61},completeness:{status:"downgrade"}}})',ctx); console.log(JSON.stringify({notices,badges}));})().catch(e=>{console.error(e);process.exitCode=1;});
+''', encoding="utf-8")
+    result = subprocess.run([shutil.which("node"), str(script), str(ROOT / "src/openmd/browser_extension/background.js")], capture_output=True, text=True, encoding="utf-8", check=True, timeout=20)
+    payload = json.loads(result.stdout)
+    partial = [item for item in payload["notices"] if item["id"].startswith("openmd-partial:")]
+    assert partial and "只保存了屏幕上的部分" in partial[0]["n"]["message"] and "8/61" in partial[0]["n"]["message"]
+    assert any(item["text"] == "!" for item in payload["badges"])
+
 @pytest.mark.skipif(not shutil.which("node"), reason="Node is needed for the extension harness")
 def test_feedback_notification_uses_host_next_action_and_saved_location(tmp_path):
     script = tmp_path / "feedback-next-action.cjs"

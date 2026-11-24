@@ -91,7 +91,8 @@ class SnapshotProvider:
             has_note_body = soup.select_one("[data-testid='note-content'], .note-content, .desc") is not None
             if _snapshot_login_wall(html) and not (has_note_title or has_note_body):
                 return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
-            return _extract_xiaohongshu_snapshot(html, item, path)
+            from openmd.core.completeness import check_completeness
+            return check_completeness(item, _extract_xiaohongshu_snapshot(html, item, path))
         if site == "douyin":
             return _failed("douyin_snapshot_no_transcript", "抖音视频快照不提供逐字稿，请改走媒体转写路线。")
         page_title = item.title or _html_title(html) or "当前页快照"
@@ -121,7 +122,9 @@ class SnapshotProvider:
         )
         if item.platform == "page_snapshot":
             body_chars = estimate_html_body_chars(html)
-            return apply_completeness_guard([result], body_chars=body_chars, title=title)
+            from openmd.core.completeness import check_completeness
+            guarded = apply_completeness_guard([result], body_chars=body_chars, title=title)
+            return check_completeness(item, guarded)
         return result
 
     def _html_to_markdown(self, path: Path, html: str, url: str) -> tuple[str, bool]:

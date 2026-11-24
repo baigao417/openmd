@@ -195,12 +195,48 @@ def conversation_count_check(item: ContentItem, result: TranscriptResult, signal
     return Check("conversation_count", reason="export_or_stats_count_unavailable")
 
 
+def snapshot_coverage_check(item: ContentItem, result: TranscriptResult, signals: Mapping[str, Any]) -> Check:
+    """Judge browser snapshots only from the V-owned capture receipt."""
+    if item.platform != "page_snapshot" and result.metadata.get("captured_from") != "browser_snapshot" and not result.backend.startswith("page_snapshot."):
+        return Check("snapshot_coverage", reason="not_a_snapshot")
+    capture = result.metadata.get("capture")
+    if not isinstance(capture, Mapping):
+        return Check("snapshot_coverage", reason="capture_evidence_unavailable")
+    coverage = capture.get("coverage")
+    stop_reason = capture.get("stop_reason")
+    gaps = capture.get("index_gaps")
+    collected = capture.get("collected_count")
+    declared = capture.get("declared_total")
+    gap = {
+        "coverage": coverage if coverage in {"full_page", "scrolled_full", "visible_only"} else None,
+        "stop_reason": stop_reason if isinstance(stop_reason, str) else None,
+        "collected_count": collected if type(collected) is int and collected >= 0 else None,
+        "declared_total": declared if type(declared) is int and declared >= 0 else None,
+        "index_gaps": gaps[:20] if isinstance(gaps, list) else None,
+    }
+    limit_reasons = {"step_limit", "time_limit", "no_progress", "size_limit", "error"}
+    has_gap = (
+        (coverage == "visible_only" and capture.get("virtual_detected") is True)
+        or stop_reason in limit_reasons
+        or (isinstance(gaps, list) and bool(gaps))
+        or (type(collected) is int and type(declared) is int and declared > collected)
+    )
+    if has_gap:
+        return Check("snapshot_coverage", "downgrade", "snapshot_coverage_gap", gap)
+    if coverage in {"full_page", "scrolled_full"} and not (isinstance(gaps, list) and gaps):
+        if type(collected) is int and type(declared) is int and declared > collected:
+            return Check("snapshot_coverage", "downgrade", "snapshot_coverage_gap", gap)
+        return Check("snapshot_coverage", "ok")
+    return Check("snapshot_coverage", reason="capture_coverage_unproven", gap=gap)
+
+
 def check_completeness(item: ContentItem, result: TranscriptResult, *, signals: Mapping[str, Any] | None = None,
                        checkers: tuple[Checker, ...] | None = None) -> TranscriptResult:
     """Attach bounded evidence and lower verified to partial when a gap is proven."""
     selected = checkers
     if selected is None:
-        selected = (pdf_page_check,) if item.platform == "pdf" else ((media_cue_check,) if item.source_type in {"audio", "video"} or result.source_level in {"asr", "media_asr", "native_caption", "auto_caption", "platform_transcript"} else ())
+        is_snapshot = item.platform == "page_snapshot" or result.metadata.get("captured_from") == "browser_snapshot" or result.backend.startswith("page_snapshot.")
+        selected = (snapshot_coverage_check,) if is_snapshot else ((pdf_page_check,) if item.platform == "pdf" else ((media_cue_check,) if item.source_type in {"audio", "video"} or result.source_level in {"asr", "media_asr", "native_caption", "auto_caption", "platform_transcript"} else ()))
         if item.source_type == "conversation":
             selected = (*selected, conversation_count_check, conversation_turn_check)
     if not selected:
@@ -217,8 +253,13 @@ def check_completeness(item: ContentItem, result: TranscriptResult, *, signals: 
             note = f"Independent completeness: {check.reason}; gap={check.gap}"
             if note not in notes:
                 notes.append(note)
+    metadata = {**result.metadata, "completeness": {"status": status, "checks": [check.as_dict() for check in checks]}}
+    if item.platform == "page_snapshot" or result.metadata.get("captured_from") == "browser_snapshot" or result.backend.startswith("page_snapshot."):
+        capture = result.metadata.get("capture")
+        capture_coverage = capture.get("coverage") if isinstance(capture, Mapping) else None
+        metadata["coverage"] = capture_coverage if capture_coverage in {"full_page", "scrolled_full", "visible_only"} else "unknown"
     return replace(result, status="partial" if status == "downgrade" and result.status == "verified" else result.status,
-                   source_notes=notes, metadata={**result.metadata, "completeness": {"status": status, "checks": [check.as_dict() for check in checks]}})
+                   source_notes=notes, metadata=metadata)
 
 
 def conversation_turn_check(item: ContentItem, result: TranscriptResult, signals: Mapping[str, Any]) -> Check:

@@ -24,7 +24,7 @@ MAX_CONTENT_CHARS = 32_000
 MAX_BATCH = 20
 GATES = {"network": "--enable-network-backends", "browser": "--enable-browser-backends",
          "media": "--enable-media-download", "asr": "--enable-asr", "cloud": "--enable-cloud-backends"}
-RECEIPT_FIELDS = ("status", "source_level", "completeness", "sync", "login", "next_action", "error_code", "qr_path", "qr_expires_at", "qr_http_status")
+RECEIPT_FIELDS = ("status", "source_level", "completeness", "capture", "sync", "login", "next_action", "error_code", "qr_path", "qr_expires_at", "qr_http_status")
 
 
 @contextmanager
@@ -59,7 +59,9 @@ def receipt(result: dict) -> dict:
         if isinstance(value, dict):
             allowed = {"status", "checks", "signal", "reason", "gap", "operation", "required", "state",
                        "complete", "expected_count", "actual_count", "missing_count", "exported_count", "stats_count",
-                       "missing_pages", "output_pages", "unverified_pages", "total_pages", "start_seconds", "end_seconds", "limit"}
+                       "missing_pages", "output_pages", "unverified_pages", "total_pages", "start_seconds", "end_seconds", "limit",
+                       "coverage", "virtual_detected", "stop_reason", "steps", "elapsed_ms", "seen_count", "new_count",
+                       "duplicate_count", "collected_count", "max_index", "index_gaps", "declared_total"}
             return {key: structure(child, depth + 1) for key, child in value.items() if key in allowed}
         if isinstance(value, list):
             return [structure(child, depth + 1) for child in value[:20]]
@@ -87,7 +89,7 @@ def receipt(result: dict) -> dict:
         from openmd.platforms.xiaoyuzhou_auth import pending_qr_expiry
         qr_expires_at = pending_qr_expiry(qr_path=qr_path)
     return {"status": status, "source_level": label(result.get("source_level")),
-            "completeness": structure(result.get("completeness")), "sync": structure(result.get("sync")),
+            "completeness": structure(result.get("completeness")), "capture": structure(result.get("capture")), "sync": structure(result.get("sync")),
             "login": login_summary, "next_action": action, "error_code": code,
             "qr_path": qr_path if isinstance(qr_path, str) and Path(qr_path).is_absolute() else None,
             "qr_expires_at": qr_expires_at if type(qr_expires_at) is int else None,

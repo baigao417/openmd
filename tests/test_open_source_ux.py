@@ -660,6 +660,21 @@ def test_go_json_next_action_comes_from_the_row_error_code():
     assert fields["next_action"]
 
 
+def test_go_json_includes_only_bounded_snapshot_capture_receipt():
+    from types import SimpleNamespace
+    from openmd.interactive import _go_receipt_fields
+
+    result = SimpleNamespace(status="partial", metadata={"capture": {
+        "coverage": "visible_only", "collected_count": 8, "declared_total": 61,
+        "index_gaps": list(range(25)), "unapproved": "drop me",
+    }})
+    fields = _go_receipt_fields(result, None, ok=False)
+    assert fields["capture"]["coverage"] == "visible_only"
+    assert fields["capture"]["declared_total"] == 61
+    assert len(fields["capture"]["index_gaps"]) == 20
+    assert "unapproved" not in fields["capture"]
+
+
 def test_damaged_local_document_names_its_type_and_suggests_redownload():
     """Round14: a truncated EPUB was reported as '平台 pdf' with no next step."""
     from openmd.cli_login import source_next_action

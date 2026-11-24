@@ -143,8 +143,15 @@ def test_snapshot_provider_applies_same_completeness_guard(tmp_path) -> None:
 
     result = provider.extract(BackendExtractRequest(item, (provider.name,)))
 
-    assert result.status == "partial"
-    assert result.metadata["coverage_estimate"]["body_chars"] > result.metadata["coverage_estimate"]["selected_chars"]
+    assert result.status == "verified"
+    assert result.metadata["completeness"]["status"] == "unknown"
+    assert result.metadata["coverage"] == "unknown"
+
+
+def test_snapshot_guard_does_not_claim_ok_without_capture_evidence() -> None:
+    result = _result("page_snapshot.defuddle", "# Article\n\nvisible fragment")
+    selected = apply_completeness_guard([result], body_chars=1000, title="Article")
+    assert selected.metadata["completeness"]["status"] == "unknown"
 
 
 def test_web_candidates_share_one_fetched_html_and_preserve_route_failures(monkeypatch) -> None:

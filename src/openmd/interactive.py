@@ -361,10 +361,25 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
         # Same owner as the human failure line (I082): row-level codes such as
         # douyin_detail_read_failed must not leave the JSON next_action empty.
         next_action = source_next_action(str(error_code))
+    metadata = getattr(result, "metadata", None)
+    capture = metadata.get("capture") if isinstance(metadata, dict) else None
+    if isinstance(capture, dict):
+        capture_fields = {"coverage", "virtual_detected", "stop_reason", "steps", "elapsed_ms", "seen_count",
+                          "new_count", "duplicate_count", "collected_count", "max_index", "index_gaps", "declared_total"}
+        capture = {key: value for key, value in capture.items() if key in capture_fields and (
+            isinstance(value, str) or type(value) in {bool, int} or (
+                key == "index_gaps" and isinstance(value, list) and all(type(index) is int for index in value[:20])
+            )
+        )}
+        if isinstance(capture.get("index_gaps"), list):
+            capture["index_gaps"] = capture["index_gaps"][:20]
+    else:
+        capture = None
     return {
         "status": row.get("status") or getattr(result, "status", None) or ("verified" if ok else "failed"),
         "source_level": row.get("source_level") or getattr(result, "source_level", None),
         "completeness": row.get("completeness") or getattr(result, "completeness", {}) or {},
+        "capture": capture,
         "sync": row.get("sync") or getattr(result, "sync", {}) or {},
         "login": row.get("login") or getattr(result, "login", None),
         "next_action": next_action,

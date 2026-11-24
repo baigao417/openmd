@@ -394,10 +394,14 @@ class KazeSnapshotProvider:
             with owned_temporary_directory(prefix="openmd-kaze-snapshot-") as directory:
                 path = Path(directory) / "snapshot.html"
                 capture_source = (Path(__file__).resolve().parents[1] / "browser_extension" / "page_capture.js").read_text(encoding="utf-8")
+                from openmd.backends.loaded_chat import loaded_chat_site
+
+                # AI chat pages keep their own DOM (rebuilding lost message roots on real doubao pages).
+                rebuild = "false" if loaded_chat_site(url) else "true"
                 js = (
                     "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
                     "const captureSource = " + json.dumps(capture_source) + "; "
-                    "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__(); }, "
+                    "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__({ rebuild: " + rebuild + " }); }, "
                     "{ arg: captureSource, timeoutMs: " + str(CAPTURE_TIMEOUT_MS) + " }); "
                     "const html = captured.html; const url = captured.url; const title = captured.title; "
                     "if (Buffer.byteLength(html, 'utf8') > " + str(MAX_HTML_BYTES) + ") throw new Error('snapshot_too_large'); "

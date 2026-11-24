@@ -711,6 +711,8 @@ class BilibiliProviderTests(unittest.TestCase):
                 )
             if url.endswith("/x/web-interface/view"):
                 return 200, json.dumps({"code": 0, "data": {"aid": 456, "cid": 123}})
+            if url == BILIBILI_NAV_URL:
+                return 200, json.dumps({"code": 0, "data": {"wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/img.png", "sub_url": "https://i0.hdslb.com/bfs/wbi/sub.png"}}})
             if url.endswith("/x/player/wbi/v2"):
                 self.assertEqual(params["aid"], "456")
                 self.assertEqual(params["cid"], "123")
@@ -763,6 +765,7 @@ class BilibiliProviderTests(unittest.TestCase):
                     {
                         "code": 0,
                         "data": {
+                            "aid": 456,
                             "cid": 123,
                             "title": "Bilibili sample",
                             "pubdate": 1767139200,
@@ -770,7 +773,9 @@ class BilibiliProviderTests(unittest.TestCase):
                         },
                     }
                 )
-            if url.endswith("/x/player/v2"):
+            if url == BILIBILI_NAV_URL:
+                return 200, json.dumps({"code": 0, "data": {"wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/img.png", "sub_url": "https://i0.hdslb.com/bfs/wbi/sub.png"}}})
+            if url.endswith("/x/player/wbi/v2"):
                 return 200, json.dumps(
                     {
                         "code": 0,
@@ -799,7 +804,10 @@ class BilibiliProviderTests(unittest.TestCase):
                 )
             return 404, "{}"
 
-        provider = BilibiliNativeSubtitleProvider(fetcher=fake_fetcher)
+        provider = BilibiliNativeSubtitleProvider(
+            fetcher=fake_fetcher,
+            wbi_signer=BilibiliWbiSigner(fetcher=fake_fetcher, time_provider=lambda: 1700000000.0),
+        )
         item = ContentItem(
             platform="bilibili",
             input_type="single",
@@ -826,7 +834,7 @@ class BilibiliProviderTests(unittest.TestCase):
         self.assertIn("No media", " ".join(result.source_notes))
         self.assertEqual(calls[0][1], {"bvid": "BV1abc123456"})
 
-    def test_native_subtitle_provider_tries_wbi_then_v2_and_filters_danmaku(self) -> None:
+    def test_native_subtitle_provider_uses_signed_wbi_and_filters_danmaku(self) -> None:
         calls: list[str] = []
 
         def fake_fetcher(url: str, params: dict[str, str], timeout: int) -> tuple[int, str]:
@@ -835,6 +843,8 @@ class BilibiliProviderTests(unittest.TestCase):
                 return 200, json.dumps(
                     {"code": 0, "data": {"aid": 456, "cid": 123, "title": "Sample"}}
                 )
+            if url == BILIBILI_NAV_URL:
+                return 200, json.dumps({"code": 0, "data": {"wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/img.png", "sub_url": "https://i0.hdslb.com/bfs/wbi/sub.png"}}})
             if url.endswith("/x/player/wbi/v2"):
                 return 200, json.dumps(
                     {
@@ -843,20 +853,7 @@ class BilibiliProviderTests(unittest.TestCase):
                             "subtitle": {
                                 "subtitles": [
                                     {"lan": "danmaku", "subtitle_url": "//comment.example.com/danmaku.xml"},
-                                    {"lan": "zh-CN", "subtitle_url": "//comment.example.com/subtitle.xml"},
-                                ]
-                            }
-                        },
-                    }
-                )
-            if url.endswith("/x/player/v2"):
-                return 200, json.dumps(
-                    {
-                        "code": 0,
-                        "data": {
-                            "subtitle": {
-                                "subtitles": [
-                                    {"lan": "zh-CN", "subtitle_url": "//subtitle.example.com/manual.json"}
+                                    {"lan": "zh-CN", "subtitle_url": "//subtitle.example.com/manual.json"},
                                 ]
                             }
                         },
@@ -866,7 +863,10 @@ class BilibiliProviderTests(unittest.TestCase):
                 return 200, json.dumps({"body": [{"from": 0, "to": 1, "content": "manual"}]})
             return 404, "{}"
 
-        provider = BilibiliNativeSubtitleProvider(fetcher=fake_fetcher)
+        provider = BilibiliNativeSubtitleProvider(
+            fetcher=fake_fetcher,
+            wbi_signer=BilibiliWbiSigner(fetcher=fake_fetcher, time_provider=lambda: 1700000000.0),
+        )
         item = ContentItem(
             platform="bilibili",
             input_type="single",
@@ -883,12 +883,10 @@ class BilibiliProviderTests(unittest.TestCase):
         )
 
         self.assertTrue(result.has_usable_text)
-        self.assertEqual(result.metadata["subtitle_endpoint_used"], "v2")
+        self.assertEqual(result.metadata["subtitle_endpoint_used"], "wbi_v2")
         self.assertEqual(result.source_level, "native_caption")
         self.assertIn("[00:00:00] manual", result.text)
-        wbi_index = next(index for index, url in enumerate(calls) if url.endswith("/x/player/wbi/v2"))
-        v2_index = next(index for index, url in enumerate(calls) if url.endswith("/x/player/v2"))
-        self.assertLess(wbi_index, v2_index)
+        self.assertFalse(any(url.endswith("/x/player/v2") for url in calls))
         self.assertIn("Bilibili danmaku/XML subtitle tracks were filtered", " ".join(result.source_notes))
 
     def test_native_subtitle_provider_prefers_uploader_over_ai_same_language(self) -> None:
@@ -897,6 +895,8 @@ class BilibiliProviderTests(unittest.TestCase):
         def fake_fetcher(url: str, params: dict[str, str], timeout: int) -> tuple[int, str]:
             if url.endswith("/x/web-interface/view"):
                 return 200, json.dumps({"code": 0, "data": {"aid": 456, "cid": 123}})
+            if url == BILIBILI_NAV_URL:
+                return 200, json.dumps({"code": 0, "data": {"wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/img.png", "sub_url": "https://i0.hdslb.com/bfs/wbi/sub.png"}}})
             if url.endswith("/x/player/wbi/v2"):
                 return 200, json.dumps(
                     {
@@ -925,7 +925,10 @@ class BilibiliProviderTests(unittest.TestCase):
                 return 200, json.dumps({"body": [{"from": 0, "to": 1, "content": "chosen"}]})
             return 404, "{}"
 
-        provider = BilibiliNativeSubtitleProvider(fetcher=fake_fetcher)
+        provider = BilibiliNativeSubtitleProvider(
+            fetcher=fake_fetcher,
+            wbi_signer=BilibiliWbiSigner(fetcher=fake_fetcher, time_provider=lambda: 1700000000.0),
+        )
         item = ContentItem(
             platform="bilibili",
             input_type="single",
@@ -946,13 +949,15 @@ class BilibiliProviderTests(unittest.TestCase):
         self.assertEqual(result.metadata["caption_track_type"], "uploader")
         self.assertEqual(result.source_level, "native_caption")
 
-    def test_native_subtitle_provider_recovers_empty_ai_url_with_search_stat(self) -> None:
+    def test_native_subtitle_provider_does_not_use_unsigned_ai_rescue(self) -> None:
         calls: list[str] = []
 
         def fake_fetcher(url: str, params: dict[str, str], timeout: int) -> tuple[int, str]:
             calls.append(url)
             if url.endswith("/x/web-interface/view"):
                 return 200, json.dumps({"code": 0, "data": {"aid": 456, "cid": 123}})
+            if url == BILIBILI_NAV_URL:
+                return 200, json.dumps({"code": 0, "data": {"wbi_img": {"img_url": "https://i0.hdslb.com/bfs/wbi/img.png", "sub_url": "https://i0.hdslb.com/bfs/wbi/sub.png"}}})
             if url.endswith("/x/player/wbi/v2"):
                 return 200, json.dumps(
                     {
@@ -966,15 +971,12 @@ class BilibiliProviderTests(unittest.TestCase):
                         },
                     }
                 )
-            if url.endswith("/x/player/v2/ai/subtitle/search/stat"):
-                return 200, json.dumps(
-                    {"code": 0, "data": {"subtitle_url": "//subtitle.example.com/rescued.json"}}
-                )
-            if url == "https://subtitle.example.com/rescued.json":
-                return 200, json.dumps({"body": [{"from": 0, "to": 1, "content": "rescued"}]})
             return 404, "{}"
 
-        provider = BilibiliNativeSubtitleProvider(fetcher=fake_fetcher)
+        provider = BilibiliNativeSubtitleProvider(
+            fetcher=fake_fetcher,
+            wbi_signer=BilibiliWbiSigner(fetcher=fake_fetcher, time_provider=lambda: 1700000000.0),
+        )
         item = ContentItem(
             platform="bilibili",
             input_type="single",
@@ -990,11 +992,9 @@ class BilibiliProviderTests(unittest.TestCase):
             )
         )
 
-        self.assertTrue(result.has_usable_text)
-        self.assertEqual(result.source_level, "auto_caption")
-        self.assertIn("[00:00:00] rescued", result.text)
-        self.assertTrue(any(url.endswith("/x/player/v2/ai/subtitle/search/stat") for url in calls))
-        self.assertIn("AI subtitle URL was recovered", " ".join(result.source_notes))
+        self.assertFalse(result.has_usable_text)
+        self.assertEqual(result.error_code, "bilibili_subtitle_url_missing")
+        self.assertFalse(any("/x/player/v2" in url for url in calls))
 
     def test_native_subtitle_provider_retries_async_ai_subtitle_discovery(self) -> None:
         wbi_attempts = 0
@@ -3642,8 +3642,8 @@ class ArticleProviderTests(unittest.TestCase):
                 # round13-g: local parsing first (5-20 s vs ~95 s via the extension);
                 # challenge pages are rejected and fall back to the extension route.
                 WEIXIN_LOCAL_BACKEND,
-                OPENCLI_WEIXIN_DOWNLOAD_BACKEND,
                 "defuddle.web.content",
+                OPENCLI_WEIXIN_DOWNLOAD_BACKEND,
                 OPENCLI_WEB_READ_BACKEND,
             ),
         )

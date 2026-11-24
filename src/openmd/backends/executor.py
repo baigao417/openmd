@@ -274,6 +274,7 @@ class BackendExecutor:
         provider_registry: BackendProviderRegistry | None = None,
         default_provider: BackendProvider | None = None,
         result_enricher: Callable[[ContentItem, TranscriptResult], TranscriptResult] | None = None,
+        headless: bool = False,
     ) -> None:
         self._provider_registry = provider_registry or BackendProviderRegistry(providers)
         if provider_registry is not None:
@@ -281,6 +282,7 @@ class BackendExecutor:
                 self._provider_registry.register(name, provider)
         self._default_provider = default_provider
         self._result_enricher = result_enricher
+        self._headless = headless
 
     def extract(
         self,
@@ -367,6 +369,12 @@ class BackendExecutor:
 
         for backend in chain:
             if backend in guarded_web_candidates:
+                continue
+            if self._headless and self._requires_browser(backend):
+                attempts.append({"backend": backend, "error_code": "headless_browser_unavailable"})
+                attempt_notes.append(
+                    f"fallback_attempt: {backend} skipped with headless_browser_unavailable"
+                )
                 continue
             provider = self._provider_for(backend)
             if request.item.platform == "web_article" and backend in web_candidates:
@@ -531,6 +539,11 @@ class BackendExecutor:
             if result.has_usable_text or (result.status == "partial" and result.metadata.get("terminal_partial") is True):
                 if self._result_enricher is not None:
                     result = self._result_enricher(request.item, result)
+                if attempts:
+                    result = replace(result, metadata={
+                        **result.metadata,
+                        "fallback_attempts": [*result.metadata.get("fallback_attempts", []), *attempts],
+                    })
                 return _with_attempt_notes(result, attempt_notes)
 
             # A later "tool not installed" must not hide an earlier verdict about
@@ -545,11 +558,24 @@ class BackendExecutor:
 
         if last_result is not None:
             last_result = replace(last_result, metadata={**last_result.metadata, "fallback_attempts": attempts})
-        return _with_attempt_notes(last_result, attempt_notes) if last_result else _failed_result(
-            request.item,
-            chain[-1],
-            "backend_chain_empty",
+        if last_result is not None:
+            return _with_attempt_notes(last_result, attempt_notes)
+        error_code = "headless_browser_unavailable" if attempts else "backend_chain_empty"
+        empty = _failed_result(request.item, chain[-1], error_code)
+        return _with_attempt_notes(
+            replace(empty, metadata={**empty.metadata, "fallback_attempts": attempts}),
+            attempt_notes,
         )
+
+    @staticmethod
+    def _requires_browser(backend: str) -> bool:
+        try:
+            from openmd.routing.loader import load_catalog
+
+            gates = load_catalog().capabilities.get(backend, {}).get("gates", [])
+            return "browser" in gates
+        except (OSError, ValueError, TypeError, AttributeError):
+            return backend.startswith(("opencli.", "browser.", "kaze."))
 
     def _provider_for(self, backend: str) -> BackendProvider | None:
         return self._provider_registry.provider_for(backend) or self._default_provider

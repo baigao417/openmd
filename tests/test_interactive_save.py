@@ -42,6 +42,8 @@ def test_bare_link_saves_valid_package_and_relocates_receipt(tmp_path, monkeypat
 def test_interactive_only_prompts_for_save_after_success(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(interactive, "is_interactive", lambda: True)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     prompts = []
 
     def answer(prompt):
@@ -67,11 +69,14 @@ def test_failed_extraction_does_not_prompt_for_save(tmp_path, monkeypatch, capsy
     assert len(list((tmp_path / "home/.openmd/runs").glob("*/runlog.jsonl"))) == 1
 
 
-def test_cancel_after_extraction_leaves_no_destination_files(tmp_path, monkeypatch):
+def test_yes_without_destination_fails_without_prompt(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(interactive, "is_interactive", lambda: True)
     monkeypatch.setattr(interactive.tempfile, "tempdir", str(tmp_path))
-    monkeypatch.setattr("builtins.input", lambda prompt: "n")
-    assert main(["go", "https://example.org/article", "--backend", "mock", "--yes"]) == 0
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda prompt: (_ for _ in ()).throw(AssertionError("--yes must not prompt")))
+    assert main(["go", "https://example.org/article", "--backend", "mock", "--yes"]) == 2
+    assert "保存目录" in capsys.readouterr().err
     assert not list(tmp_path.iterdir())
 
 

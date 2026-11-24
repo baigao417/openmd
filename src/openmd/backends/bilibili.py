@@ -235,9 +235,8 @@ class BilibiliNativeSubtitleProvider:
                 try:
                     request_params = self._wbi_signer.sign_params(params, timeout=self._timeout)
                 except (HTTPError, URLError, OSError, ValueError, WbiSigningError) as exc:
-                    player_warnings.append(
-                        f"{endpoint}_signing: {sanitize_error_summary(exc)}; unsigned request attempted"
-                    )
+                    player_warnings.append(f"{endpoint}_signing: {sanitize_error_summary(exc)}")
+                    continue
 
             for retry_index in range(self._max_ai_retries):
                 try:
@@ -279,19 +278,6 @@ class BilibiliNativeSubtitleProvider:
         subtitle = _choose_subtitle(subtitles)
         subtitle_track_type = _subtitle_track_type(subtitle)
         subtitle_url = _normalize_subtitle_url(_safe_str(subtitle.get("subtitle_url")))
-        ai_rescue_note: str | None = None
-        if not subtitle_url and subtitle_track_type == "ai":
-            try:
-                subtitle_url = _resolve_ai_subtitle_url(
-                    self._fetcher,
-                    aid=aid,
-                    cid=cid,
-                    timeout=self._timeout,
-                )
-            except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
-                player_warnings.append(f"ai_subtitle_search_stat: {sanitize_error_summary(exc)}")
-            if subtitle_url:
-                ai_rescue_note = "AI subtitle URL was recovered via x/player/v2/ai/subtitle/search/stat."
 
         if not subtitle_url:
             return _failed_result(
@@ -300,7 +286,7 @@ class BilibiliNativeSubtitleProvider:
                 "Selected Bilibili subtitle did not include a subtitle_url.",
                 metadata={"bvid": bvid, "aid": aid, "cid": cid, "track_type": subtitle_track_type},
                 notes=[
-                    "AI subtitle URL rescue via x/player/v2/ai/subtitle/search/stat was attempted when applicable.",
+                    "Unsigned x/player/v2 subtitle rescue is disabled because it can return another video's captions.",
                     *_warning_notes(player_warnings),
                 ],
             )
@@ -321,7 +307,7 @@ class BilibiliNativeSubtitleProvider:
 
         source_level = _source_level_from_subtitle_meta(subtitle)
         source_notes = [
-            "Bilibili public API subtitle discovery tried signed x/player/wbi/v2 before x/player/v2 when aid was available.",
+            "Bilibili public API subtitle discovery uses only the signed x/player/wbi/v2 endpoint.",
             f"subtitle_endpoint_used={endpoint_used}",
             f"async_ai_subtitle_retries={self._max_ai_retries}",
             "Bilibili danmaku/XML subtitle tracks were filtered before track selection.",
@@ -329,8 +315,6 @@ class BilibiliNativeSubtitleProvider:
             "This backend does not invoke the Bilibili-Harvest local app/browser-extension pipeline.",
             "No media, raw subtitle JSON, raw response, cookies, headers, or ASR artifacts were persisted.",
         ]
-        if ai_rescue_note:
-            source_notes.append(ai_rescue_note)
         source_notes.extend(_warning_notes(player_warnings))
         return TranscriptResult(
             text=_format_segments(segments),
@@ -585,6 +569,11 @@ class BilibiliMediaAsrFallbackProvider:
                     "bvid": bvid,
                     "failure_class": "user_resolvable",
                     "missing_flags": missing_flags,
+                    "missing": [
+                        {"kind": "capability", "id": flag.lstrip("-"), "detail": "explicit media or ASR capability is disabled", "action": f"rerun with {flag}"}
+                        for flag in missing_flags
+                    ],
+                    "next_action": 'rerun with --enable-media-download --enable-asr; install openmd-cli[media] and the asr:baseline model if needed',
                     "media_retention": "none",
                 },
                 notes=[
@@ -604,7 +593,7 @@ class BilibiliMediaAsrFallbackProvider:
                     self.name,
                     "asr_backend_missing",
                     "Configured ASR backend does not expose transcribe(path).",
-                    metadata={"bvid": bvid, "failure_class": "user_resolvable"},
+                    metadata={"bvid": bvid, "failure_class": "user_resolvable", "missing": [{"kind": "component", "id": "asr", "detail": "ASR backend is unavailable", "action": "install openmd-cli[media] and an ASR model"}], "next_action": 'install "openmd-cli[media]" and run openmd models install asr:baseline'},
                 )
             asr_result = transcribe(media_path)
             if not isinstance(asr_result, TranscriptResult) or not asr_result.has_usable_text:
@@ -667,7 +656,7 @@ class BilibiliMediaAsrFallbackProvider:
                 self.name,
                 "media_download_backend_missing",
                 'yt-dlp is missing; install the "openmd-cli[media]" extra.',
-                metadata={"bvid": bvid, "failure_class": "user_resolvable"},
+                metadata={"bvid": bvid, "failure_class": "user_resolvable", "missing": [{"kind": "component", "id": "yt-dlp", "detail": "media downloader is not installed", "action": 'pip install "openmd-cli[media]"'}], "next_action": 'pip install "openmd-cli[media]"'},
             )
         output_template = media_dir / f"{bvid}.%(ext)s"
         from openmd.runtime.ffmpeg_tools import ffmpeg_location_args
@@ -687,7 +676,7 @@ class BilibiliMediaAsrFallbackProvider:
                 self.name,
                 "media_download_backend_missing",
                 exc,
-                metadata={"bvid": bvid, "failure_class": "user_resolvable"},
+                metadata={"bvid": bvid, "failure_class": "user_resolvable", "missing": [{"kind": "component", "id": "yt-dlp", "detail": "media downloader is not installed", "action": 'pip install "openmd-cli[media]"'}], "next_action": 'pip install "openmd-cli[media]"'},
             )
         except subprocess.TimeoutExpired as exc:
             return _failed_result(
@@ -1104,13 +1093,6 @@ def _player_subtitle_attempts(
                 {"aid": aid, "cid": cid},
             )
         )
-    attempts.append(
-        (
-            "v2",
-            "https://api.bilibili.com/x/player/v2",
-            {"cid": cid, "bvid": bvid},
-        )
-    )
     return attempts
 
 
@@ -1168,25 +1150,6 @@ def _subtitle_track_type(entry: dict[str, Any]) -> str:
 def _subtitle_sort_key(entry: dict[str, Any]) -> tuple[int, str]:
     source_rank = 0 if _subtitle_track_type(entry) == "uploader" else 1
     return source_rank, _normalize_lang(_safe_str(entry.get("lan") or entry.get("lan_doc"))).lower()
-
-
-def _resolve_ai_subtitle_url(
-    fetcher: HttpFetcher,
-    *,
-    aid: str,
-    cid: str,
-    timeout: int,
-) -> str | None:
-    if not aid or not cid:
-        return None
-    payload = _fetch_json(
-        fetcher,
-        "https://api.bilibili.com/x/player/v2/ai/subtitle/search/stat",
-        {"aid": aid, "cid": cid},
-        timeout,
-    )
-    data = _bilibili_api_data(payload)
-    return _normalize_subtitle_url(_safe_str(data.get("subtitle_url")))
 
 
 def _segments_from_subtitle_payload(payload: Any) -> list[_SubtitleSegment]:

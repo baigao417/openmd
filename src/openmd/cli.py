@@ -82,6 +82,7 @@ class CliResult:
     error_code: str | None = None
     login: dict[str, str] | None = None
     next_action: dict[str, str] | str | None = None
+    missing: list[dict[str, object]] = field(default_factory=list)
     qr_path: str | None = None
     qr_expires_at: int | None = None
     qr_http_status: int | None = None
@@ -174,6 +175,7 @@ def _allow_scoped_all_collect(input_url: str, args: argparse.Namespace) -> bool:
 
 def _build_backend_executor(args: argparse.Namespace, *, platform: str) -> BackendExecutor:
     from openmd.backends.video_metadata import enrich_video_result
+    from openmd.core.environment import is_headless
 
     if getattr(args, "ocr_engine", None) == "mineru":
         args.fallback = False
@@ -186,6 +188,7 @@ def _build_backend_executor(args: argparse.Namespace, *, platform: str) -> Backe
         result_enricher=lambda item, result: enrich_video_result(
             item, result, network_enabled=bool(getattr(args, "enable_network_backends", False))
         ),
+        headless=bool(getattr(args, "_headless", is_headless())),
     )
 
 
@@ -199,6 +202,7 @@ def _build_discovery_executor(args: argparse.Namespace, *, platform: str) -> Dis
 
 
 def _backend_runtime_options(args: argparse.Namespace) -> BackendRuntimeOptions:
+    from openmd.core.environment import is_headless, is_non_interactive
     keep_media_artifacts = getattr(args, "keep_media", False)
     selected_ocr = getattr(args, "ocr_engine", None)
     if selected_ocr is None:
@@ -217,6 +221,8 @@ def _backend_runtime_options(args: argparse.Namespace) -> BackendRuntimeOptions:
         enable_local_export_backends=getattr(args, "enable_local_export", False),
         keep_media_artifacts=keep_media_artifacts,
         media_artifact_dir=str(Path(args.out) / "raw-media") if keep_media_artifacts else None,
+        headless=bool(getattr(args, "_headless", is_headless())),
+        non_interactive=is_non_interactive(args),
     )
 
 

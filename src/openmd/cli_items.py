@@ -130,22 +130,33 @@ def _process_items(
             else selection
         )
         result = extract_with_login(executor, item, item_selection.chain, args)
+        if result.error_code in {"asr_model_missing", "asr_runtime_unavailable", "asr_backend_missing"}:
+            result = replace(result, metadata={
+                **result.metadata,
+                "missing": [{"kind": "model", "id": "asr:baseline", "detail": "local speech model or ASR runtime is unavailable", "action": "openmd models install asr:baseline"}],
+                "next_action": "openmd models install asr:baseline",
+            })
         if result.error_code == "asr_model_missing":
             from openmd.runtime.recommendations import cmd_models_install
             import sys
             install_command = "openmd models install asr:baseline"
             question = "未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？"
             first_use_confirm = getattr(args, "first_use_confirm", None)
-            confirmed = bool(first_use_confirm(question)) if callable(first_use_confirm) else (
-                sys.stdin.isatty() and item.url
+            from openmd.core.environment import is_non_interactive
+            confirmed = bool(first_use_confirm(question)) if callable(first_use_confirm) and not is_non_interactive(args) else (
+                not is_non_interactive(args) and item.url
                 and input(question + "[y/N] ").strip().lower() in {"y", "yes"}
             )
             if confirmed:
                 install_args = argparse.Namespace(tier="asr:baseline", root=None, dry_run=False, _confirmed=True)
                 if cmd_models_install(install_args) == 0:
                     result = extract_with_login(executor, item, item_selection.chain, args)
-            elif not sys.stdin.isatty():
-                result.source_notes.append(f"Install a local model and retry: {install_command}")
+            else:
+                result = replace(result, metadata={
+                    **result.metadata,
+                    "missing": [{"kind": "model", "id": "asr:baseline", "detail": "local speech model is not installed", "action": install_command}],
+                    "next_action": install_command,
+                }, source_notes=[*result.source_notes, f"Install a local model and retry: {install_command}"])
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
@@ -235,6 +246,7 @@ def _process_items(
 
 
 def _process_input(input_url: str, args: argparse.Namespace, *, command: str) -> CliResult:
+    from dataclasses import replace
     from .cli import CliResult, OutputWriteResult, PackageValidationError, Path, _append_execution_entry, _build_backend_executor, _build_identity_resolution_failure_entry, _build_package_validation_failure_entry, _build_package_validation_failure_entry_for_item, _build_skipped_package_runlog_entry, _log_all_guard, _maybe_skip_existing_package, _pace_douyin_extraction, _prepare_compact_collection, _prepare_resolved_item, _register_resolved_batch_items, _requested_backend, _write_extraction_output, apply_platform_extraction_contract, argparse, build_item_runlog_entry, create_default_registry
 
     from openmd.core.input_validation import normalize_http_url
@@ -282,8 +294,6 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             for item in adapter.resolve_items(input_url, limit=args.limit, all=False)
         ]
     if getattr(args, "include_thinking", False):
-        from dataclasses import replace
-
         items = [replace(item, raw_meta={**item.raw_meta, "include_thinking": True}) for item in items]
     if command == "ingest":
         items = _prepare_compact_collection(args, items)
@@ -341,6 +351,12 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             else selection
         )
         result = extract_with_login(executor, item, item_selection.chain, args)
+        if result.error_code in {"asr_model_missing", "asr_runtime_unavailable", "asr_backend_missing"}:
+            result = replace(result, metadata={
+                **result.metadata,
+                "missing": [{"kind": "model", "id": "asr:baseline", "detail": "local speech model or ASR runtime is unavailable", "action": "openmd models install asr:baseline"}],
+                "next_action": "openmd models install asr:baseline",
+            })
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
@@ -379,6 +395,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             if last_result.error_code in {"engine_unavailable", "ai_chat_site_not_implemented"}
             else None
         )
+    missing = list((last_result.metadata.get("missing") or [])) if last_result is not None else []
     return CliResult(
         ok=ok,
         command=command,
@@ -389,6 +406,7 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
         outputs=outputs,
         paused_count=paused_count,
         **recovery,
+        missing=missing,
         status=last_result.status if last_result is not None else ("verified" if ok else "failed"),
         source_level=last_result.source_level if last_result is not None else None,
         completeness=(last_result.metadata.get("completeness") or {}) if last_result is not None else {},

@@ -1,23 +1,87 @@
 {
   "schema": "openmd.declarations/v1",
   "opencli_contracts": {
-    "bilibili/subtitle": ["content", "from", "to", "language", "track_type"],
-    "bilibili/user-videos": ["title", "url", "bvid"],
-    "chatgpt/detail": ["Role", "Text"],
-    "deepseek/detail": ["Role", "Text"],
-    "grok/detail": ["Role", "Text"],
-    "douyin/detail": ["aweme_id", "desc", "author", "duration_s", "play_url", "images"],
-    "douyin/user-videos": ["aweme_id", "title"],
-    "twitter/article": ["title", "author", "content", "url"],
-    "twitter/thread": ["id", "author", "text", "url"],
-    "twitter/tweets": ["id", "text", "url"],
-    "xiaohongshu/note": ["field", "value"],
-    "xiaohongshu/user": ["id", "title", "url"],
-    "xiaoyuzhou/episode": ["title"],
-    "xiaoyuzhou/podcast-episodes": ["eid", "title"],
-    "xiaoyuzhou/transcript": ["json_file", "text_file"],
-    "youtube/channel": ["field", "value"],
-    "youtube/playlist": ["title", "url"]
+    "bilibili/subtitle": [
+      "content",
+      "from",
+      "to",
+      "language",
+      "track_type"
+    ],
+    "bilibili/user-videos": [
+      "title",
+      "url",
+      "bvid"
+    ],
+    "chatgpt/detail": [
+      "Role",
+      "Text"
+    ],
+    "deepseek/detail": [
+      "Role",
+      "Text"
+    ],
+    "grok/detail": [
+      "Role",
+      "Text"
+    ],
+    "douyin/detail": [
+      "aweme_id",
+      "desc",
+      "author",
+      "duration_s",
+      "play_url",
+      "images"
+    ],
+    "douyin/user-videos": [
+      "aweme_id",
+      "title"
+    ],
+    "twitter/article": [
+      "title",
+      "author",
+      "content",
+      "url"
+    ],
+    "twitter/thread": [
+      "id",
+      "author",
+      "text",
+      "url"
+    ],
+    "twitter/tweets": [
+      "id",
+      "text",
+      "url"
+    ],
+    "xiaohongshu/note": [
+      "field",
+      "value"
+    ],
+    "xiaohongshu/user": [
+      "id",
+      "title",
+      "url"
+    ],
+    "xiaoyuzhou/episode": [
+      "title"
+    ],
+    "xiaoyuzhou/podcast-episodes": [
+      "eid",
+      "title"
+    ],
+    "xiaoyuzhou/transcript": [
+      "json_file",
+      "text_file"
+    ],
+    "youtube/channel": [
+      "field",
+      "value"
+    ],
+    "youtube/playlist": [
+      "title",
+      "url"
+    ]
   },
   "routes": {
     "schema": "openmd.routes/v1",
@@ -58,8 +122,8 @@
         "capability": "content",
         "chain": [
           "weixin.article.local",
-          "opencli.weixin.download",
           "defuddle.web.content",
+          "opencli.weixin.download",
           "opencli.web.read"
         ],
         "last_verified": "2026-11-18"
@@ -830,21 +894,21 @@
           "cost_class": "none",
           "status_policy": "provider_defined"
         },
-          {
-            "id": "openmd.x.logged_in_browser",
-            "provider": "openmd.x.logged_in_browser",
-            "sources": [
-              "x"
-            ],
-            "capability": "content",
-            "gates": [
-              "browser"
-            ],
-            "source_level": "provider_defined",
-            "status_policy": "provider_defined"
-          },
-          {
-            "id": "opencli.twitter.thread",
+        {
+          "id": "openmd.x.logged_in_browser",
+          "provider": "openmd.x.logged_in_browser",
+          "sources": [
+            "x"
+          ],
+          "capability": "content",
+          "gates": [
+            "browser"
+          ],
+          "source_level": "provider_defined",
+          "status_policy": "provider_defined"
+        },
+        {
+          "id": "opencli.twitter.thread",
           "provider": "opencli.twitter.thread",
           "sources": [
             "x"

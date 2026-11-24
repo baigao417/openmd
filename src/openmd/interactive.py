@@ -24,7 +24,9 @@ _GATE_OPTIONS = {"network": "enable_network_backends", "browser": "enable_browse
 
 
 def is_interactive() -> bool:
-    return sys.stdin.isatty() and sys.stdout.isatty()
+    from openmd.core.environment import is_non_interactive
+
+    return not is_non_interactive()
 
 
 def _ask(message: str) -> str:
@@ -76,6 +78,7 @@ def _authorize(args: argparse.Namespace, url: str, *, tty: bool) -> bool:
     from openmd.adapters.registry import create_default_registry
     from openmd.core.detector import detect_platform
     from openmd.routing.loader import load_catalog
+    from openmd.core.environment import is_headless
     catalog = load_catalog()
     chain = create_default_registry().backend_chain(detect_platform(url), args.backend)
     needed = {gate for backend in chain for gate in catalog.capabilities.get(backend, {}).get("gates", [])}
@@ -83,6 +86,8 @@ def _authorize(args: argparse.Namespace, url: str, *, tty: bool) -> bool:
     # media download and local ASR start without any prompt. Cloud is never implied.
     if getattr(args, "video", "note") in {"text", "file"}:
         needed |= {"network", "media_download", "asr"}  # asking for the video text is the grant
+    if is_headless():
+        needed.discard("browser")
     requested = [gate for gate in ("network", "browser", "media_download", "asr") if gate in needed]
     for gate in requested:
         setattr(args, _GATE_OPTIONS[gate], True)
@@ -93,6 +98,25 @@ def _noninteractive_requirements(args: argparse.Namespace, url: str) -> str | No
     if args.save_to or args.out:
         return None
     return f"非交互运行需要保存目录（-o 或 --save-to），例如：\nopenmd {url} -o <目录>"
+
+
+def _machine_failure(args: argparse.Namespace, *, error_code: str, detail: str,
+                     missing: list[dict[str, str]] | None = None,
+                     next_action: str | None = None, exit_code: int = 2) -> int:
+    payload = {
+        "ok": False,
+        "command": "go",
+        "status": "failed",
+        "error_code": error_code,
+        "error": detail,
+        "missing": missing or [],
+        "next_action": next_action,
+    }
+    if getattr(args, "json", False):
+        print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+    else:
+        print(detail, file=sys.stderr)
+    return exit_code
 
 
 class _StagingWorkspace:
@@ -356,12 +380,15 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
         qr_expires_at = pending_qr_expiry(qr_path=qr_path)
     error_code = row.get("error_code") or getattr(result, "error_code", None)
     next_action = getattr(result, "next_action", None)
+    if not next_action and isinstance(metadata := getattr(result, "metadata", None), dict):
+        next_action = metadata.get("next_action")
     if not next_action and not ok and error_code:
         from openmd.cli_login import source_next_action
         # Same owner as the human failure line (I082): row-level codes such as
         # douyin_detail_read_failed must not leave the JSON next_action empty.
         next_action = source_next_action(str(error_code))
     metadata = getattr(result, "metadata", None)
+    missing = getattr(result, "missing", None) or (metadata.get("missing", []) if isinstance(metadata, dict) else [])
     capture = metadata.get("capture") if isinstance(metadata, dict) else None
     if isinstance(capture, dict):
         capture_fields = {"coverage", "virtual_detected", "stop_reason", "steps", "elapsed_ms", "seen_count",
@@ -383,6 +410,7 @@ def _go_receipt_fields(result, rows: list[dict[str, object]] | None, *, ok: bool
         "sync": row.get("sync") or getattr(result, "sync", {}) or {},
         "login": row.get("login") or getattr(result, "login", None),
         "next_action": next_action,
+        "missing": missing,
         "qr_path": qr_path,
         "qr_expires_at": qr_expires_at,
         "qr_http_status": getattr(result, "qr_http_status", None),
@@ -447,10 +475,11 @@ def cmd_go(args: argparse.Namespace) -> int:
     write; the extension keeps its human-selected destination in browser state.
     """
     from openmd.cli import _emit_result, _process_input, _start_compact_receipt
-    tty = is_interactive()
+    from openmd.core.environment import is_non_interactive
+    tty = is_interactive() and not is_non_interactive(args)
     if any(getattr(args, option, False) for option in ("all", "overwrite", "update", "new_version")) or args.package_root:
-        print("openmd go: 批量与更新操作请使用 ingest/batch/collect 及明确输出目录", file=sys.stderr)
-        return 2
+        return _machine_failure(args, error_code="batch_command_required",
+                                detail="openmd go: 批量与更新操作请使用 ingest/batch/collect 及明确输出目录")
     try:
         url = args.url or (_prompt(args, "输入链接或本地文件：") if tty else "")
         if url == "-":
@@ -459,8 +488,10 @@ def cmd_go(args: argparse.Namespace) -> int:
                 return 2
             url = sys.stdin.readline().strip()
         if not url:
-            print("openmd go: 需要一个链接或本地文件", file=sys.stderr)
-            return 2
+            return _machine_failure(args, error_code="input_required",
+                                    detail="openmd go: 需要一个链接或本地文件",
+                                    missing=[{"kind": "input", "id": "url", "detail": "缺少链接或本地文件", "action": "传入 URL 或本地路径"}],
+                                    next_action="传入 openmd <链接> -o <目录>")
         from openmd.core.input_validation import normalize_http_url
 
         url = normalize_http_url(url)
@@ -482,26 +513,34 @@ def cmd_go(args: argparse.Namespace) -> int:
         if getattr(args, "as_snapshot", False):
             source_url = str(getattr(args, "snapshot_url", "") or "").strip()
             if not re.match(r"^https?://[^\s]+$", source_url):
-                print("openmd go: --as-snapshot 需要 --url <原始 http(s) URL>", file=sys.stderr)
-                return 2
+                return _machine_failure(args, error_code="snapshot_url_required",
+                                        detail="openmd go: --as-snapshot 需要 --url <原始 http(s) URL>",
+                                        missing=[{"kind": "input", "id": "snapshot_url", "detail": "快照缺少原始 URL", "action": "传入 --url <原始 http(s) URL>"}],
+                                        next_action="传入 --url <原始 http(s) URL>")
         from openmd.core.input_validation import INPUT_HINT, network_preflight, valid_daily_input
 
         if not valid_daily_input(url):
-            print(INPUT_HINT, file=sys.stderr)
-            return 2
+            return _machine_failure(args, error_code="invalid_input",
+                                    detail=INPUT_HINT,
+                                    missing=[{"kind": "input", "id": "url", "detail": "链接或本地路径格式不受支持", "action": "传入 http(s) URL 或存在的本地文件"}],
+                                    next_action="检查输入链接后重试")
         if not tty:
             requirements = _noninteractive_requirements(args, url)
             if requirements:
-                print(requirements, file=sys.stderr)
-                return 2
+                return _machine_failure(args, error_code="output_directory_required",
+                                        detail=requirements,
+                                        missing=[{"kind": "output", "id": "directory", "detail": "非交互运行没有保存目录", "action": "传入 -o <目录>"}],
+                                        next_action="传入 -o <目录>")
         if not _authorize(args, url, tty=tty):
             _say(args, "已取消。")
             return 0
         if not getattr(args, "as_snapshot", False) and args.backend != "mock" and getattr(args, "enable_network_backends", False) and url.startswith(("http://", "https://")):
             failure = network_preflight(url)
             if failure:
-                print(failure, file=sys.stderr)
-                return 1
+                return _machine_failure(args, error_code="network_preflight_failed",
+                                        detail=failure,
+                                        missing=[{"kind": "network", "id": "source", "detail": "网络预检失败", "action": "检查网络后重试"}],
+                                        next_action="检查网络后重试", exit_code=1)
         # Incremental export needs the persistent output manifest before extraction.
         from openmd.adapters.registry import create_default_registry
 

@@ -115,9 +115,13 @@ def format_transcript(text: str, *, source_type: str | None, platform: str | Non
         return text
     lines = text.splitlines()
     lead = 0
-    while lead < len(lines) and (not lines[lead].strip() or lines[lead].lstrip().startswith("# ")):
+    while lead < len(lines) and (
+        not lines[lead].strip()
+        or lines[lead].lstrip().startswith("# ")
+        or lines[lead].strip() == "## Transcript"
+    ):
         lead += 1
-    preface = "\n".join(line for line in lines[:lead] if line.strip())
+    preface = "\n\n".join(line for line in lines[:lead] if line.strip())
     if preface:
         body = format_transcript("\n".join(lines[lead:]), source_type=source_type, platform=platform)
         return f"{preface}\n\n{body}" if body.strip() else text

@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from .filename import short_hash
 from .execution_policy import require_matching_fingerprint
 from .models import ContentItem, TranscriptResult, block_as_dict
+from .readable import format_transcript
 from .package_contract import (
     OPENMD_PACKAGE_VERSION,
     PACKAGE_SCHEMA_VERSION,
@@ -251,7 +252,7 @@ def _write_package_files(
 
     if metadata["profile"] == "media":
         (package_path / "transcript.md").write_text(
-            _render_transcript_sidecar(result),
+            _render_transcript_sidecar(item, result),
             encoding="utf-8",
             newline="\n",
         )
@@ -405,7 +406,7 @@ def render_package_index(
     section = PROFILE_SECTIONS[profile]
     title = _single_line_text(str(metadata["title"]))
     source = sources["sources"][0]
-    text = sanitize_url_text(result.text.strip())
+    text = _package_text(item, result)
     if profile == "conversation" and result.blocks:
         from .renderer import render_conversation_blocks
 
@@ -450,10 +451,23 @@ def render_package_index(
     return "\n".join(lines)
 
 
-def _render_transcript_sidecar(result: TranscriptResult) -> str:
-    title = result.title or "Transcript"
+def _package_text(item: ContentItem, result: TranscriptResult) -> str:
     text = sanitize_url_text(result.text.strip())
-    return f"# {title}\n\n{text}\n"
+    if item.platform == "xiaoe" and item.source_type in {"audio", "video"}:
+        title = result.title or item.title
+        if title and text.startswith(f"# {title}\n"):
+            text = text.partition("\n")[2].lstrip("\n")
+        if text.startswith("## Transcript\n"):
+            text = text.partition("\n")[2].lstrip("\n")
+        text = format_transcript(text, source_type=item.source_type, platform=item.platform)
+    return text
+
+
+def _render_transcript_sidecar(item: ContentItem, result: TranscriptResult) -> str:
+    title = result.title or "Transcript"
+    text = _package_text(item, result)
+    section = "## Transcript\n\n" if item.platform == "xiaoe" else ""
+    return f"# {title}\n\n{section}{text}\n"
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:

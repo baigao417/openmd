@@ -15,7 +15,7 @@ def test_shared_page_capture_script_declares_generic_bounded_protocol():
     assert "data-paragraph-index" in source
     assert "content-visibility" in source
     assert "MutationObserver" in source
-    assert "150" in source and "45_000" in source
+    assert "150" in source and "90_000" in source
 
 
 def test_virtual_capture_waits_for_async_content_and_only_stops_on_scroll_stall():
@@ -84,3 +84,13 @@ def test_browser_host_persists_capture_meta_in_snapshot_job(tmp_path):
     )
     status = json.loads((Path(job["snapshot_path"]).parent / "status.json").read_text(encoding="utf-8"))
     assert status["capture_meta"] == capture
+
+
+def test_virtual_capture_detects_computed_matrix_transforms_and_prefers_inner_container():
+    """Round16 real-page finding: computed transforms are matrix(), and a scrollable document
+    must not win over the inner list that actually holds the virtual rows."""
+    source = (ROOT / "src" / "openmd" / "browser_extension" / "page_capture.js").read_text(encoding="utf-8")
+    assert "/matrix|translate/i.test(style.transform)" in source
+    assert 'style.transform !== "none"' in source
+    assert "best.container.contains(candidate)" in source
+    assert "translate(?:3d|Y|X)?" not in source

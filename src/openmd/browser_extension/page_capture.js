@@ -5,7 +5,7 @@
  */
 (function installOpenmdPageCapture() {
   const MAX_STEPS = 150;
-  const MAX_TIME_MS = 45_000;
+  const MAX_TIME_MS = 90_000;
   const MAX_HTML_BYTES = 50 * 1024 * 1024;
   const MIN_QUIET_MS = 150;
   const MAX_QUIET_MS = 2_000;
@@ -55,6 +55,9 @@
     else container.scrollTo({ top, left, behavior: "auto" });
   };
 
+  // Computed transforms are always serialized as matrix()/matrix3d(), never translate().
+  const isTranslated = (style) => Boolean(style && style.transform && style.transform !== "none" && /matrix|translate/i.test(style.transform));
+
   const scrollable = (node) => {
     if (!node) return false;
     const height = node === document.documentElement || node === document.body ? window.innerHeight : node.clientHeight;
@@ -84,7 +87,7 @@
       let style;
       try { style = getComputedStyle(node); } catch { style = null; }
       if (!style) continue;
-      if (style.position === "absolute" && /translate(?:3d|Y|X)?\s*\(/i.test(style.transform || "")) absoluteTranslated += 1;
+      if (style.position === "absolute" && isTranslated(style)) absoluteTranslated += 1;
       if (style.contentVisibility === "auto") contentVisible += 1;
     }
     const total = declaredTotal(container);
@@ -105,7 +108,8 @@
       if (!signals.hasSignal) continue;
       const score = (signals.indexed ? 8 : 0) + (signals.contentVisible ? 4 : 0) +
         (signals.absoluteTranslated >= 2 ? 3 : 0) + (signals.declaredTotal !== null ? 2 : 0);
-      if (!best || score > best.score) best = { container: candidate, signals, score };
+      // On a tie prefer the inner container: scrolling the document does not move an inner virtual list.
+      if (!best || score > best.score || (score === best.score && best.container !== candidate && best.container.contains(candidate))) best = { container: candidate, signals, score };
     }
     return best;
   };
@@ -124,7 +128,7 @@
       nodes = descendants.filter((node) => {
         let style;
         try { style = getComputedStyle(node); } catch { style = null; }
-        return style && style.position === "absolute" && /translate(?:3d|Y|X)?\s*\(/i.test(style.transform || "") && normalizedText(node);
+        return style && style.position === "absolute" && isTranslated(style) && normalizedText(node);
       });
       if (nodes.length) return directOrOutermost(nodes);
     }

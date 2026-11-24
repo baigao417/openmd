@@ -3,6 +3,17 @@ from __future__ import annotations
 
 from .cli_login import extract_with_login, paused_login, paused_result, recovery_fields, source_next_action
 
+
+def batch_status(*, item_count: int, success_count: int, failed_count: int,
+                 paused_count: int = 0, partial_count: int = 0) -> str:
+    """Return the aggregate status used by machine-readable batch receipts."""
+    if item_count <= 0 or success_count == 0:
+        return "failed"
+    if failed_count or paused_count or success_count < item_count or partial_count:
+        return "partial"
+    return "verified"
+
+
 def _process_items(
     items: list[ContentItem],
     args: argparse.Namespace,
@@ -27,6 +38,7 @@ def _process_items(
     skipped_count = 0
     source_level_counts: dict[str, int] = {}
     failure_code_counts: dict[str, int] = {}
+    partial_count = 0
     coverage = CollectionCoverage()
     paused_count = 0
 
@@ -131,6 +143,8 @@ def _process_items(
         from .core.completeness import check_completeness
 
         result = check_completeness(item, result)
+        if result.status == "partial":
+            partial_count += 1
         output: OutputWriteResult | None = None
         if result.has_usable_text or (result.status == "verified" and result.metadata.get("sync_no_delta")):
             try:
@@ -206,6 +220,9 @@ def _process_items(
         failure_code_counts=failure_code_counts,
         coverage=coverage.as_dict(),
         paused_count=paused_count,
+        status=batch_status(item_count=processed_count, success_count=success_count,
+                            failed_count=failed_count, paused_count=paused_count,
+                            partial_count=partial_count),
         **recovery,
         message="completed" if ok else ("guardrail stopped" if processed_count < len(items) else "completed with failures"),
     )

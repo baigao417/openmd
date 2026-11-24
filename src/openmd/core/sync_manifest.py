@@ -69,7 +69,22 @@ def _atomic_write(path: Path, content: bytes) -> None:
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        last_error: PermissionError | None = None
+        for attempt in range(5):
+            try:
+                os.replace(temporary, path)
+                last_error = None
+                break
+            except PermissionError as exc:
+                last_error = exc
+                if attempt == 4:
+                    raise
+                # Windows Defender/indexers and antivirus can briefly hold the
+                # destination or staging file. Keep the retry bounded and
+                # surface the original error if the handle does not clear.
+                time.sleep(0.02 * (attempt + 1))
+        if last_error is not None:
+            raise last_error
     finally:
         temporary.unlink(missing_ok=True)
 

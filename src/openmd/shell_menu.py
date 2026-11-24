@@ -25,13 +25,15 @@ try:  # imported lazily in tests and absent on non-Windows hosts
 except ImportError:  # pragma: no cover - platform dependent
     _winreg = None
 
-from openmd.core.detector import DOCUMENT_EXTENSIONS, IMAGE_TEXT_EXTENSIONS
+from openmd.core.detector import DOCUMENT_EXTENSIONS, IMAGE_TEXT_EXTENSIONS, MEDIA_EXTENSIONS
 from openmd.core.filename import safe_filename
 from openmd.core.models import ContentItem
 from openmd.core.sync_manifest import SyncManifest, source_id_for
+from openmd.adapters.local_audio.adapter import AUDIO_EXTENSIONS
 
 
-SUPPORTED_SUFFIXES = frozenset((*DOCUMENT_EXTENSIONS, *IMAGE_TEXT_EXTENSIONS))
+MEDIA_SUFFIXES = frozenset((*MEDIA_EXTENSIONS, *AUDIO_EXTENSIONS))
+SUPPORTED_SUFFIXES = frozenset((*DOCUMENT_EXTENSIONS, *IMAGE_TEXT_EXTENSIONS, *MEDIA_SUFFIXES))
 DEFAULT_MAX_FILES = 1000
 DEFAULT_MAX_BYTES = 100 * 1024 * 1024
 _DATA_URI = re.compile(r"data:image/([a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\r\n]+)")
@@ -85,14 +87,53 @@ def _materialize_images(text: str, destination: Path) -> str:
     return text
 
 
-def _convert_file(path: Path, output: Path, *, ocr_confirm: Callable[[str], bool] | None = None) -> dict[str, Any]:
+def _convert_file(
+    path: Path,
+    output: Path,
+    *,
+    ocr_confirm: Callable[[str], bool] | None = None,
+    asr_confirm: Callable[[str], bool] | None = None,
+) -> dict[str, Any]:
     from openmd.engines.registry import convert_document
     from openmd.engines.base import EngineLimits
 
-    is_image = path.suffix.lower() in IMAGE_TEXT_EXTENSIONS
-    if path.suffix.lower() == ".md":
+    suffix = path.suffix.lower()
+    is_image = suffix in IMAGE_TEXT_EXTENSIONS
+    is_media = suffix in MEDIA_SUFFIXES
+    if suffix == ".md":
         text = path.read_text(encoding="utf-8-sig")
         status, error = ("verified", None) if text.strip() else ("failed", "document_empty_text")
+    elif is_media:
+        from openmd.adapters.local_audio.adapter import LocalAudioAdapter
+
+        try:
+            adapter = LocalAudioAdapter("generic_media", "asr.auto")
+        except TypeError:  # small test doubles may expose a no-argument adapter
+            adapter = LocalAudioAdapter()
+        items = adapter.resolve_items(path.as_uri())
+        if not items:
+            return {"status": "failed", "error": "local_audio_path_unresolved"}
+        result = adapter.extract_text(items[0], backend="asr.auto")
+        if result.error_code == "asr_model_missing" and asr_confirm is not None:
+            question = "未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？"
+            if asr_confirm(question):
+                from openmd.runtime.recommendations import cmd_models_install
+                from types import SimpleNamespace
+
+                install_args = SimpleNamespace(tier="asr:baseline", root=None, dry_run=False, _confirmed=True)
+                if cmd_models_install(install_args) == 0:
+                    result = adapter.extract_text(items[0], backend="asr.auto")
+        if result.error_code == "asr_model_missing":
+            return {"status": "failed", "error": "asr_install_required",
+                    "next_action": "openmd models install asr:baseline"}
+        if result.error_code in {"asr_runtime_unavailable", "asr_backend_missing"}:
+            return {"status": "failed", "error": result.error_code,
+                    "next_action": "openmd doctor --profile media"}
+        text, status, error = result.text, result.status, result.error_code
+        if status in {"verified", "partial"} and text.strip():
+            from openmd.core.readable import format_transcript
+
+            text = format_transcript(text, source_type="audio", platform="generic_media")
     elif is_image:
         from types import SimpleNamespace
         from openmd.backends.ocr import OCRRouterProvider
@@ -107,7 +148,7 @@ def _convert_file(path: Path, output: Path, *, ocr_confirm: Callable[[str], bool
         text, status, error = result.text, result.status, result.error_code
     else:
         result = convert_document(path, EngineLimits(max_file_bytes=max(DEFAULT_MAX_BYTES, path.stat().st_size)))
-        if path.suffix.lower() == ".pdf" and result.error_code == "document_empty_text":
+        if suffix == ".pdf" and result.error_code == "document_empty_text":
             from types import SimpleNamespace
             from openmd.backends.ocr import OCRRouterProvider
 
@@ -146,6 +187,7 @@ def convert_path(
     confirm_large: bool = False,
     progress: Callable[[int, int, Path], None] | None = None,
     ocr_confirm: Callable[[str], bool] | None = None,
+    asr_confirm: Callable[[str], bool] | None = None,
 ) -> dict[str, Any]:
     """Convert one supported file or a folder into Markdown.
 
@@ -205,7 +247,7 @@ def convert_path(
                 continue
             staging = target.with_name(f".{target.name}.staging")
             staging.parent.mkdir(parents=True, exist_ok=True)
-            converted = _convert_file(path, staging, ocr_confirm=ocr_confirm)
+            converted = _convert_file(path, staging, ocr_confirm=ocr_confirm, asr_confirm=asr_confirm)
             if converted["status"] == "failed":
                 result["failed"] += 1
                 failure = {"path": str(path), "error": converted["error"]}
@@ -295,6 +337,11 @@ def _failure_message(error: str) -> str:
     messages = {
         "document_empty_text": "文档中没有可转换的文本",
         "ocr_install_required": "安装扫描件 OCR 模型后重试：openmd models install ocr:chain",
+        "asr_install_required": "缺少本地语音模型",
+        "asr_model_missing": "缺少本地语音模型",
+        "asr_runtime_unavailable": "本地语音运行环境未就绪",
+        "asr_backend_missing": "本地语音后端未安装或未启用",
+        "local_audio_path_unresolved": "无法解析本地音视频文件",
         "engine_unavailable": "缺少此格式所需的转换工具",
         "file_too_large": "文件超过可处理大小",
         "permission_denied": "没有读取该文件的权限",
@@ -355,10 +402,19 @@ def _gui_summary(value: dict[str, Any]) -> str:
 
 
 def _gui_failure_lines(failures: list[dict[str, Any]], limit: int = 5) -> list[str]:
-    return [
-        f"{Path(row.get('path', '')).name}：{_failure_message(str(row.get('error', '')))}"
-        for row in failures[:limit]
-    ]
+    safe_actions = {
+        "openmd doctor --profile media",
+        "openmd models install asr:baseline",
+        "openmd models install ocr:chain",
+    }
+    lines = []
+    for row in failures[:limit]:
+        line = f"{Path(row.get('path', '')).name}：{_failure_message(str(row.get('error', '')))}"
+        next_action = row.get("next_action")
+        if isinstance(next_action, str) and next_action.strip() in safe_actions:
+            line += f"；下一步：{next_action.strip()}"
+        lines.append(line)
+    return lines
 
 
 def _gui_completion_heading(value: dict[str, Any]) -> str:
@@ -824,8 +880,9 @@ def cmd_shell_menu(args) -> int:
             if too_large:
                 confirm_large = messagebox.askyesno("输入规模较大", f"输入超过默认限制（{args.max_files} 个文件 / 每个文件 {args.max_bytes // (1024 * 1024)} MiB）。仍要继续吗？", parent=window)
         ocr_confirm = (lambda question: messagebox.askyesno("首次安装扫描件 OCR", question, parent=window)) if window is not None else None
+        asr_confirm = (lambda question: messagebox.askyesno("首次安装本地语音模型", question, parent=window)) if window is not None else None
         value = convert_path(args.input, out=args.out, max_files=args.max_files, max_bytes=args.max_bytes,
-                             confirm_large=confirm_large, progress=progress, ocr_confirm=ocr_confirm)
+                             confirm_large=confirm_large, progress=progress, ocr_confirm=ocr_confirm, asr_confirm=asr_confirm)
         if window is not None and ui is not None:
             if ui["cancelled"]():
                 return 0 if value.get("ok") else 1

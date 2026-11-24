@@ -274,6 +274,7 @@ def cmd_ingest(args: argparse.Namespace) -> int:
 
 def cmd_batch(args: argparse.Namespace) -> int:
     from .cli import CliResult, _append_guardrail_stop_entry, _append_large_batch_guardrail_if_needed, _compact_url_identity, _emit_result, _guardrail_failure_streak_reached, _process_input, _read_urls_file, _register_compact_inputs, _start_compact_receipt, _sync_compact_rows, argparse, sanitize_error_summary, sanitize_url, sys
+    from .cli_items import batch_status
 
     start_error = _start_compact_receipt(args, "batch")
     if start_error:
@@ -307,6 +308,7 @@ def cmd_batch(args: argparse.Namespace) -> int:
 
     aggregate = CliResult(ok=True, command="batch", message="completed")
     consecutive_failures = 0
+    partial_count = 0
     for line_number, url in enumerate(urls_to_process, start=1):
         result = _process_input(url, args, command="batch")
         _sync_compact_rows(args)
@@ -316,6 +318,8 @@ def cmd_batch(args: argparse.Namespace) -> int:
         aggregate.success_count += result.success_count
         aggregate.failed_count += result.failed_count
         aggregate.paused_count += result.paused_count
+        if result.status == "partial":
+            partial_count += 1
         if result.next_action and aggregate.next_action is None:
             aggregate.next_action = result.next_action
             aggregate.login = result.login
@@ -337,4 +341,11 @@ def cmd_batch(args: argparse.Namespace) -> int:
                 aggregate.guardrail_signals.append("consecutive_failure_stop")
             aggregate.message = "guardrail stopped"
             break
+    aggregate.status = batch_status(
+        item_count=aggregate.item_count,
+        success_count=aggregate.success_count,
+        failed_count=aggregate.failed_count,
+        paused_count=aggregate.paused_count,
+        partial_count=partial_count,
+    )
     return _emit_result(args, aggregate)

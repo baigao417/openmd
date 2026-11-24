@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import replace
+from urllib.parse import parse_qs, urlsplit
 
 from .models import ContentItem, TranscriptResult
 from .login import normalize_login_result
@@ -78,6 +79,16 @@ def html_to_markdown(text: str) -> str:
         soup = BeautifulSoup(value, "html.parser")
         for hidden in soup.find_all(["script", "style", "noscript"]):
             hidden.decompose()
+        for link in soup.find_all("a", href=True):
+            href = str(link.get("href") or "")
+            parsed = urlsplit(href)
+            if (
+                parsed.hostname
+                and parsed.hostname.casefold() == "zhida.zhihu.com"
+                and parsed.path.rstrip("/").casefold() == "/search"
+                and "content_id" in parse_qs(parsed.query)
+            ):
+                link.replace_with(*list(link.contents))
         for table in soup.find_all("table"):
             # Legacy articles use nested/one-cell tables for page layout.
             # Converting these to pipe tables collapses the article into one
@@ -188,6 +199,21 @@ def browser_error_page_reason(text: str, title: str | None = None) -> str | None
     if codes and len(plain) < 3000:
         if len(lines) == 1 or screen_hint:
             return codes[0]
+    return None
+
+
+def zhihu_error_page_reason(text: str, title: str | None = None) -> str | None:
+    """Recognize Zhihu's short unavailable-content shell without matching prose."""
+    plain = html.unescape(re.sub(r"</?[a-zA-Z][^>]*>", "\n", text))
+    visible = _outside_code(plain)
+    if len(re.sub(r"\s+", "", visible)) >= 1200:
+        return None
+    lines = [re.sub(r"^(?:[-*•]\s*)", "", line.strip()).strip("#*` \t。.!！")
+             for line in visible.splitlines() if line.strip()]
+    page_title = str(title or "").strip().strip("#*` \t。.!！")
+    unavailable_headings = {"无法访问", "无法访问当前页面"}
+    if page_title in unavailable_headings or any(line in unavailable_headings for line in lines):
+        return "browser_error_page"
     return None
 
 
@@ -338,6 +364,8 @@ def validate_extraction_content(
         return normalize_login_result(rejected, item)
     result = _normalize_web_body(result, item)
     reason = browser_error_page_reason(result.text, result.title)
+    if reason is None and item is not None and item.platform == "zhihu":
+        reason = zhihu_error_page_reason(result.text, result.title)
     if reason is not None:
         challenge = reason == "browser_challenge_page"
         return _reject_content(

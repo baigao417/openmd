@@ -46,6 +46,10 @@ Only required column names are pinned; raw Markdown/file consumers need no table
 | youtube | transcript | --mode -f | 1 | — | upstream |
 | yuanbao | detail | -f | 1 | — | upstream |
 | yuanbao | status | -f | 0 | — | upstream |
+| zhihu | answer-detail | — | 2 | — | upstream |
+| zhihu | collection | --limit --offset | 1 | — | upstream |
+| zhihu | download | --download-images --output --url | 0 | — | upstream |
+| zhihu | question | --limit | 1 | — | upstream |
 
 Browser metadata conditionally injects runtime arguments: `--keep-tab` `--site-session`.
 Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands do not receive these flags.
@@ -93,3 +97,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `youtube/transcript`: `src/openmd/backends/youtube.py:45`
 - `yuanbao/detail`: `src/openmd/backends/ai_chat.py:103`
 - `yuanbao/status`: `src/openmd/backends/ai_chat.py:255`
+- `zhihu/answer-detail`: `src/openmd/backends/zhihu.py:202`
+- `zhihu/collection`: `src/openmd/backends/zhihu.py:204`
+- `zhihu/download`: `src/openmd/backends/zhihu.py:203`
+- `zhihu/question`: `src/openmd/backends/zhihu.py:201`

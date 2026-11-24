@@ -12,7 +12,7 @@ from openmd.backends.ai_chat import (
     parse_ai_chat_output,
 )
 from openmd.backends.base import BackendExtractRequest
-from openmd.backends.snapshot import SnapshotProvider
+from openmd.backends.snapshot import SnapshotProvider, clean_page_title
 import openmd.backends.snapshot as snapshot_backend
 from openmd.browser_host import handle
 from openmd.core.content_validation import validate_extraction_content
@@ -106,6 +106,20 @@ def test_snapshot_backend_fixtures_and_validation(tmp_path):
     wall_result = SnapshotProvider().extract(BackendExtractRequest(item=wall_item, backend_chain=("page_snapshot.defuddle",)))
     rejected = validate_extraction_content(wall_result, wall_item)
     assert rejected.status == "failed" or rejected.error_code == "browser_challenge_page"
+
+
+def test_snapshot_title_removes_browser_counter_and_site_suffix_and_prefers_h1(tmp_path):
+    page = tmp_path / "zhihu.html"
+    page.write_text(
+        "<html><head><title>(10 封私信 80 条消息) 标签标题 - 知乎</title></head>"
+        "<body><main><h1>页面里的真实标题</h1><p>正文。</p></main></body></html>",
+        encoding="utf-8",
+    )
+    item = ContentItem(platform="page_snapshot", input_type="single", url="https://www.zhihu.com/question/1", source_type="article", raw_meta={"snapshot_path": str(page)})
+    result = SnapshotProvider().extract(BackendExtractRequest(item=item, backend_chain=("page_snapshot.defuddle",)))
+    assert clean_page_title("(3) Example - 知乎") == "Example"
+    assert clean_page_title("(10 封私信 / 80 条消息) 技术 - 收藏夹") == "技术 - 收藏夹"
+    assert result.title == "页面里的真实标题"
 
 
 def test_snapshot_managed_defuddle_and_explicit_fallback(monkeypatch, tmp_path):

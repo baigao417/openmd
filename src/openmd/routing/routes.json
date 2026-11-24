@@ -177,6 +177,15 @@
         "opencli.grok.detail"
       ],
       "last_verified": null
+    },
+    {
+      "source": "zhihu",
+      "capability": "content",
+      "chain": [
+        "opencli.zhihu.read",
+        "browser.kaze.snapshot"
+      ],
+      "last_verified": null
     }
   ],
   "capabilities": [
@@ -593,6 +602,26 @@
           "login_url": "https://grok.com"
         }
       }
+    },
+    {
+      "source_id": "zhihu",
+      "tier": "B",
+      "state": "partial",
+      "input_kinds": [
+        "single",
+        "collection"
+      ],
+      "source_exhausted_kinds": [],
+      "profiles": [
+        "article"
+      ],
+      "route_source": "zhihu",
+      "runtime_binding": "route",
+      "display_name": "知乎",
+      "login_url": "https://www.zhihu.com/signin",
+      "login_hosts": [
+        "zhihu.com"
+      ]
     }
   ]
 }

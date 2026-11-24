@@ -1422,6 +1422,106 @@
         ]
       ],
       "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "answer-detail",
+      "args": [],
+      "positionals": 2,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:202"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "answer-detail",
+          "{parts[3]}",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "collection",
+      "args": [
+        "--limit",
+        "--offset"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:204"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "collection",
+          "{parts[1]}",
+          "--offset",
+          "0",
+          "--limit",
+          "{str(MAX_ANSWERS)}",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "download",
+      "args": [
+        "--download-images",
+        "--output",
+        "--url"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:203"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "download",
+          "--url",
+          "{url}",
+          "--output",
+          "{str(workdir)}",
+          "--download-images",
+          "false",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "question",
+      "args": [
+        "--limit"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:201"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "question",
+          "{parts[1]}",
+          "--limit",
+          "{str(MAX_ANSWERS)}",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
     }
   ]
 }

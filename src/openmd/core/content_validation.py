@@ -191,6 +191,21 @@ def browser_error_page_reason(text: str, title: str | None = None) -> str | None
     return None
 
 
+def zhihu_error_page_reason(text: str, title: str | None = None) -> str | None:
+    """Recognize Zhihu's short unavailable-content shell without matching prose."""
+    plain = html.unescape(re.sub(r"</?[a-zA-Z][^>]*>", "\n", text))
+    visible = _outside_code(plain)
+    if len(re.sub(r"\s+", "", visible)) >= 1200:
+        return None
+    lines = [re.sub(r"^(?:[-*•]\s*)", "", line.strip()).strip("#*` \t。.!！")
+             for line in visible.splitlines() if line.strip()]
+    page_title = str(title or "").strip().strip("#*` \t。.!！")
+    unavailable_headings = {"无法访问", "无法访问当前页面"}
+    if page_title in unavailable_headings or any(line in unavailable_headings for line in lines):
+        return "browser_error_page"
+    return None
+
+
 _WEIXIN_ERROR_LINES = re.compile(
     r"(?:parameter error|参数错误|该内容已被发布者删除|此内容因违规无法查看|此内容被多人投诉.*|链接已过期|该公众号已迁移.*|"
     r"该账号已.*(?:注销|冻结|封禁).*|内容不存在)"
@@ -338,6 +353,8 @@ def validate_extraction_content(
         return normalize_login_result(rejected, item)
     result = _normalize_web_body(result, item)
     reason = browser_error_page_reason(result.text, result.title)
+    if reason is None and item is not None and item.platform == "zhihu":
+        reason = zhihu_error_page_reason(result.text, result.title)
     if reason is not None:
         challenge = reason == "browser_challenge_page"
         return _reject_content(

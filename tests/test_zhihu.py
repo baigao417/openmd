@@ -48,6 +48,25 @@ def test_zhihu_opencli_runner_refuses_all_write_commands(monkeypatch):
     assert _run_zhihu(["opencli", "zhihu", "like", "answer:1:2"])[0] == 2
 
 
+def test_zhihu_opencli_runner_uses_automatically_selected_bridge_profile(monkeypatch):
+    import sys
+    from openmd.backends import zhihu
+    from openmd.runtime import services
+
+    monkeypatch.setattr(zhihu, "command_environment", lambda: {})
+    monkeypatch.setattr(zhihu, "managed_command", lambda args: [
+        sys.executable, "-c", "import os; print(os.environ.get('OPENCLI_PROFILE', ''))",
+    ])
+    monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: ("managed", []))
+    monkeypatch.setattr(services, "_bridge_profiles", lambda: ["other", "openmd-test-profile"])
+    monkeypatch.setattr(services, "ensure_opencli_daemon", lambda *args, **kwargs: None)
+
+    code, stdout, _ = zhihu._run_zhihu(["opencli", "zhihu", "question", "123"])
+
+    assert code == 0
+    assert stdout.strip() == "openmd-test-profile"
+
+
 def test_zhihu_question_payload_keeps_full_answers_and_metadata():
     from openmd.backends.zhihu import ZhihuOpenCliProvider
 

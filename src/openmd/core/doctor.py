@@ -111,6 +111,9 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
         "account_actions": "not_performed",
         "ready": manifest_valid,
     }
+    from .environment import is_headless
+    headless = is_headless()
+    diagnostics["headless"] = headless
     from openmd.platforms.xiaoyuzhou_auth import status as xiaoyuzhou_auth_status
     diagnostics["xiaoyuzhou_login"] = xiaoyuzhou_auth_status()
     from openmd.engines.diagnostics import document_formats
@@ -156,7 +159,16 @@ def build_doctor_report(profile: str) -> dict[str, Any]:
     else:
         diagnostics.update({"session_owner": "browser_platform_or_sidecar", "private_session_probe": False})
     host = diagnostics['browser_host']
-    if host['registered'] and not host['ready']:
+    if headless:
+        diagnostics["browser_host"] = {**host, "status": "headless", "ready": True, "next_action": None}
+        if isinstance(diagnostics.get("kaze_snapshot"), dict):
+            diagnostics["kaze_snapshot"] = {
+                **diagnostics["kaze_snapshot"],
+                "status": "headless",
+                "ready": True,
+                "next_action": None,
+            }
+    elif host['registered'] and not host['ready']:
         diagnostics['ready'] = False
         diagnostics['next_action'] = host['next_action']
     return diagnostics

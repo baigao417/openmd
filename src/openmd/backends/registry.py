@@ -46,6 +46,8 @@ class BackendRuntimeOptions:
     enable_local_export_backends: bool = False
     keep_media_artifacts: bool = False
     media_artifact_dir: str | None = None
+    headless: bool = False
+    non_interactive: bool = False
 
 
 ExtensionModuleLoader = Callable[[str], Iterable[object]]
@@ -85,6 +87,10 @@ def create_runtime_backend_provider_registry(
     *,
     extension_module_loader: ExtensionModuleLoader | None = None,
 ) -> BackendProviderRegistry:
+    if options.headless and options.enable_browser_backends:
+        from dataclasses import replace
+
+        options = replace(options, enable_browser_backends=False)
     registry = create_safe_backend_provider_registry()
     _register_builtin_backend_providers(registry, platform, options)
     _register_extension_backend_providers(

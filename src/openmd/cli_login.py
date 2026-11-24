@@ -46,8 +46,12 @@ def source_next_action(error_code: str | None) -> str | None:
     if error_code in {"xiaohongshu_signed_url_required", "opencli_xiaohongshu_timeout"}:
         return ("在浏览器里打开这条小红书笔记后点 Openmd 扩展保存，或从分享按钮复制完整链接再试；"
                 "Agent 可把已加载的页面交给 openmd go <页面.html> --as-snapshot --url <链接>。")
-    if error_code in {"douyin_asr_unavailable", "asr_model_missing"}:
+    if error_code in {"douyin_asr_unavailable", "asr_model_missing", "asr_runtime_unavailable", "asr_backend_missing"}:
         return "本机还没有语音模型：运行 openmd models install asr:baseline（约 1.6 GB，会先确认）后重试。"
+    if error_code in {"media_download_backend_missing", "bilibili_media_asr_not_enabled", "asr_backend_missing", "bilibili_media_asr_dependency_missing"}:
+        return '安装媒体依赖：pip install "openmd-cli[media]"；再准备本地语音模型 openmd models install asr:baseline 后重试。'
+    if error_code == "headless_browser_unavailable":
+        return "当前是无头环境，该来源需要浏览器或登录态；提供公开 HTTP/CLI 路线，或在有浏览器的环境重试。"
     if error_code == "document_invalid_container":
         return "文件结构不完整或已损坏（常见于没下载完）：请重新下载或用原软件另存一份后再试。"
     if error_code == "douyin_detail_read_failed":

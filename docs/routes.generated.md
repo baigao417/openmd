@@ -6,7 +6,7 @@ Generated from bundled cards and routes, version `2026-11-10.1`.
 |---|---|---|---|
 | bilibili | transcript | opencli.bilibili.subtitle → bilibili-harvest.core → yt-dlp.bilibili → asr.fallback | 2026-11-18 |
 | youtube | transcript | opencli.youtube.transcript → youtube-transcript-api → yt-dlp.youtube → asr.fallback | 2026-11-18 |
-| weixin | content | weixin.article.local → opencli.weixin.download → defuddle.web.content → opencli.web.read | 2026-11-18 |
+| weixin | content | weixin.article.local → defuddle.web.content → opencli.weixin.download → opencli.web.read | 2026-11-18 |
 | qq_group | content | qq_group.export | — |
 | xiaoyuzhou | transcript | opencli.xiaoyuzhou.transcript | 2026-11-18 |
 | douyin | content | douyin.transcript | 2026-11-18 |

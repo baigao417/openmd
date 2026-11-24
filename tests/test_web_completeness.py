@@ -143,14 +143,16 @@ def test_snapshot_provider_applies_same_completeness_guard(tmp_path) -> None:
 
     result = provider.extract(BackendExtractRequest(item, (provider.name,)))
 
-    assert result.status == "verified"
+    assert result.status == "partial"
+    assert result.error_code == "partial_coverage"
     assert result.metadata["completeness"]["status"] == "unknown"
     assert result.metadata["coverage"] == "unknown"
 
 
 def test_snapshot_guard_does_not_claim_ok_without_capture_evidence() -> None:
-    result = _result("page_snapshot.defuddle", "# Article\n\nvisible fragment")
+    result = _result("page_snapshot.defuddle", "# Article\n\n" + ("visible fragment. " * 60))
     selected = apply_completeness_guard([result], body_chars=1000, title="Article")
+    assert selected.status == "verified"
     assert selected.metadata["completeness"]["status"] == "unknown"
 
 

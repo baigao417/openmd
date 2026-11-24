@@ -446,7 +446,7 @@ def apply_completeness_guard(
         },
     }
     result = replace(selected, metadata=metadata, title=selected.title or title)
-    if estimate and selected.has_usable_text and selected_chars / estimate < min_coverage_ratio and not snapshot_candidate:
+    if estimate and selected.has_usable_text and selected_chars / estimate < min_coverage_ratio:
         metadata["completeness"]["status"] = "downgrade"
         return replace(
             result,

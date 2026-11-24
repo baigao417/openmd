@@ -46,6 +46,18 @@ def test_zhihu_renderer_preserves_math_images_code_and_answer_boundaries():
     assert "![diagram](https://img.example/a.png)" in rendered
 
 
+def test_zhihu_entity_links_become_text_but_normal_links_remain_links():
+    from openmd.backends.zhihu import _strip_zhida_entity_links, html_to_markdown
+    from openmd.core.content_validation import html_to_markdown as generic_html_to_markdown
+
+    html = '<p><a href="https://zhida.zhihu.com/search?content_id=123">中国青年网</a> <a href="https://example.com/article">普通链接</a></p>'
+    for converter in (html_to_markdown, generic_html_to_markdown):
+        rendered = converter(html)
+        assert "中国青年网" in rendered and "[中国青年网]" not in rendered
+        assert "[普通链接](https://example.com/article)" in rendered
+    assert _strip_zhida_entity_links("[中国青年网](https://zhida.zhihu.com/search?content_id=123)") == "中国青年网"
+
+
 def test_zhihu_opencli_runner_refuses_all_write_commands(monkeypatch):
     from openmd.backends.zhihu import _run_zhihu
 
@@ -118,6 +130,31 @@ def test_zhihu_answer_uses_answer_detail_and_renders_full_metadata(tmp_path):
     assert title == "A question" and author == "Author"
     assert "Full **answer**" in text and "赞同：9" in text and "发布：2024-01-02" in text and "编辑：2024-01-03" in text
     assert "answer-detail" in note
+
+
+def test_zhihu_missing_author_is_omitted(tmp_path):
+    from openmd.backends.zhihu import ZhihuOpenCliProvider
+
+    text, title, author, _ = ZhihuOpenCliProvider._read_payload("answer", [{
+        "id": "42", "question_title": "A question", "author": "-",
+        "content": "<p>Body</p>", "url": "https://www.zhihu.com/question/1/answer/42",
+    }], "https://www.zhihu.com/question/1/answer/42", tmp_path)
+    assert title == "A question" and author is None
+    assert "作者：" not in text
+
+
+def test_zhihu_download_removes_entity_links_and_dash_author(tmp_path):
+    from openmd.backends.zhihu import ZhihuOpenCliProvider
+
+    (tmp_path / "article.md").write_text(
+        "# Article\n\n[实体](https://zhida.zhihu.com/search?content_id=123)\n\n[普通](https://example.com/a)\n",
+        encoding="utf-8",
+    )
+    text, title, author, _ = ZhihuOpenCliProvider._read_payload(
+        "article", [{"title": "Article", "author": "-"}], "https://zhuanlan.zhihu.com/p/1", tmp_path
+    )
+    assert title == "Article" and author is None
+    assert "实体" in text and "zhida.zhihu.com" not in text and "[普通](https://example.com/a)" in text
 
 
 def test_zhihu_pin_and_collection_expansion_use_read_only_download(tmp_path):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import replace
+from urllib.parse import parse_qs, urlsplit
 
 from .models import ContentItem, TranscriptResult
 from .login import normalize_login_result
@@ -78,6 +79,16 @@ def html_to_markdown(text: str) -> str:
         soup = BeautifulSoup(value, "html.parser")
         for hidden in soup.find_all(["script", "style", "noscript"]):
             hidden.decompose()
+        for link in soup.find_all("a", href=True):
+            href = str(link.get("href") or "")
+            parsed = urlsplit(href)
+            if (
+                parsed.hostname
+                and parsed.hostname.casefold() == "zhida.zhihu.com"
+                and parsed.path.rstrip("/").casefold() == "/search"
+                and "content_id" in parse_qs(parsed.query)
+            ):
+                link.replace_with(*list(link.contents))
         for table in soup.find_all("table"):
             # Legacy articles use nested/one-cell tables for page layout.
             # Converting these to pipe tables collapses the article into one

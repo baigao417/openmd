@@ -25,6 +25,20 @@ MAX_ANSWERS = 1000
 TIME_LIMIT_SECONDS = 300
 
 
+def _clean_author(value) -> str | None:
+    author = str(value or "").strip()
+    return author if author and author not in {"-", "—"} else None
+
+
+def _strip_zhida_entity_links(markdown: str) -> str:
+    return re.sub(
+        r"\[([^\]]+)\]\((?:https?://)zhida\.zhihu\.com/search\?[^)]*content_id=[^)]*\)",
+        r"\1",
+        markdown,
+        flags=re.IGNORECASE,
+    )
+
+
 def _question_coverage_partial(answer_count: int, declared_total: int | None) -> bool:
     """Never claim a question is complete without a reliable total receipt."""
     return declared_total is None or answer_count >= MAX_ANSWERS or answer_count != declared_total
@@ -60,7 +74,12 @@ class _Markdown(HTMLParser):
                 self.out.append("```" + language + "\n")
             else:
                 self.out.append("`")
-        elif tag == "a": self.stack.append((tag, attrs.get("href", ""))); self.out.append("[")
+        elif tag == "a":
+            href = attrs.get("href", "")
+            parsed = urlparse(href)
+            entity = parsed.hostname and parsed.hostname.casefold() == "zhida.zhihu.com" and parsed.path.rstrip("/").casefold() == "/search" and "content_id" in parsed.query
+            self.stack.append((tag, href, bool(entity)))
+            if not entity: self.out.append("[")
         elif tag == "img":
             src = attrs.get("data-original") or attrs.get("data-actualsrc") or attrs.get("src") or ""
             alt = attrs.get("alt") or "image"
@@ -82,7 +101,8 @@ class _Markdown(HTMLParser):
             self.code_depth = max(0, self.code_depth - 1)
             self.out.append("```\n" if self.pre_depth else "`")
         elif tag == "a" and self.stack:
-            _, href = self.stack.pop()
+            _, href, entity = self.stack.pop()
+            if entity: return
             if href.startswith(("https://", "http://")): self.out.append(f"]({href})")
             else: self.out.append("]")
         elif tag == "blockquote": self.out.append("\n\n")
@@ -200,7 +220,9 @@ class ZhihuOpenCliProvider:
                 published = row.get("published_at") or row.get("created_time") or row.get("updated_time")
                 timing = f"\n\n时间：{published}" if published else ""
                 answer_rank = row.get("rank") or sum(1 for block in blocks if block.startswith("## 回答 ")) + 1
-                blocks.append(f"## 回答 {answer_rank}\n\n作者：{row.get('author') or '匿名用户'}\n\n赞同：{row.get('votes', 0)}{timing}\n\n来源：{row.get('url') or ''}\n\n{body}")
+                author = _clean_author(row.get("author"))
+                author_line = f"\n\n作者：{author}" if author else ""
+                blocks.append(f"## 回答 {answer_rank}{author_line}\n\n赞同：{row.get('votes', 0)}{timing}\n\n来源：{row.get('url') or ''}\n\n{body}")
             answer_count = sum(1 for block in blocks if block.startswith("## 回答 "))
             return "\n\n---\n\n".join(blocks), title, None, f"取得 {answer_count} 条回答；问题页 answers command 返回条数作为覆盖观察值"
         if kind == "answer":
@@ -208,20 +230,21 @@ class ZhihuOpenCliProvider:
             body = html_to_markdown(str(row.get("content") or ""))
             if not body: raise ValueError("OpenCLI answer-detail returned no answer body.")
             title = str(row.get("question_title") or "知乎回答")
-            author = str(row.get("author") or "匿名用户")
+            author = _clean_author(row.get("author"))
             published = row.get("created_at") or row.get("created_time")
             updated = row.get("updated_at") or row.get("updated_time")
             timing = f"\n\n发布：{published}" if published else ""
             if updated and updated != published: timing += f"\n\n编辑：{updated}"
-            text = f"# {title}\n\n## 回答\n\n作者：{author}\n\n赞同：{row.get('votes', 0)}{timing}\n\n来源：{row.get('url') or source_url}\n\n{body}"
+            author_line = f"\n\n作者：{author}" if author else ""
+            text = f"# {title}\n\n## 回答{author_line}\n\n赞同：{row.get('votes', 0)}{timing}\n\n来源：{row.get('url') or source_url}\n\n{body}"
             return text, title, author, "由 OpenCLI answer-detail 返回完整回答"
         if kind in {"p", "article"}:
             rows = _first(payload); candidates = list(workdir.glob("**/*.md"))
             if candidates:
-                text = candidates[0].read_text(encoding="utf-8")
+                text = _strip_zhida_entity_links(candidates[0].read_text(encoding="utf-8"))
                 heading = re.search(r"(?m)^#\s+(.+)$", text)
                 title = str(rows.get("title") or (heading.group(1).strip() if heading else "知乎内容"))
-                return text, title, str(rows.get("author") or ""), "由 OpenCLI download 读取 Markdown 产物"
+                return text, title, _clean_author(rows.get("author")), "由 OpenCLI download 读取 Markdown 产物"
             raise ValueError("OpenCLI download did not return a Markdown artifact.")
         raise ValueError("Collection export needs a content expansion route.")
 
@@ -242,7 +265,9 @@ class ZhihuOpenCliProvider:
                 partial = True; break
             kind = {"answer": "answer", "article": "article", "pin": "pin"}.get(str(row.get("type")))
             if kind not in {"answer", "article", "pin"}:
-                blocks.append(f"## {row.get('title') or '想法'}\n\n作者：{row.get('author') or '匿名用户'}\n\n赞同：{row.get('votes', 0)}\n\n{row.get('excerpt') or ''}\n\n来源：{row['url']}")
+                author = _clean_author(row.get("author"))
+                author_line = f"\n\n作者：{author}" if author else ""
+                blocks.append(f"## {row.get('title') or '想法'}{author_line}\n\n赞同：{row.get('votes', 0)}\n\n{row.get('excerpt') or ''}\n\n来源：{row['url']}")
                 partial = True
                 continue
             parts = [p for p in urlparse(row["url"]).path.split("/") if p]
@@ -258,7 +283,9 @@ class ZhihuOpenCliProvider:
                 body, item_title, author, _ = self._read_payload(kind, load_opencli_json(output), row["url"], item_workdir)
             except (OSError, ValueError, TypeError, KeyError):
                 partial = True; continue
-            blocks.append(f"## {item_title or row.get('title') or '收藏内容'}\n\n作者：{author or row.get('author') or '匿名用户'}\n\n赞同：{row.get('votes', 0)}\n\n{body}\n\n来源：{row['url']}")
+            display_author = _clean_author(author or row.get("author"))
+            author_line = f"\n\n作者：{display_author}" if display_author else ""
+            blocks.append(f"## {item_title or row.get('title') or '收藏内容'}{author_line}\n\n赞同：{row.get('votes', 0)}\n\n{body}\n\n来源：{row['url']}")
         if len(payload) >= MAX_ANSWERS or (declared_total is not None and len(payload) != declared_total): partial = True
         total_note = f"，页面声明约 {declared_total} 条" if declared_total is not None else "，总数未知"
         note = f"收藏夹条目 {len(payload)} 条{total_note}；已展开全文 {len(blocks)} 条" + ("；部分条目因内容类型或时间预算保留为摘要/未能展开" if partial else "")

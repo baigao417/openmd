@@ -31,6 +31,10 @@ from openmd.runtime.interpreters import run_interruptibly
 
 SNAPSHOT_BACKEND = "page_snapshot.defuddle"
 MAX_SNAPSHOT_BYTES = 50 * 1024 * 1024
+_TITLE_COUNTER_PREFIX = re.compile(
+    r"^\(\s*(?:\d+\s*封私信(?:\s*/\s*|\s+)\d+\s*条消息|\d+\s*封私信|\d+\s*条消息|\d+)\s*\)\s*"
+)
+_TITLE_SITE_SUFFIX = re.compile(r"\s+-\s+知乎\s*$", re.IGNORECASE)
 
 
 def register_backend_providers(registry: BackendProviderRegistry, options: BackendRuntimeOptions) -> None:
@@ -94,7 +98,7 @@ class SnapshotProvider:
             return _extract_xiaohongshu_snapshot(html, item, path)
         if site == "douyin":
             return _failed("douyin_snapshot_no_transcript", "抖音视频快照不提供逐字稿，请改走媒体转写路线。")
-        page_title = item.title or _html_title(html) or "当前页快照"
+        page_title = clean_page_title(item.title or _html_title(html) or "当前页快照")
         if login_wall_reason(html, page_title):
             return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
         title = _article_heading_title(html, page_title)
@@ -246,7 +250,15 @@ def _html_title(html: str) -> str | None:
     if not match:
         return None
     value = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", match.group(1))).strip()
-    return value or None
+    return clean_page_title(value) or None
+
+
+def clean_page_title(value: str | None) -> str:
+    """Remove browser chrome noise from a page title before rendering or naming files."""
+    title = re.sub(r"\s+", " ", str(value or "")).strip()
+    title = _TITLE_COUNTER_PREFIX.sub("", title)
+    title = _TITLE_SITE_SUFFIX.sub("", title).strip()
+    return title
 
 
 def _article_heading_title(html: str, page_title: str) -> str:
@@ -266,9 +278,10 @@ def _article_heading_title(html: str, page_title: str) -> str:
         headings = [value for value in headings if value]
         if headings:
             break
+    page_title = clean_page_title(page_title)
     if len(headings) != 1 or len(headings[0]) > 300:
         return page_title
-    heading = headings[0]
+    heading = clean_page_title(headings[0])
     return page_title if heading.casefold() in page_title.casefold() else heading
 
 

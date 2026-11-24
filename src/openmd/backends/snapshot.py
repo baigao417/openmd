@@ -22,6 +22,7 @@ from openmd.backends.base import BackendCapability, BackendDescriptor, BackendEx
 from openmd.backends.executor import BackendProviderRegistry
 from openmd.backends.registry import BackendRuntimeOptions
 from openmd.core.content_validation import html_to_markdown, login_wall_reason
+from openmd.core.local_config import load_local_config
 from openmd.core.login import normalize_login_result
 from openmd.core.models import TranscriptResult
 from openmd.backends.web_article import apply_completeness_guard, estimate_html_body_chars
@@ -93,9 +94,10 @@ class SnapshotProvider:
             return _extract_xiaohongshu_snapshot(html, item, path)
         if site == "douyin":
             return _failed("douyin_snapshot_no_transcript", "抖音视频快照不提供逐字稿，请改走媒体转写路线。")
-        title = item.title or _html_title(html) or "当前页快照"
-        if login_wall_reason(html, title):
+        page_title = item.title or _html_title(html) or "当前页快照"
+        if login_wall_reason(html, page_title):
             return normalize_login_result(_failed("login_wall", "网页返回登录墙，未取得目标正文。"), item)
+        title = _article_heading_title(html, page_title)
         markdown, used_managed = self._html_to_markdown(path, html, item.url)
         text = (markdown or "").strip()
         if text.startswith("# ") and text.splitlines()[0].strip().removeprefix("# ").strip() == title.strip():
@@ -157,39 +159,30 @@ def _defuddle_card_path() -> Path:
     return Path(__file__).resolve().parents[1] / "routing" / "cards" / "defuddle.json"
 
 
-def _local_config_candidates() -> list[Path]:
-    values: list[Path] = []
-    configured = os.environ.get("OPENMD_CONFIG")
-    if configured:
-        values.append(Path(configured))
-    here = Path(__file__).resolve()
-    values.extend([Path.cwd() / "out" / "local-config.json", here.parents[5] / "out" / "local-config.json"])
-    return values
-
-
 def _managed_defuddle_spec() -> tuple[str, str, str, dict[str, Any]] | None:
     try:
         card = json.loads(_defuddle_card_path().read_text(encoding="utf-8"))
         api = card["launcher"]["node_api"]
         module = str(api["module"])
         options = dict(api.get("options") or {})
-        config = next((p for p in _local_config_candidates() if p.is_file()), None)
-        if config is None:
-            return None
-        tools = json.loads(config.read_text(encoding="utf-8")).get("tools", {})
-        spec = tools.get("defuddle") or {}
-        node = str(spec.get("node") or "")
-        root = str(spec.get("root") or "")
+        try:
+            spec = load_local_config().get("tools", {}).get("defuddle") or {}
+        except ValueError:
+            spec = {}
+        node = str(spec.get("node") or "") if isinstance(spec, dict) else ""
+        root = str(spec.get("root") or "") if isinstance(spec, dict) else ""
         if node and root and Path(node).is_file() and Path(root).is_dir():
             return node, root, module, options
-        from openmd.runtime.managed_tools import ensure_defuddle, managed_defuddle_root, node_dir
+        # No configured location (fresh installs, the browser host's own
+        # working directory): use the pinned copy Openmd manages itself.
+        from openmd.runtime.managed_tools import ensure_defuddle, managed_defuddle_modules, node_dir
 
         if ensure_defuddle() != "managed":
             return None
         bundled = node_dir()
         if bundled is None:
             return None
-        return str(bundled / ("node.exe" if os.name == "nt" else "node")), str(managed_defuddle_root()), module, options
+        return str(bundled / ("node.exe" if os.name == "nt" else "node")), str(managed_defuddle_modules()), module, options
     except (OSError, TypeError, ValueError, KeyError):
         return None
 
@@ -254,6 +247,29 @@ def _html_title(html: str) -> str | None:
         return None
     value = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", match.group(1))).strip()
     return value or None
+
+
+def _article_heading_title(html: str, page_title: str) -> str:
+    """Prefer the article's sole <h1> when the tab title does not name it.
+
+    Single-page readers keep one app-wide document title for every article;
+    a specific title that already contains the heading is kept unchanged.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    headings: list[str] = []
+    # Readers often render the heading beside, not inside, <article>; use the
+    # narrowest scope that has any <h1>, and only when it has exactly one.
+    for scope in (soup.select_one("article"), soup.select_one("main, [role='main']"), soup.body or soup):
+        if scope is None:
+            continue
+        headings = [re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip() for node in scope.find_all("h1")]
+        headings = [value for value in headings if value]
+        if headings:
+            break
+    if len(headings) != 1 or len(headings[0]) > 300:
+        return page_title
+    heading = headings[0]
+    return page_title if heading.casefold() in page_title.casefold() else heading
 
 
 def _failed(code: str, summary: str) -> TranscriptResult:

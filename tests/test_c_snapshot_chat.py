@@ -319,3 +319,64 @@ def test_snapshot_host_queues_private_temp_file_and_command(tmp_path, monkeypatc
     monkeypatch.setenv("OPENMD_DATA_DIR", str(tmp_path / "data"))
     job = browser_host.start_snapshot_job("<html><body>snapshot</body></html>", "https://example.org/private", "Private", str(tmp_path), spawn=lambda *args, **kwargs: None)
     assert job["snapshot"] is True and Path(job["snapshot_path"]).is_file()
+
+
+def test_snapshot_title_prefers_article_heading_over_generic_app_title(monkeypatch, tmp_path):
+    """SPA readers share one document title; the article's own heading names the page."""
+    page = tmp_path / "reader.html"
+    page.write_text(
+        "<html><head><title>Reader - 英语阅读助手</title></head><body>"
+        "<nav><a href='/home'>Reader</a></nav>"
+        "<main><article><h1>Founder Mode</h1><p>At a YC event last week Brian Chesky gave a talk.</p></article></main>"
+        "</body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *_: "At a YC event last week Brian Chesky gave a talk.")
+    for title in (None, "Reader - 英语阅读助手"):
+        item = ContentItem(platform="page_snapshot", input_type="single", url="https://reader.example/daily-feed/368",
+                           title=title, source_type="article", raw_meta={"snapshot_path": str(page)})
+        result = SnapshotProvider().extract(BackendExtractRequest(item, ("page_snapshot.defuddle",)))
+        assert result.title == "Founder Mode"
+
+
+def test_snapshot_title_keeps_specific_document_title(monkeypatch, tmp_path):
+    page = tmp_path / "blog.html"
+    page.write_text(
+        "<html><head><title>Founder Mode | Example Blog</title></head><body>"
+        "<main><article><h1>Founder Mode</h1><p>Body text.</p></article></main></body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *_: "Body text.")
+    item = ContentItem(platform="page_snapshot", input_type="single", url="https://blog.example/founder-mode",
+                       source_type="article", raw_meta={"snapshot_path": str(page)})
+    result = SnapshotProvider().extract(BackendExtractRequest(item, ("page_snapshot.defuddle",)))
+    assert result.title == "Founder Mode | Example Blog"
+
+
+def test_snapshot_title_uses_sole_heading_rendered_outside_article(monkeypatch, tmp_path):
+    page = tmp_path / "reader-header.html"
+    page.write_text(
+        "<html><head><title>Reader - 英语阅读助手</title></head><body>"
+        "<main><header><h1>Founder Mode</h1><span>Paul Graham</span></header>"
+        "<article><p>At a YC event last week Brian Chesky gave a talk.</p></article></main></body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *_: "At a YC event last week Brian Chesky gave a talk.")
+    item = ContentItem(platform="page_snapshot", input_type="single", url="https://reader.example/daily-feed/368",
+                       source_type="article", raw_meta={"snapshot_path": str(page)})
+    result = SnapshotProvider().extract(BackendExtractRequest(item, ("page_snapshot.defuddle",)))
+    assert result.title == "Founder Mode"
+
+
+def test_snapshot_title_ignores_ambiguous_headings(monkeypatch, tmp_path):
+    page = tmp_path / "listing.html"
+    page.write_text(
+        "<html><head><title>Daily Feed</title></head><body><main>"
+        "<h1>First story</h1><p>One.</p><h1>Second story</h1><p>Two.</p></main></body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(snapshot_backend, "_run_managed_defuddle", lambda *_: "One.\n\nTwo.")
+    item = ContentItem(platform="page_snapshot", input_type="single", url="https://reader.example/feed",
+                       source_type="article", raw_meta={"snapshot_path": str(page)})
+    result = SnapshotProvider().extract(BackendExtractRequest(item, ("page_snapshot.defuddle",)))
+    assert result.title == "Daily Feed"

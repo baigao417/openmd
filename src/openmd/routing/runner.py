@@ -66,11 +66,11 @@ def resolve_launcher(card: dict[str, Any]) -> Launcher:
     launcher = card.get("launcher", {})
     if card["kind"] == "command" and launcher.get("node_entry"):
         if tool_id == "defuddle" and not config.get("root"):
-            from openmd.runtime.managed_tools import ensure_defuddle, managed_defuddle_root, node_dir
+            from openmd.runtime.managed_tools import ensure_defuddle, managed_defuddle_modules, node_dir
 
             if ensure_defuddle() != "managed":
                 raise ToolError("tool_not_installed", "Defuddle is unavailable; the built-in extraction route will be tried.")
-            config["root"] = str(managed_defuddle_root())
+            config["root"] = str(managed_defuddle_modules())
             bundled_node = node_dir()
             if bundled_node:
                 config["node"] = str(bundled_node / ("node.exe" if os.name == "nt" else "node"))

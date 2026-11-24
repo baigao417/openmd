@@ -257,7 +257,11 @@ def check_completeness(item: ContentItem, result: TranscriptResult, *, signals: 
     if item.platform == "page_snapshot" or result.metadata.get("captured_from") == "browser_snapshot" or result.backend.startswith("page_snapshot."):
         capture = result.metadata.get("capture")
         capture_coverage = capture.get("coverage") if isinstance(capture, Mapping) else None
-        metadata["coverage"] = capture_coverage if capture_coverage in {"full_page", "scrolled_full", "visible_only"} else "unknown"
+        if capture_coverage in {"full_page", "scrolled_full", "visible_only"}:
+            metadata["coverage"] = capture_coverage
+        elif not metadata.get("coverage"):
+            # Without a capture receipt the snapshot is one read of the rendered DOM.
+            metadata["coverage"] = "visible_only"
     return replace(result, status="partial" if status == "downgrade" and result.status == "verified" else result.status,
                    source_notes=notes, metadata=metadata)
 

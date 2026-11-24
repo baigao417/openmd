@@ -253,3 +253,20 @@ def test_snapshot_markdown_reports_partial_counts_and_human_source_note():
     assert document.frontmatter['coverage'] == 'visible_only'
     assert '只保存了屏幕上的部分' in document.frontmatter['completeness']
     assert any('只保存了屏幕上的部分（约 8/61）' in note for note in document.source_notes)
+
+
+def test_snapshot_without_capture_keeps_existing_coverage_and_never_claims_ok() -> None:
+    """Round16 seam: no capture receipt must not erase visible_branch/visible_only."""
+    from dataclasses import replace as _replace
+    from openmd.core.completeness import check_completeness
+    from openmd.core.models import ContentItem, TranscriptResult
+
+    item = ContentItem(url="https://example.org/a", platform="page_snapshot", source_type="article", input_type="single")
+    base = TranscriptResult(text="# A\n\nbody", title="A", status="verified", backend="page_snapshot.defuddle",
+                            source_level="browser_rendered", metadata={"captured_from": "browser_snapshot"})
+    plain = check_completeness(item, base)
+    assert plain.metadata["coverage"] == "visible_only"
+    assert plain.metadata["completeness"]["status"] == "unknown"
+    branch = check_completeness(item, _replace(base, metadata={**base.metadata, "coverage": "visible_branch"}))
+    assert branch.metadata["coverage"] == "visible_branch"
+    assert branch.metadata["completeness"]["status"] != "ok"

@@ -146,7 +146,7 @@ def test_snapshot_provider_applies_same_completeness_guard(tmp_path) -> None:
     assert result.status == "partial"
     assert result.error_code == "partial_coverage"
     assert result.metadata["completeness"]["status"] == "unknown"
-    assert result.metadata["coverage"] == "unknown"
+    assert result.metadata["coverage"] == "visible_only"
 
 
 def test_snapshot_guard_does_not_claim_ok_without_capture_evidence() -> None:

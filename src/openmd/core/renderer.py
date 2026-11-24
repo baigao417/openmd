@@ -268,7 +268,8 @@ def render_markdown_document(
         coverage = capture.get("coverage") if isinstance(capture, dict) else None
         completeness_status = (result.metadata.get("completeness") or {}).get("status") if isinstance(result.metadata.get("completeness"), dict) else None
         if coverage not in {"full_page", "scrolled_full", "visible_only"}:
-            coverage = "unknown"
+            # No capture receipt: a single read of the rendered DOM is what was saved.
+            coverage = "visible_only"
         frontmatter.update({
             "captured_from": "browser_snapshot",
             "coverage": coverage,

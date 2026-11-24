@@ -368,7 +368,7 @@ async function captureSnapshot(tabId) {
     target: { tabId },
     func: async (aiHosts) => {
       const captured = typeof globalThis.__OPENMD_PAGE_CAPTURE__ === "function"
-        ? await globalThis.__OPENMD_PAGE_CAPTURE__()
+        ? await globalThis.__OPENMD_PAGE_CAPTURE__({ rebuild: !aiHosts.includes(location.hostname) })
         : { html: document.documentElement?.outerHTML || "", url: location.href, title: document.title || location.href };
       if (aiHosts.includes(location.hostname) && captured.html && document.documentElement) {
         const clone = new DOMParser().parseFromString(captured.html, "text/html");

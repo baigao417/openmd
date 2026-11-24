@@ -114,10 +114,44 @@
     return best;
   };
 
+  // Several indexed lists can share one scroll container (a sidebar and the main list); their
+  // indexes restart at 0 and would collide in the de-duplication map. Keep the list whose items
+  // (same index attribute, same depth) carry the most text.
+  const dominantList = (nodes) => {
+    const groups = new Map();
+    for (const node of nodes) {
+      const attribute = INDEX_ATTRIBUTES.find((name) => numberValue(node.getAttribute?.(name)) !== null) || "";
+      let depth = 0;
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) depth += 1;
+      const key = `${attribute}:${depth}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(node);
+    }
+    let best = null;
+    let bestWeight = -1;
+    for (const members of groups.values()) {
+      const weight = members.reduce((sum, node) => sum + normalizedText(node).length, 0);
+      if (weight > bestWeight) { best = members; bestWeight = weight; }
+    }
+    return best || nodes;
+  };
+
+  // Rebuilding must never lose text that was already visible before scrolling; if it does, the
+  // original DOM is safer than a reshaped one (round16: chat pages lost message roots).
+  const textLines = (text) => text.split(/\n+/).map((line) => line.replace(/\s+/g, " ").trim()).filter((line) => line.length >= 8);
+  const keepsVisibleText = (beforeText, candidateHtml) => {
+    const lines = textLines(beforeText);
+    if (!lines.length) return true;
+    const doc = new DOMParser().parseFromString(candidateHtml, "text/html");
+    const after = (doc.body?.textContent || "").replace(/\s+/g, " ");
+    const missing = lines.filter((line) => !after.includes(line)).length;
+    return missing / lines.length <= 0.02;
+  };
+
   const nodesFor = (container, signals) => {
     const descendants = [...container.querySelectorAll("*")].slice(0, 12000);
     let nodes = descendants.filter((node) => indexOf(node) !== null);
-    if (nodes.length) return directOrOutermost(nodes);
+    if (nodes.length) return dominantList(directOrOutermost(nodes));
     nodes = descendants.filter((node) => {
       let style;
       try { style = getComputedStyle(node); } catch { style = null; }
@@ -191,7 +225,7 @@
     return hiddenMarkedHtml(clone).outerHTML;
   };
 
-  const capturePage = async () => {
+  const capturePage = async (options = {}) => {
     const originalHtml = document.documentElement?.outerHTML || "";
     const base = {
       coverage: "full_page", virtual_detected: false, stop_reason: "not_virtual", steps: 0,
@@ -201,6 +235,15 @@
     const selected = findContainer();
     if (!selected) return { html: originalHtml, url: location.href, title: document.title || location.href, capture_meta: base };
     const { container, signals } = selected;
+    if (options && options.rebuild === false) {
+      // Chat pages: keep the page's own DOM; say honestly that only the visible part was read.
+      return { html: originalHtml, url: location.href, title: document.title || location.href, capture_meta: {
+        ...base, coverage: "visible_only", virtual_detected: true, stop_reason: "rebuild_skipped",
+        declared_total: signals.declaredTotal,
+      } };
+    }
+    // Compare item text only: the rebuild replaces the container's own chrome by design.
+    const visibleBefore = nodesFor(container, signals).map((node) => node.innerText || node.textContent || "").join("\n");
     const rootPath = nodePath(container);
     const originalPosition = scrollState(container);
     const started = Date.now();
@@ -271,6 +314,9 @@
       const candidateHtml = buildHtml(rootPath, container, ordered);
       if (new Blob([candidateHtml]).size > MAX_HTML_BYTES) {
         stopReason = "size_limit";
+        html = originalHtml;
+      } else if (!keepsVisibleText(visibleBefore, candidateHtml)) {
+        stopReason = "rebuild_mismatch";
         html = originalHtml;
       } else html = candidateHtml;
       const complete = stopReason === "end_reached" && indexGaps.length === 0;

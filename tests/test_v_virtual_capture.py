@@ -94,3 +94,28 @@ def test_virtual_capture_detects_computed_matrix_transforms_and_prefers_inner_co
     assert 'style.transform !== "none"' in source
     assert "best.container.contains(candidate)" in source
     assert "translate(?:3d|Y|X)?" not in source
+
+
+def test_capture_rebuild_is_skipped_on_ai_chat_hosts_and_guarded_elsewhere():
+    """Round16 real doubao finding: rebuilding a chat page lost message roots (6 turns -> 1).
+    Chat hosts keep their own DOM and report visible_only; other pages fall back to the
+    original DOM when the rebuild would drop item text that was visible before scrolling."""
+    capture = (ROOT / "src" / "openmd" / "browser_extension" / "page_capture.js").read_text(encoding="utf-8")
+    background = (ROOT / "src" / "openmd" / "browser_extension" / "background.js").read_text(encoding="utf-8")
+    kaze = (ROOT / "src" / "openmd" / "backends" / "kaze_snapshot.py").read_text(encoding="utf-8")
+    assert "options.rebuild === false" in capture and '"rebuild_skipped"' in capture
+    assert "keepsVisibleText(visibleBefore, candidateHtml)" in capture and '"rebuild_mismatch"' in capture
+    assert "dominantList(directOrOutermost(nodes))" in capture
+    assert "__OPENMD_PAGE_CAPTURE__({ rebuild: !aiHosts.includes(location.hostname) })" in background
+    assert "loaded_chat_site(url)" in kaze and "__OPENMD_PAGE_CAPTURE__({ rebuild: " in kaze
+
+
+def test_rebuild_skipped_capture_is_never_complete():
+    from openmd.core.completeness import snapshot_coverage_check
+    from openmd.core.models import ContentItem, TranscriptResult
+
+    item = ContentItem(url="https://www.doubao.com/chat/1", platform="page_snapshot", source_type="article", input_type="single")
+    result = TranscriptResult(text="x", status="verified", backend="page_snapshot.defuddle", source_level="browser_rendered",
+                              metadata={"captured_from": "browser_snapshot", "capture": {
+                                  "coverage": "visible_only", "virtual_detected": True, "stop_reason": "rebuild_skipped"}})
+    assert snapshot_coverage_check(item, result, {}).status == "downgrade"

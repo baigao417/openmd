@@ -259,7 +259,14 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
 
         snapshot_path = Path(input_url).expanduser().resolve()
         original_url = str(getattr(args, "snapshot_url", None) or "https://snapshot.invalid/local")
-        item = snapshot_item(snapshot_path, original_url)
+        capture_meta = None
+        raw_capture = getattr(args, "capture_meta_json", None)
+        if raw_capture:
+            try:
+                capture_meta = json.loads(raw_capture)
+            except (TypeError, ValueError):
+                capture_meta = None
+        item = snapshot_item(snapshot_path, original_url, capture_meta=capture_meta)
         adapter = None
         selection = registry.select_backend("page_snapshot", _requested_backend("page_snapshot", args), allow_fallback=args.fallback)
         items = [item]

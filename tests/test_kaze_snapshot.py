@@ -40,6 +40,16 @@ class FakeSession:
             return {"tabId": "owned-tab"}
         if name == "js":
             code = arguments["code"]
+            if "const settled" in code:
+                return _tool_payload({"structuredContent": {"ok": True, "value": {
+                    "ready": True, "body_chars": len(self.html), "visibility_state": "visible",
+                }}})
+            if "captureSource" in code:
+                # Match Kaze's Tab.evaluate(script, opts) contract: callback
+                # arguments are supplied via opts.arg.
+                if "{ arg: captureSource, timeoutMs: 60000 }" not in code:
+                    raise RuntimeError("invalid_args: Tab.evaluate options expected object; dispatched:false")
+                assert arguments["timeoutMs"] == 60_000
             match = re.search(r"fs\.writeFile\((\"(?:\\\\.|[^\"])*\")", code)
             if match:
                 Path(json.loads(match.group(1))).write_text(self.html, encoding="utf-8")
@@ -74,6 +84,37 @@ def test_kaze_provider_claims_matching_page_and_releases_without_closing(monkeyp
     assert not any(name == "close_tab" for name, _ in session.calls)
     assert session.closed
     assert "https://example.org" not in repr(result.metadata)
+
+
+def test_kaze_reopens_matching_tab_when_claimed_page_is_blank(monkeypatch):
+    class BlankClaimedPageSession(FakeSession):
+        def __init__(self):
+            super().__init__()
+            self.readiness_results = [
+                {"ready": False, "body_chars": 0, "visibility_state": "visible"},
+                {"ready": True, "body_chars": 57, "visibility_state": "visible"},
+            ]
+
+        def call(self, name, arguments, timeout):
+            if name == "js" and "const settled" in arguments["code"]:
+                self.calls.append((name, arguments))
+                return self.readiness_results.pop(0)
+            return super().call(name, arguments, timeout)
+
+    session = BlankClaimedPageSession()
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status in {"verified", "partial"}
+    assert ("claim_tab", {"url": "https://example.org/article", "expectedUrl": "https://example.org/article"}) in session.calls
+    assert ("release_tab", {"tabId": "borrowed-tab"}) in session.calls
+    assert ("open_tab", {"url": "https://example.org/article"}) in session.calls
+    assert ("close_tab", {"tabId": "owned-tab"}) in session.calls
 
 
 def test_kaze_unwraps_browsermcp_value_envelope():
@@ -134,7 +175,8 @@ def test_kaze_page_url_is_read_from_page_context(monkeypatch):
     KazeSnapshotProvider().extract(request)
 
     read_js = next(args["code"] for name, args in session.calls if name == "js" and "outerHTML" in args["code"])
-    assert "const url = await t.url()" in read_js
+    assert "const url = captured.url" in read_js
+    assert "await t.url()" not in read_js
     assert "({html" not in read_js
     assert "node:fs/promises" in read_js
     assert "fs.writeFile" in read_js
@@ -265,3 +307,77 @@ def test_kaze_waits_for_rendered_text_to_settle_before_capture(monkeypatch):
     capture = next(index for index, code in enumerate(scripts) if "outerHTML" in code)
     assert settle < capture
     assert "stable" in scripts[settle] and "setTimeout" in scripts[settle]
+    assert "performance.getEntriesByType('resource').length" not in scripts[settle]
+    assert "querySelectorAll('*').length" in scripts[settle]
+
+
+def test_kaze_evaluate_uses_options_arg_and_full_capture_timeout(monkeypatch):
+    session = FakeSession(rows=[])
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status in {"verified", "partial"}
+    capture_call = next(args for name, args in session.calls if name == "js" and "captureSource" in args["code"])
+    assert "{ arg: captureSource, timeoutMs: 60000 }" in capture_call["code"]
+    assert capture_call["timeoutMs"] == 60_000
+    assert capture_call["timeoutMs"] > 45_000
+    assert "const html = captured.html; const url = captured.url;" in capture_call["code"]
+    assert "await t.url()" not in capture_call["code"]
+
+
+def test_kaze_invalid_evaluate_arguments_are_reported_as_script_error(monkeypatch):
+    session = FakeSession(rows=[])
+    original_call = session.call
+
+    def call(name, arguments, timeout):
+        if name == "js" and "captureSource" in arguments["code"]:
+            raise RuntimeError("invalid_args: Tab.evaluate options expected object; dispatched:false")
+        return original_call(name, arguments, timeout)
+
+    session.call = call
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status == "failed"
+    assert result.error_code == "kaze_script_error"
+    from openmd.cli_login import source_next_action
+
+    assert "调用兼容问题" in source_next_action(result.error_code)
+
+
+def test_kaze_capture_meta_is_forwarded_to_result(monkeypatch):
+    session = FakeSession(rows=[])
+    original_call = session.call
+
+    def call(name, arguments, timeout):
+        value = original_call(name, arguments, timeout)
+        if name == "js" and any(token in arguments["code"] for token in ("fs.writeFile", "capture_meta")):
+            # Fake BrowserMCP returns the structured capture receipt alongside the HTML.
+            payload = value if isinstance(value, dict) else None
+            if isinstance(payload, dict) and "bytes" in payload:
+                payload["capture_meta"] = {
+                    "coverage": "scrolled_full", "virtual_detected": True,
+                    "stop_reason": "end_reached", "steps": 2, "elapsed_ms": 300,
+                    "seen_count": 3, "new_count": 3, "duplicate_count": 0,
+                    "collected_count": 3, "max_index": 2, "index_gaps": [], "declared_total": 3,
+                }
+        return value
+
+    session.call = call
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+    result = KazeSnapshotProvider().extract(request)
+    assert result.metadata["capture"]["coverage"] == "scrolled_full"

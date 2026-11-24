@@ -187,6 +187,36 @@ def _validate_video(video: object) -> str:
     return str(video)
 
 
+def _validate_capture_meta(value: object) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("invalid_capture_meta")
+    result: dict[str, Any] = {}
+    if value.get("coverage") not in {"full_page", "scrolled_full", "visible_only"}:
+        raise ValueError("invalid_capture_meta_coverage")
+    result["coverage"] = value["coverage"]
+    if type(value.get("virtual_detected")) is not bool:
+        raise ValueError("invalid_capture_meta_virtual_detected")
+    result["virtual_detected"] = value["virtual_detected"]
+    if not isinstance(value.get("stop_reason"), str) or len(value["stop_reason"]) > 40:
+        raise ValueError("invalid_capture_meta_stop_reason")
+    result["stop_reason"] = value["stop_reason"]
+    for key in ("steps", "elapsed_ms", "seen_count", "new_count", "duplicate_count", "collected_count"):
+        if type(value.get(key)) is not int or value[key] < 0:
+            raise ValueError("invalid_capture_meta_metric")
+        result[key] = value[key]
+    for key in ("max_index", "declared_total"):
+        if value.get(key) is not None and (type(value[key]) is not int or value[key] < 0):
+            raise ValueError("invalid_capture_meta_index")
+        result[key] = value.get(key)
+    gaps = value.get("index_gaps")
+    if not isinstance(gaps, list) or any(type(item) is not int or item < 0 for item in gaps[:1000]):
+        raise ValueError("invalid_capture_meta_gaps")
+    result["index_gaps"] = gaps[:1000]
+    return result
+
+
 def _enqueue(url: object, destination: Path, batch: str | None = None, video: str = "note", feedback_opt_in: bool = False) -> dict[str, Any]:
     url = _validate_url(url)
     job_id = uuid.uuid4().hex
@@ -216,6 +246,7 @@ def start_snapshot_job(
     *,
     include_thinking: object = False,
     feedback_opt_in: object = False,
+    capture_meta: object = None,
     spawn=subprocess.Popen,
 ) -> dict[str, Any]:
     """Queue one user initiated current-page DOM snapshot without browser storage."""
@@ -224,6 +255,7 @@ def start_snapshot_job(
         raise ValueError("invalid_include_thinking")
     if type(feedback_opt_in) is not bool:
         raise ValueError("invalid_feedback_opt_in")
+    capture = _validate_capture_meta(capture_meta)
     if not isinstance(html, str):
         raise ValueError("invalid_snapshot_html")
     payload = html.encode("utf-8")
@@ -253,6 +285,8 @@ def start_snapshot_job(
         "include_thinking": include_thinking,
         "feedback_opt_in": feedback_opt_in,
     }
+    if capture is not None:
+        status["capture_meta"] = capture
     _write_status(job_dir, status)
     _spawn_runner(spawn)
     return status
@@ -392,6 +426,8 @@ def run_job(job_dir: Path, *, runner=None) -> dict[str, Any]:
         command = mcp_command(status)
     elif status.get("snapshot"):
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["snapshot_path"], "--as-snapshot", "--url", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
+        if isinstance(status.get("capture_meta"), dict):
+            command.extend(["--capture-meta-json", json.dumps(status["capture_meta"], separators=(",", ":"))])
     else:
         command = [sys.executable, "-I", "-X", "utf8", "-m", "openmd", "go", status["url"], *GO_FLAGS, "--video", status.get("video") or "note", "--save-to", status["save_to"]]
     if status.get("video") == "file":
@@ -500,7 +536,10 @@ def retry_login(job_id: str, snapshot: object = None) -> list[dict[str, Any]]:
         job_dir = _status_path(job_id).parent
         snapshot_path = job_dir / "snapshot.html"
         snapshot_path.write_text(html, encoding="utf-8")
+        capture = _validate_capture_meta(snapshot.get("capture_meta")) if snapshot.get("capture_meta") is not None else None
         target.update(snapshot_path=str(snapshot_path), title=title or target.get("title", ""))
+        if capture is not None:
+            target["capture_meta"] = capture
         _write_status(job_dir, target)
     key = login_for_url(target["url"])["url"]
     resumed = []
@@ -630,7 +669,7 @@ def handle(message: dict[str, Any]) -> dict[str, Any]:
         if kind == "save":
             return {"ok": True, "job": start_job(message.get("url"), message.get("save_to"), video=message.get("video"), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "save_snapshot":
-            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"), include_thinking=message.get("include_thinking", False), feedback_opt_in=message.get("feedback_opt_in", False))}
+            return {"ok": True, "job": start_snapshot_job(message.get("html"), message.get("url"), message.get("title"), message.get("save_to"), include_thinking=message.get("include_thinking", False), feedback_opt_in=message.get("feedback_opt_in", False), capture_meta=message.get("capture_meta"))}
         if kind == "save_many":
             return {"ok": True, **start_batch(message.get("urls"), message.get("save_to"), video=message.get("video"), feedback_opt_in=message.get("feedback_opt_in", False))}
         if kind == "status":

@@ -359,25 +359,25 @@ async function saveManyImpl(items, locationId, video) {
 }
 
 async function captureSnapshot(tabId) {
+  const [injected = {}] = await chrome.scripting.executeScript({ target: { tabId }, files: ["page_capture.js"] });
+  // Some browser test harnesses return the page value from the file injection
+  // itself. Real Chrome returns no value for a file-only injection, so query
+  // the shared function in a second page-context call there.
+  if (injected?.result?.html) return injected.result;
   const [{ result } = {}] = await chrome.scripting.executeScript({
     target: { tabId },
-    args: [AI_CHAT_HOSTS],
-    func: (aiHosts) => {
-      let html = document.documentElement?.outerHTML || "";
-      if (aiHosts.includes(location.hostname) && document.documentElement) {
-        const clone = document.documentElement.cloneNode(true);
-        const originals = document.documentElement.querySelectorAll("*");
-        const copies = clone.querySelectorAll("*");
-        originals.forEach((node, index) => {
-          const style = getComputedStyle(node);
-          if (style.display === "none" || style.visibility === "hidden") copies[index].setAttribute("data-openmd-hidden", "true");
-        });
-        // Retain rendered messages, not hydration payloads or composer values.
+    func: async (aiHosts) => {
+      const captured = typeof globalThis.__OPENMD_PAGE_CAPTURE__ === "function"
+        ? await globalThis.__OPENMD_PAGE_CAPTURE__()
+        : { html: document.documentElement?.outerHTML || "", url: location.href, title: document.title || location.href };
+      if (aiHosts.includes(location.hostname) && captured.html && document.documentElement) {
+        const clone = new DOMParser().parseFromString(captured.html, "text/html");
         clone.querySelectorAll("script, style, noscript, input, textarea").forEach((node) => node.remove());
-        html = clone.outerHTML;
+        captured.html = clone.documentElement.outerHTML;
       }
-      return { html, url: location.href, title: document.title || location.href };
+      return captured;
     },
+    args: [AI_CHAT_HOSTS],
   });
   return result;
 }
@@ -398,7 +398,7 @@ async function saveSnapshotImpl(tabId, locationId) {
       return fail("没法保存当前页", "当前页面不是可保存的 http(s) 页面。");
     }
     const { includeThinking } = await getSettings();
-    const reply = await native({ type: "save_snapshot", ...result, save_to: location.path, include_thinking: isLoadedAiChat(result.url) && includeThinking === true, feedback_opt_in: (await getSettings()).allowFeedbackPackage === true });
+    const reply = await native({ type: "save_snapshot", ...result, capture_meta: result.capture_meta, save_to: location.path, include_thinking: isLoadedAiChat(result.url) && includeThinking === true, feedback_opt_in: (await getSettings()).allowFeedbackPackage === true });
     if (!reply.ok) return fail("没能保存当前页", reply.error);
     await track([{ ...reply.job, tabId }], reply.job.id, location.name);
     return { ok: true, count: 1, location: location.name };

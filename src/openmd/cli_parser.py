@@ -106,6 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     go.add_argument("--as-snapshot", action="store_true", help="把本地 HTML 当作浏览器当前页快照处理")
     go.add_argument("--include-thinking", action="store_true", help="AI 对话：在对应回答前保留页面中的思考过程（默认省略）")
     go.add_argument("--url", dest="snapshot_url", help="快照对应的原始 http(s) URL")
+    go.add_argument("--capture-meta-json", dest="capture_meta_json", help=argparse.SUPPRESS)
     go.add_argument("--chatgpt-export", action="store_true", help="导入本地 ChatGPT 官方 conversations.json 或 zip")
     go.add_argument("--chatgpt-title", help="官方导入：标题关键词")
     go.add_argument("--chatgpt-since", help="官方导入：创建时间下限（ISO 日期或 Unix 秒）")

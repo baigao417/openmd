@@ -27,6 +27,8 @@ TOOLS_TIMEOUT_S = 2.0
 TOTAL_TIMEOUT_S = 10.0
 PAGE_READY_TIMEOUT_MS = 20_000
 READ_TIMEOUT_MS = 15_000
+CAPTURE_TIMEOUT_MS = 60_000
+CAPTURE_CALL_TIMEOUT_S = 61.0
 # Single-page apps paint their navigation shell before the content request
 # returns. Capture only after visible text and finished requests stop changing
 # for SETTLE_STABLE_MS, bounded by SETTLE_MAX_MS.
@@ -99,6 +101,8 @@ def _launcher() -> Path:
 
 def _error_from_exception(exc: BaseException) -> KazeError:
     message = str(exc).lower()
+    if "invalid_args" in message and "dispatched:false" in message:
+        return KazeError("kaze_script_error", "Kaze rejected the page capture script arguments.", "Update Openmd or report the BrowserMCP argument error; starting Kaze again will not fix this request.")
     if "external agents" in message or "doesn't allow other agents" in message:
         return KazeError("kaze_external_agents_disabled", "Kaze does not allow external agents.", "Enable External Agents in Kaze settings, then retry.")
     if "process exited" in message or "process closed" in message:
@@ -183,6 +187,10 @@ class _McpSession:
             message = json.loads(line)
             if message.get("id") == request_id:
                 if "error" in message:
+                    error = message.get("error")
+                    serialized = json.dumps(error, ensure_ascii=False).lower()
+                    if "invalid_args" in serialized and "dispatched" in serialized and "false" in serialized:
+                        raise KazeError("kaze_script_error", "Kaze rejected the page capture script arguments.", "Update Openmd or report the BrowserMCP argument error; starting Kaze again will not fix this request.")
                     raise RuntimeError("Kaze MCP request failed")
                 return message
 
@@ -211,6 +219,8 @@ class _McpSession:
         result = response.get("result") or {}
         if result.get("isError"):
             text = " ".join(item.get("text", "") for item in result.get("content", []) if item.get("type") == "text")
+            if "invalid_args" in text.lower() and "dispatched:false" in text.lower():
+                raise KazeError("kaze_script_error", "Kaze rejected the page capture script arguments.", "Update Openmd or report the BrowserMCP argument error; starting Kaze again will not fix this request.")
             raise RuntimeError(text[:300])
         return _tool_payload(result)
 
@@ -340,45 +350,65 @@ class KazeSnapshotProvider:
                 owned_tab_id = tab_id
             if not tab_id:
                 raise KazeError("kaze_tab_open_failed", "Kaze did not return a page tab identifier.", "Check Kaze and retry the URL.")
-            ready_js = (
-                "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
-                "await t.expect({target:{selector:'body'},visible:true},{timeoutMs:" + str(PAGE_READY_TIMEOUT_MS) + "}); "
-                "const settled = await t.evaluate(async () => { "
-                "const deadline = Date.now() + " + str(SETTLE_MAX_MS) + "; let last = '', stable = 0; "
-                "while (Date.now() < deadline) { "
-                "const sig = document.readyState + ':' + ((document.body && document.body.innerText) || '').length + ':' + performance.getEntriesByType('resource').length; "
-                "stable = sig === last && document.readyState === 'complete' ? stable + " + str(SETTLE_POLL_MS) + " : 0; "
-                "if (stable >= " + str(SETTLE_STABLE_MS) + ") break; "
-                "last = sig; await new Promise((resolve) => setTimeout(resolve, " + str(SETTLE_POLL_MS) + ")); } "
-                "return document.readyState; }, {timeoutMs: " + str(SETTLE_MAX_MS + 2_000) + "}); "
-                "({ready: settled})"
-            )
-            try:
-                ready_budget_ms = PAGE_READY_TIMEOUT_MS + SETTLE_MAX_MS + 2_000
-                session.call("js", {"code": ready_js, "timeoutMs": ready_budget_ms,
-                                    "maxChars": 1024}, timeout=ready_budget_ms / 1000 + 1)
-            except Exception as exc:
-                if not isinstance(exc, TimeoutError) and "timeout" not in str(exc).lower():
-                    raise
-                raise KazeError("kaze_page_not_ready", "The requested page did not finish rendering in Kaze.",
-                                "Wait for the page to finish loading in Kaze, then retry.") from exc
+            def wait_for_page(target_tab_id: str) -> bool:
+                ready_js = (
+                    "const t = await browser.tabs.get(" + json.dumps(target_tab_id) + "); "
+                    "const settled = await t.evaluate(async () => { "
+                    "const deadline = Date.now() + " + str(PAGE_READY_TIMEOUT_MS) + "; let last = '', stable = 0; let bodyChars = 0; "
+                    "while (Date.now() < deadline) { "
+                    "const body = document.body; bodyChars = ((body && body.innerText) || '').length; "
+                    "const sig = document.readyState + ':' + bodyChars + ':' + document.querySelectorAll('*').length; "
+                    "stable = sig === last && document.readyState === 'complete' ? stable + " + str(SETTLE_POLL_MS) + " : 0; "
+                    "if (body && (body.childElementCount > 0 || bodyChars > 0) && stable >= " + str(SETTLE_STABLE_MS) + ") "
+                    "return {ready:true,body_chars:bodyChars,visibility_state:document.visibilityState}; "
+                    "last = sig; await new Promise((resolve) => setTimeout(resolve, " + str(SETTLE_POLL_MS) + ")); } "
+                    "return {ready:false,body_chars:bodyChars,visibility_state:document.visibilityState}; }, "
+                    "{timeoutMs: " + str(PAGE_READY_TIMEOUT_MS + 2_000) + "}); "
+                    "({ready:settled.ready,body_chars:settled.body_chars,visibility_state:settled.visibility_state})"
+                )
+                ready_budget_ms = PAGE_READY_TIMEOUT_MS + 2_000
+                ready = session.call("js", {"code": ready_js, "timeoutMs": ready_budget_ms,
+                                             "maxChars": 1024}, timeout=ready_budget_ms / 1000 + 1)
+                return ready.get("ready") is True
+
+            if not wait_for_page(tab_id):
+                if borrowed_tab_id:
+                    session.call("release_tab", {"tabId": borrowed_tab_id}, timeout=3)
+                    borrowed_tab_id = None
+                    opened = session.call("open_tab", {"url": url}, timeout=5)
+                    tab_id = str(opened.get("tabId") or opened.get("tab") or opened.get("id") or "") or None
+                    owned_tab_id = tab_id
+                    if not tab_id:
+                        raise KazeError("kaze_tab_open_failed", "Kaze did not return a page tab identifier.", "Check Kaze and retry the URL.")
+                    if wait_for_page(tab_id):
+                        pass
+                    else:
+                        raise KazeError("kaze_page_not_ready", "The requested page did not finish rendering in Kaze.",
+                                        "Wait for the page to finish loading in Kaze, then retry.")
+                else:
+                    raise KazeError("kaze_page_not_ready", "The requested page did not finish rendering in Kaze.",
+                                    "Wait for the page to finish loading in Kaze, then retry.")
             from openmd.backends.loaded_chat import snapshot_item
             from openmd.backends.snapshot import SnapshotProvider
 
             with owned_temporary_directory(prefix="openmd-kaze-snapshot-") as directory:
                 path = Path(directory) / "snapshot.html"
+                capture_source = (Path(__file__).resolve().parents[1] / "browser_extension" / "page_capture.js").read_text(encoding="utf-8")
                 js = (
                     "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
-                    "const html = await t.evaluate(() => document.documentElement.outerHTML); "
-                    "const url = await t.url(); const title = await t.evaluate(() => document.title); "
+                    "const captureSource = " + json.dumps(capture_source) + "; "
+                    "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__(); }, "
+                    "{ arg: captureSource, timeoutMs: " + str(CAPTURE_TIMEOUT_MS) + " }); "
+                    "const html = captured.html; const url = captured.url; const title = captured.title; "
                     "if (Buffer.byteLength(html, 'utf8') > " + str(MAX_HTML_BYTES) + ") throw new Error('snapshot_too_large'); "
                     "const fs = await import('node:fs/promises'); "
                     "await fs.writeFile(" + json.dumps(str(path)) + ", html, 'utf8'); "
-                    "({url, title, bytes: Buffer.byteLength(html, 'utf8')})"
+                    "({url, title, bytes: Buffer.byteLength(html, 'utf8'), capture_meta: captured.capture_meta})"
                 )
-                page = session.call("js", {"code": js, "timeoutMs": READ_TIMEOUT_MS, "maxChars": 4096}, timeout=READ_TIMEOUT_MS / 1000 + 1)
+                page = session.call("js", {"code": js, "timeoutMs": CAPTURE_TIMEOUT_MS, "maxChars": 4096}, timeout=CAPTURE_CALL_TIMEOUT_S)
                 final_url = page.get("url")
                 title = page.get("title")
+                capture_meta = page.get("capture_meta")
                 try:
                     html = path.read_text(encoding="utf-8")
                 except OSError as exc:
@@ -395,10 +425,15 @@ class KazeSnapshotProvider:
                     raise KazeError("kaze_page_url_mismatch", "Kaze ended on a different page than requested.", "Open the requested URL in Kaze and retry; login and error pages are not saved as success.")
                 if _is_login_redirect(final_url):
                     raise KazeError("kaze_login_required", "Kaze was redirected to a login page.", "Sign in to the requested site in Kaze, then retry.")
-                item = snapshot_item(path, url)
+                item = snapshot_item(path, url, capture_meta=capture_meta if isinstance(capture_meta, dict) else None)
                 result = SnapshotProvider().extract(BackendExtractRequest(item, request.backend_chain))
             metadata = {key: value for key, value in result.metadata.items() if key != "snapshot_path"}
-            metadata.update({"captured_from": "browser_snapshot", "browser_backend": self.name, "coverage": "visible_only"})
+            metadata.update({"captured_from": "browser_snapshot", "browser_backend": self.name})
+            if isinstance(capture_meta, dict):
+                metadata["capture"] = dict(capture_meta)
+                metadata["coverage"] = capture_meta.get("coverage") or "visible_only"
+            else:
+                metadata["coverage"] = "visible_only"
             if result.status == "failed":
                 code = "kaze_login_required" if result.error_code in {"login_wall", "login_required"} else result.error_code or "kaze_snapshot_failed"
                 action = "Sign in to the requested site in Kaze, then retry." if code == "kaze_login_required" else "Inspect the source page in Kaze and retry."

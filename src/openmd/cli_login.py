@@ -64,6 +64,8 @@ def source_next_action(error_code: str | None) -> str | None:
         return "Kaze 的 BrowserMCP 接口与 Openmd 不兼容；更新 Kaze 后重试，或使用其他 Openmd 路线。"
     if error_code == "kaze_timeout":
         return "Kaze BrowserMCP 响应超时；确认 Kaze 正在运行且 External Agents 已启用后重试。"
+    if error_code == "kaze_script_error":
+        return "Kaze 拒绝了页面采集脚本参数；这是 Openmd 与 BrowserMCP 的调用兼容问题，请更新 Openmd 后重试。"
     if error_code == "kaze_page_not_ready":
         return "页面仍在加载；等 Kaze 页面完成加载后重试。"
     if error_code == "kaze_tab_open_failed":

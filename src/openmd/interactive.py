@@ -475,8 +475,9 @@ def cmd_go(args: argparse.Namespace) -> int:
     write; the extension keeps its human-selected destination in browser state.
     """
     from openmd.cli import _emit_result, _process_input, _start_compact_receipt
-    from openmd.core.environment import is_non_interactive
-    tty = is_interactive() and not is_non_interactive(args)
+    # is_interactive() already covers the terminal and the per-call non-interactive mark; the
+    # explicit machine flags are the only extra signal here.
+    tty = is_interactive() and not (getattr(args, "json", False) or getattr(args, "yes", False))
     if any(getattr(args, option, False) for option in ("all", "overwrite", "update", "new_version")) or args.package_root:
         return _machine_failure(args, error_code="batch_command_required",
                                 detail="openmd go: 批量与更新操作请使用 ingest/batch/collect 及明确输出目录")

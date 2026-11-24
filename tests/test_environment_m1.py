@@ -83,3 +83,12 @@ def test_missing_ocr_backend_tells_agents_what_to_install():
     assert "openmd models install ocr:chain" in source_next_action("ocr_backend_missing")
     source = (Path(__file__).resolve().parents[1] / "src" / "openmd" / "cli_items.py").read_text(encoding="utf-8")
     assert '"id": "ocr:chain"' in source
+
+
+def test_non_interactive_mark_does_not_outlive_one_cli_call(monkeypatch, tmp_path):
+    import os
+    from openmd import cli
+
+    monkeypatch.delenv("OPENMD_NON_INTERACTIVE", raising=False)
+    cli.main(["go", "https://example.org/a", "--backend", "mock", "-o", str(tmp_path), "--json"])
+    assert "OPENMD_NON_INTERACTIVE" not in os.environ

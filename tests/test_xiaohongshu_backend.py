@@ -8,6 +8,7 @@ from pathlib import Path
 
 from openmd.backends.base import BackendExtractRequest, DiscoveryRequest
 from openmd.backends.executor import SkeletonBackendProvider, SkeletonDiscoveryProvider
+from openmd.backends.kaze_snapshot import KAZE_BACKEND, KazeSnapshotProvider
 from openmd.backends.registry import (
     BackendRuntimeOptions,
     create_runtime_backend_provider_registry,
@@ -115,6 +116,12 @@ class XiaohongshuRuntimeGateTests(unittest.TestCase):
         provider = browser_registry.provider_for(OPENCLI_XIAOHONGSHU_NOTE_BACKEND)
         self.assertIsInstance(provider, OpenCliXiaohongshuNoteProvider)
 
+    def test_browser_backend_gate_registers_kaze_snapshot_fallback(self) -> None:
+        registry = create_runtime_backend_provider_registry(
+            "xiaohongshu", BackendRuntimeOptions(enable_browser_backends=True)
+        )
+        self.assertIsInstance(registry.provider_for(KAZE_BACKEND), KazeSnapshotProvider)
+
     def test_browser_backend_gate_registers_user_discovery_provider_extension(self) -> None:
         request = DiscoveryRequest(
             input_url=_user_url(),
@@ -174,6 +181,14 @@ class XiaohongshuRuntimeGateTests(unittest.TestCase):
 class XiaohongshuNoteProviderTests(unittest.TestCase):
     def test_cli_timeout_is_bounded_to_about_one_minute(self) -> None:
         self.assertLessEqual(OpenCliXiaohongshuNoteProvider().timeout, 60)
+
+    def test_composite_note_assets_timeout_is_short_before_browser_fallback(self) -> None:
+        from openmd.backends.xiaohongshu_providers import XiaohongshuCompositeProvider
+
+        self.assertLessEqual(
+            XiaohongshuCompositeProvider(BackendRuntimeOptions())._opencli_timeout,
+            20,
+        )
 
     def test_timeout_closes_only_this_openmd_owned_browser_job(self) -> None:
         from unittest.mock import patch

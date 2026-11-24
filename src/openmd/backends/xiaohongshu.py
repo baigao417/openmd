@@ -67,6 +67,9 @@ def register_backend_providers(
     requested = options.backend_override
     if options.enable_browser_backends and requested in {None, OPENCLI_XIAOHONGSHU_NOTE_BACKEND}:
         registry.register(OPENCLI_XIAOHONGSHU_NOTE_BACKEND, OpenCliXiaohongshuNoteProvider())
+    from openmd.backends.kaze_snapshot import register_backend_providers as register_kaze_snapshot
+
+    register_kaze_snapshot(registry, options)
 
 
 def register_discovery_providers(

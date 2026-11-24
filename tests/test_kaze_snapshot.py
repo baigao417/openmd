@@ -273,6 +273,72 @@ def test_kaze_provider_is_registered_only_behind_browser_gate(monkeypatch):
     assert x_registry.provider_for(KAZE_BACKEND) is not None
 
 
+def test_kaze_descriptor_covers_platform_snapshot_fallbacks():
+    descriptor = KazeSnapshotProvider().descriptor()
+    platforms = descriptor.capabilities[0].platforms
+    assert "weixin" in platforms
+    assert "xiaohongshu" in platforms
+
+
+def test_kaze_rejects_weixin_challenge_page_after_snapshot(monkeypatch):
+    session = FakeSession(
+        rows=[],
+        html=(
+            "<html><head><title>环境异常</title></head><body>"
+            "<main><h1>当前环境异常，完成验证后即可继续访问</h1></main>"
+            "</body></html>"
+        ),
+        final_url="https://mp.weixin.qq.com/s/example",
+    )
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem(
+            "weixin", "single", "https://mp.weixin.qq.com/s/example", source_type="article"
+        ),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status == "failed"
+    assert result.error_code == "browser_challenge_page"
+    assert result.text == ""
+
+
+def test_kaze_extracts_xiaohongshu_loaded_page_with_images(monkeypatch):
+    session = FakeSession(
+        rows=[],
+        html=(
+            "<html><head><title>小红书</title></head><body>"
+            "<main><article class='note-detail' note-id='note123'>"
+            "<h1 class='title'>示例笔记</h1>"
+            "<div class='desc'>笔记正文内容</div>"
+            "<div class='media-container'><img src='https://img.example/a.jpg?token=secret'></div>"
+            "</article></main></body></html>"
+        ),
+        final_url="https://www.xiaohongshu.com/explore/note123",
+    )
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem(
+            "xiaohongshu",
+            "single",
+            "https://www.xiaohongshu.com/explore/note123",
+            source_type="mixed",
+            raw_meta={"snapshot_note_id": "note123"},
+        ),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status in {"verified", "partial"}
+    assert "笔记正文内容" in result.text
+    assert result.metadata["snapshot_site"] == "xiaohongshu"
+    assert result.metadata["image_count"] == 1
+    assert "token" not in result.text
+
+
 def test_kaze_keeps_article_heading_when_page_title_is_generic(monkeypatch):
     session = FakeSession(html=(
         "<html><head><title>Public page</title></head><body>"

@@ -315,7 +315,7 @@ class KazeSnapshotProvider:
             name=self.name,
             layer="browser_rendered",
             capabilities=(BackendCapability(
-                platforms=("web_article", "x"), source_types=("article",), input_types=("single",),
+                platforms=("web_article", "x", "weixin", "xiaohongshu"), source_types=("article", "video", "image_text", "mixed"), input_types=("single",),
                 source_levels=("browser_rendered", "third_party_extractor", "partial_extraction"),
                 requires_network=False, requires_credentials=True,
             ),),
@@ -427,6 +427,13 @@ class KazeSnapshotProvider:
                     raise KazeError("kaze_login_required", "Kaze was redirected to a login page.", "Sign in to the requested site in Kaze, then retry.")
                 item = snapshot_item(path, url, capture_meta=capture_meta if isinstance(capture_meta, dict) else None)
                 result = SnapshotProvider().extract(BackendExtractRequest(item, request.backend_chain))
+                # ``snapshot_item`` uses the generic page_snapshot parser for
+                # sites without a dedicated snapshot parser. Reapply the
+                # original platform judge so a Weixin challenge page cannot
+                # become accepted Markdown.
+                from openmd.core.content_validation import validate_extraction_content
+
+                result = validate_extraction_content(result, request.item)
             metadata = {key: value for key, value in result.metadata.items() if key != "snapshot_path"}
             metadata.update({"captured_from": "browser_snapshot", "browser_backend": self.name})
             if isinstance(capture_meta, dict):
@@ -444,7 +451,11 @@ class KazeSnapshotProvider:
                 result = TranscriptResult(text=result.text, status=result.status, source_level=result.source_level,
                                           backend=self.name, title=result.title or title, author=result.author,
                                           published_at=result.published_at, error_code=result.error_code,
-                                          error_summary=result.error_summary, source_notes=result.source_notes, metadata=metadata)
+                                          error_summary=result.error_summary,
+                                          source_notes=[
+                                              *result.source_notes,
+                                              "通过 Kaze 已登录浏览器快照回落读取当前页；未保存浏览器凭证。",
+                                          ], metadata=metadata)
         except KazeError as exc:
             result = self._failed(exc.code, str(exc), exc.next_action)
         except Exception as exc:

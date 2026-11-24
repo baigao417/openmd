@@ -668,7 +668,9 @@
       "provider": "browser.kaze.snapshot",
       "sources": [
         "web_article",
-        "x"
+        "x",
+        "weixin",
+        "xiaohongshu"
       ],
       "capability": "content",
       "gates": [

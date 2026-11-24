@@ -71,7 +71,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `grok/detail`: `src/openmd/backends/ai_chat.py:103`
 - `grok/status`: `src/openmd/backends/ai_chat.py:255`
 - `openmd-douyin/creator-videos`: `src/openmd/backends/douyin.py:289`
-- `openmd-xiaohongshu/creator-notes`: `src/openmd/backends/xiaohongshu.py:124`
+- `openmd-xiaohongshu/creator-notes`: `src/openmd/backends/xiaohongshu.py:127`
 - `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:98`
 - `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
 - `qwen/status`: `src/openmd/backends/ai_chat.py:255`
@@ -79,12 +79,12 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `twitter/thread`: `src/openmd/backends/x.py:102`
 - `twitter/tweets`: `src/openmd/backends/x.py:116`
 - `web/read`: `src/openmd/backends/web_article.py:660`, `src/openmd/backends/xiaoyuzhou.py:163`
-- `weixin/download`: `src/openmd/backends/weixin.py:269`
+- `weixin/download`: `src/openmd/backends/weixin.py:272`
 - `xiaoe/catalog`: `src/openmd/backends/xiaoe.py:134`
 - `xiaoe/content`: `src/openmd/backends/xiaoe.py:152`
 - `xiaoe/play-url`: `src/openmd/backends/xiaoe.py:129`
-- `xiaohongshu/note`: `src/openmd/backends/xiaohongshu.py:95`
-- `xiaohongshu/user`: `src/openmd/backends/xiaohongshu.py:100`
+- `xiaohongshu/note`: `src/openmd/backends/xiaohongshu.py:98`
+- `xiaohongshu/user`: `src/openmd/backends/xiaohongshu.py:103`
 - `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:324`
 - `xiaoyuzhou/podcast-episodes`: `src/openmd/backends/xiaoyuzhou.py:149`
 - `xiaoyuzhou/transcript`: `src/openmd/backends/xiaoyuzhou.py:128`

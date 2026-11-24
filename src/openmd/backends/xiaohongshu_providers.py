@@ -142,7 +142,7 @@ class XiaohongshuCompositeProvider:
         image_ocr: ImageOcrExtractor | None = None,
         asr_client: AsrClient | None = None,
         hard_subtitle_ocr: HardSubtitleExtractor | None = None,
-        opencli_timeout: int = 60,
+        opencli_timeout: int = 20,
         ffmpeg_timeout: int = 600,
         asr_timeout: int = 300,
     ) -> None:
@@ -225,7 +225,7 @@ class XiaohongshuCompositeProvider:
                         finish_openmd_bridge()
                     except (ImportError, OSError, RuntimeError):
                         pass
-                    summary = f"OpenCLI note-assets timed out after {self._opencli_timeout} seconds. 请在浏览器中打开笔记后点 Openmd 扩展。"
+                    summary = f"OpenCLI note-assets timed out after {self._opencli_timeout} seconds；将自动尝试已登录浏览器快照。"
                 else:
                     summary = stderr or stdout or f"OpenCLI exited with code {exit_code}."
                 return _command_failure(

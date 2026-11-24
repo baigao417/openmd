@@ -64,6 +64,9 @@ def register_backend_providers(
         registry.register(OPENCLI_WEIXIN_DOWNLOAD_BACKEND, OpenCliWeixinDownloadProvider())
     if options.enable_browser_backends and requested in {None, OPENCLI_WEB_READ_BACKEND}:
         registry.register(OPENCLI_WEB_READ_BACKEND, OpenCliWebReadProvider())
+    from openmd.backends.kaze_snapshot import register_backend_providers as register_kaze_snapshot
+
+    register_kaze_snapshot(registry, options)
 
 
 def register_discovery_providers(

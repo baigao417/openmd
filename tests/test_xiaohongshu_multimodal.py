@@ -175,7 +175,10 @@ class XiaohongshuAdapterTests(unittest.TestCase):
         self.assertEqual(item.raw_meta["extraction_contract_version"], XIAOHONGSHU_EXTRACTION_CONTRACT_VERSION)
         self.assertEqual(item.raw_meta["required_components"], ["native_text", "image_ocr", "video_transcript"])
         self.assertIn("runtime-secret", item.raw_meta["runtime_note_url"])
-        self.assertEqual(default_backend_chains(effective=False)["xiaohongshu"], (XIAOHONGSHU_COMPOSITE_BACKEND,))
+        self.assertEqual(
+            default_backend_chains(effective=False)["xiaohongshu"],
+            (XIAOHONGSHU_COMPOSITE_BACKEND, "browser.kaze.snapshot"),
+        )
         self.assertEqual(create_default_registry().backend_chain("xiaohongshu")[0], XIAOHONGSHU_COMPOSITE_BACKEND)
 
         mock_result = XiaohongshuAdapter().extract_text(item, backend="mock")
@@ -493,7 +496,7 @@ class XiaohongshuCompositeProviderTests(unittest.TestCase):
             result = provider.extract(_request(item))
         cleanup.assert_called_once_with()
         self.assertEqual(result.error_code, "opencli_xiaohongshu_timeout")
-        self.assertIn("请在浏览器中打开笔记后点 Openmd 扩展", result.error_summary)
+        self.assertIn("将自动尝试已登录浏览器快照", result.error_summary)
 
     def test_note_not_found_is_durable_terminal_gap_not_retryable_failure(self) -> None:
         provider = XiaohongshuCompositeProvider(

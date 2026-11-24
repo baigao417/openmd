@@ -3613,6 +3613,9 @@ class ArticleProviderTests(unittest.TestCase):
             browser_weixin.provider_for(OPENCLI_WEB_READ_BACKEND),
             OpenCliWebReadProvider,
         )
+        from openmd.backends.kaze_snapshot import KAZE_BACKEND, KazeSnapshotProvider
+
+        self.assertIsInstance(browser_weixin.provider_for(KAZE_BACKEND), KazeSnapshotProvider)
 
         safe_web = create_runtime_backend_provider_registry("web_article", BackendRuntimeOptions())
         self.assertEqual(
@@ -3642,6 +3645,7 @@ class ArticleProviderTests(unittest.TestCase):
                 # round13-g: local parsing first (5-20 s vs ~95 s via the extension);
                 # challenge pages are rejected and fall back to the extension route.
                 WEIXIN_LOCAL_BACKEND,
+                "browser.kaze.snapshot",
                 OPENCLI_WEIXIN_DOWNLOAD_BACKEND,
                 "defuddle.web.content",
                 OPENCLI_WEB_READ_BACKEND,

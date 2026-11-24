@@ -27,6 +27,8 @@ TOOLS_TIMEOUT_S = 2.0
 TOTAL_TIMEOUT_S = 10.0
 PAGE_READY_TIMEOUT_MS = 20_000
 READ_TIMEOUT_MS = 15_000
+CAPTURE_TIMEOUT_MS = 60_000
+CAPTURE_CALL_TIMEOUT_S = 61.0
 # Single-page apps paint their navigation shell before the content request
 # returns. Capture only after visible text and finished requests stop changing
 # for SETTLE_STABLE_MS, bounded by SETTLE_MAX_MS.
@@ -99,6 +101,8 @@ def _launcher() -> Path:
 
 def _error_from_exception(exc: BaseException) -> KazeError:
     message = str(exc).lower()
+    if "invalid_args" in message and "dispatched:false" in message:
+        return KazeError("kaze_script_error", "Kaze rejected the page capture script arguments.", "Update Openmd or report the BrowserMCP argument error; starting Kaze again will not fix this request.")
     if "external agents" in message or "doesn't allow other agents" in message:
         return KazeError("kaze_external_agents_disabled", "Kaze does not allow external agents.", "Enable External Agents in Kaze settings, then retry.")
     if "process exited" in message or "process closed" in message:
@@ -183,6 +187,10 @@ class _McpSession:
             message = json.loads(line)
             if message.get("id") == request_id:
                 if "error" in message:
+                    error = message.get("error")
+                    serialized = json.dumps(error, ensure_ascii=False).lower()
+                    if "invalid_args" in serialized and "dispatched" in serialized and "false" in serialized:
+                        raise KazeError("kaze_script_error", "Kaze rejected the page capture script arguments.", "Update Openmd or report the BrowserMCP argument error; starting Kaze again will not fix this request.")
                     raise RuntimeError("Kaze MCP request failed")
                 return message
 
@@ -211,6 +219,8 @@ class _McpSession:
         result = response.get("result") or {}
         if result.get("isError"):
             text = " ".join(item.get("text", "") for item in result.get("content", []) if item.get("type") == "text")
+            if "invalid_args" in text.lower() and "dispatched:false" in text.lower():
+                raise KazeError("kaze_script_error", "Kaze rejected the page capture script arguments.", "Update Openmd or report the BrowserMCP argument error; starting Kaze again will not fix this request.")
             raise RuntimeError(text[:300])
         return _tool_payload(result)
 
@@ -371,14 +381,15 @@ class KazeSnapshotProvider:
                 js = (
                     "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
                     "const captureSource = " + json.dumps(capture_source) + "; "
-                    "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__(); }, captureSource); "
+                    "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__(); }, "
+                    "{ arg: captureSource, timeoutMs: " + str(CAPTURE_TIMEOUT_MS) + " }); "
                     "const html = captured.html; const url = await t.url(); const title = captured.title; "
                     "if (Buffer.byteLength(html, 'utf8') > " + str(MAX_HTML_BYTES) + ") throw new Error('snapshot_too_large'); "
                     "const fs = await import('node:fs/promises'); "
                     "await fs.writeFile(" + json.dumps(str(path)) + ", html, 'utf8'); "
                     "({url, title, bytes: Buffer.byteLength(html, 'utf8'), capture_meta: captured.capture_meta})"
                 )
-                page = session.call("js", {"code": js, "timeoutMs": READ_TIMEOUT_MS, "maxChars": 4096}, timeout=READ_TIMEOUT_MS / 1000 + 1)
+                page = session.call("js", {"code": js, "timeoutMs": CAPTURE_TIMEOUT_MS, "maxChars": 4096}, timeout=CAPTURE_CALL_TIMEOUT_S)
                 final_url = page.get("url")
                 title = page.get("title")
                 capture_meta = page.get("capture_meta")

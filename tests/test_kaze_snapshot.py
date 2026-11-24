@@ -40,6 +40,12 @@ class FakeSession:
             return {"tabId": "owned-tab"}
         if name == "js":
             code = arguments["code"]
+            if "captureSource" in code:
+                # Match Kaze's Tab.evaluate(script, opts) contract: callback
+                # arguments are supplied via opts.arg.
+                if "{ arg: captureSource, timeoutMs: 60000 }" not in code:
+                    raise RuntimeError("invalid_args: Tab.evaluate options expected object; dispatched:false")
+                assert arguments["timeoutMs"] == 60_000
             match = re.search(r"fs\.writeFile\((\"(?:\\\\.|[^\"])*\")", code)
             if match:
                 Path(json.loads(match.group(1))).write_text(self.html, encoding="utf-8")
@@ -267,6 +273,48 @@ def test_kaze_waits_for_rendered_text_to_settle_before_capture(monkeypatch):
     assert "stable" in scripts[settle] and "setTimeout" in scripts[settle]
     assert "performance.getEntriesByType('resource').length" not in scripts[settle]
     assert "querySelectorAll('*').length" in scripts[settle]
+
+
+def test_kaze_evaluate_uses_options_arg_and_full_capture_timeout(monkeypatch):
+    session = FakeSession(rows=[])
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status in {"verified", "partial"}
+    capture_call = next(args for name, args in session.calls if name == "js" and "captureSource" in args["code"])
+    assert "{ arg: captureSource, timeoutMs: 60000 }" in capture_call["code"]
+    assert capture_call["timeoutMs"] == 60_000
+    assert capture_call["timeoutMs"] > 45_000
+
+
+def test_kaze_invalid_evaluate_arguments_are_reported_as_script_error(monkeypatch):
+    session = FakeSession(rows=[])
+    original_call = session.call
+
+    def call(name, arguments, timeout):
+        if name == "js" and "captureSource" in arguments["code"]:
+            raise RuntimeError("invalid_args: Tab.evaluate options expected object; dispatched:false")
+        return original_call(name, arguments, timeout)
+
+    session.call = call
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status == "failed"
+    assert result.error_code == "kaze_script_error"
+    from openmd.cli_login import source_next_action
+
+    assert "调用兼容问题" in source_next_action(result.error_code)
 
 
 def test_kaze_capture_meta_is_forwarded_to_result(monkeypatch):

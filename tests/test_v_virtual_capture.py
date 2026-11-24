@@ -18,6 +18,13 @@ def test_shared_page_capture_script_declares_generic_bounded_protocol():
     assert "150" in source and "45_000" in source
 
 
+def test_extension_capture_uses_chrome_scripting_signatures():
+    background = (ROOT / "src" / "openmd" / "browser_extension" / "background.js").read_text(encoding="utf-8")
+    assert 'executeScript({ target: { tabId }, files: ["page_capture.js"] })' in background
+    assert "func: async (aiHosts)" in background
+    assert "args: [AI_CHAT_HOSTS]" in background
+
+
 def test_snapshot_item_carries_capture_meta(tmp_path):
     from openmd.backends.loaded_chat import snapshot_item
 

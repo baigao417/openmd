@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import argparse
 import json
 import shutil
@@ -289,6 +291,12 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(actual)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 1
+    from openmd.core.environment import is_non_interactive
+
+    if is_non_interactive(args) and not getattr(args, "gui", False):
+        # Decide once per process: --json/--yes/batch/MCP/no terminal means no prompt, QR wait or
+        # confirmation anywhere below (helpers that only see the TTY honour this variable).
+        os.environ["OPENMD_NON_INTERACTIVE"] = "1"
     if getattr(args, "command", None) == "mcp":
         return args.func(args)  # stdio server startup must not mutate tool/cache state
     from openmd.runtime.managed_tools import activate as activate_managed_tools

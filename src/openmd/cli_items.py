@@ -143,7 +143,9 @@ def _process_items(
             question = "未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？"
             first_use_confirm = getattr(args, "first_use_confirm", None)
             from openmd.core.environment import is_non_interactive
-            confirmed = bool(first_use_confirm(question)) if callable(first_use_confirm) and not is_non_interactive(args) else (
+            # An explicit confirm callback is a GUI dialog (right-click menu): it is interactive even
+            # without a terminal. Agents (--json / no callback) never get a prompt.
+            confirmed = bool(first_use_confirm(question)) if callable(first_use_confirm) and not getattr(args, "json", False) else (
                 not is_non_interactive(args) and item.url
                 and input(question + "[y/N] ").strip().lower() in {"y", "yes"}
             )

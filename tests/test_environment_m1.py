@@ -16,7 +16,7 @@ def test_headless_override_is_explicit_and_reversible(monkeypatch):
 
 
 def test_json_args_are_non_interactive_even_with_a_tty(monkeypatch):
-    monkeypatch.delenv("OPENMD_NON_INTERACTIVE", raising=False)
+    monkeypatch.setenv("OPENMD_NON_INTERACTIVE", "0")  # registered so monkeypatch restores it after cli.main sets it
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     assert is_non_interactive(Namespace(json=True, yes=False, command="go"))
@@ -37,3 +37,40 @@ def test_headless_executor_skips_browser_provider_and_records_attempt():
         "backend": "openmd.x.logged_in_browser",
         "error_code": "headless_browser_unavailable",
     }]
+
+
+def test_cli_marks_json_runs_non_interactive_for_the_whole_process(monkeypatch, tmp_path):
+    """Round16 Muse: an agent in a pseudo-terminal with --json must not reach TTY-only prompts
+    (Xiaoyuzhou QR wait, OCR first use, model install confirmation)."""
+    import os
+    from openmd import cli
+    from openmd.interactive import is_interactive
+
+    monkeypatch.setenv("OPENMD_NON_INTERACTIVE", "0")  # registered so monkeypatch restores it after cli.main sets it
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+    seen = {}
+
+    def fake_func(args):
+        seen["interactive"] = is_interactive()
+        seen["env"] = os.environ.get("OPENMD_NON_INTERACTIVE")
+        return 0
+
+    parser = cli.build_parser()
+    real_parse = parser.parse_args
+
+    def parse(argv):
+        args = real_parse(argv)
+        args.func = fake_func
+        return args
+
+    monkeypatch.setattr(cli, "build_parser", lambda: type("P", (), {"parse_args": staticmethod(parse)})())
+    assert cli.main(["go", "https://example.org/a", "-o", str(tmp_path), "--json"]) == 0
+    assert seen == {"interactive": False, "env": "1"}
+
+
+def test_gui_confirm_callback_still_asks_without_a_terminal():
+    """The right-click GUI has no terminal but its own dialog; that dialog must keep working."""
+    from pathlib import Path
+    source = (Path(__file__).resolve().parents[1] / "src" / "openmd" / "cli_items.py").read_text(encoding="utf-8")
+    assert 'callable(first_use_confirm) and not getattr(args, "json", False)' in source

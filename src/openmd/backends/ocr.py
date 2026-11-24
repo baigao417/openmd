@@ -9,6 +9,13 @@ from openmd.backends.base import BackendCapability, BackendDescriptor, BackendHe
 from openmd.ocr.pipeline import LocalOCRBackend
 
 
+def _interactive() -> bool:
+    # Same TTY test as before, plus the process-wide non-interactive mark set by the CLI.
+    import os
+
+    return sys.stdin.isatty() and os.environ.get("OPENMD_NON_INTERACTIVE", "").strip().lower() not in {"1", "true", "yes", "on"}
+
+
 class OCRRouterProvider:
     def __init__(self, name: str, options) -> None:
         self.name, self.options = name, options
@@ -57,7 +64,7 @@ class OCRRouterProvider:
 
                 if first_use_confirm is not None:
                     installed = install_on_first_use(confirm=first_use_confirm)
-                elif sys.stdin.isatty():
+                elif _interactive():
                     installed = install_on_first_use(interactive=True)
                 else:
                     installed = False
@@ -79,7 +86,7 @@ class OCRRouterProvider:
 
             if first_use_confirm is not None:
                 installed = install_on_first_use(confirm=first_use_confirm)
-            elif sys.stdin.isatty():
+            elif _interactive():
                 installed = install_on_first_use(interactive=True)
             else:
                 installed = False

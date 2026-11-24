@@ -309,7 +309,7 @@ def cmd_models_install(args) -> int:
         return 0
     if not args.tier.startswith("asr:"):
         if args.tier in {'ocr:chain', 'ocr:ovis3', 'ocr:minicpm'}:
-            if not sys.stdin.isatty() and not getattr(args, "_confirmed", False):
+            if not _interactive() and not getattr(args, "_confirmed", False):
                 print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
                 return 2
             total = plan.get('estimated_size_bytes') or sum(int(item.get('size_bytes', 0)) for item in plan['downloads'])
@@ -422,7 +422,7 @@ def cmd_models_install(args) -> int:
                               'runtime': runtime_receipt}, ensure_ascii=True, sort_keys=True))
             return 0
         raise ValueError("model_tier_download_unsupported: OCR installation requires ocr:chain")
-    if not sys.stdin.isatty() and not getattr(args, "_confirmed", False):
+    if not _interactive() and not getattr(args, "_confirmed", False):
         print(json.dumps({**plan, "next_action": f"Run interactively: openmd models install {args.tier}"}, ensure_ascii=True, sort_keys=True))
         return 2
     total = sum(int(item.get("size_bytes", 0)) for item in plan["downloads"])
@@ -502,3 +502,10 @@ def cmd_models_install(args) -> int:
                          **({"model_sha256": expected_sha256.lower()} if verified.endswith("sha256") else {})})
     print(json.dumps({"schema": "openmd.model-install-receipt/v1", "tier": args.tier, "downloads": receipts}, ensure_ascii=True, sort_keys=True))
     return 0
+
+
+def _interactive() -> bool:
+    # Same TTY test as before, plus the process-wide non-interactive mark set by the CLI.
+    import os
+
+    return sys.stdin.isatty() and os.environ.get("OPENMD_NON_INTERACTIVE", "").strip().lower() not in {"1", "true", "yes", "on"}

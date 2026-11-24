@@ -151,6 +151,34 @@ class CaptionGroupingTests(unittest.TestCase):
         self.assertIn("First caption continues here", rendered)
         self.assertIn("\n\n**00:00:40**\n\nSecond caption", rendered)
 
+    def test_xiaoe_transcript_section_uses_shared_caption_layout(self):
+        text = "# Lesson\n\n## Transcript\n\n[00:00] First source line.\n[01:00] Second source line."
+        expected = "# Lesson\n\n## Transcript\n\n**00:00**\n\nFirst source line.\n\n**01:00**\n\nSecond source line."
+        self.assertEqual(format_transcript(text, source_type="video", platform="xiaoe"), expected)
+        document = MarkdownDocument({"platform": "xiaoe", "source_type": "video"}, "Lesson", text)
+        self.assertIn("## Transcript\n\n**00:00**", render_document(document))
+        self.assertIn(text, render_document(document, raw=True))
+
+    def test_xiaoe_package_index_and_sidecar_share_readable_layout(self):
+        import tempfile
+        from openmd.core.package_writer import write_item_package
+
+        for source_type in ("audio", "video"):
+            for prefix in ("", "## Transcript\n\n", "# Lesson\n\n## Transcript\n\n"):
+                with self.subTest(source_type=source_type, prefix=prefix), tempfile.TemporaryDirectory() as directory:
+                    item = ContentItem(platform="xiaoe", input_type="single", source_type=source_type,
+                                       url="https://example.test/course/lesson")
+                    result = TranscriptResult(text=prefix + "[00:00] First source line.\n[01:00] Second source line.",
+                                              title="Lesson", status="verified", source_level="media_asr", backend="fixture")
+                    package = write_item_package(item, result, directory).package_path
+                    expected = "**00:00**\n\nFirst source line.\n\n**01:00**\n\nSecond source line."
+                    for name in ("index.md", "transcript.md"):
+                        rendered = (package / name).read_text(encoding="utf-8")
+                        self.assertIn(expected, rendered)
+                        self.assertNotIn("[00:00]", rendered)
+                        self.assertEqual(rendered.count("\n## Transcript\n"), 1)
+                        self.assertEqual(rendered.count("# Lesson\n"), 1)
+
     def test_seconds_based_index_table_is_grouped(self):
         text = (
             "| index | start | end | text |\n| --- | --- | --- | --- |\n"

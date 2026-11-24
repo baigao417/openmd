@@ -76,8 +76,13 @@ def managed_defuddle_root() -> Path:
     return data_directory() / "tools" / "defuddle"
 
 
+def managed_defuddle_modules() -> Path:
+    """Module root that tool-card paths (``defuddle/dist/...``) are relative to."""
+    return managed_defuddle_root() / "node_modules"
+
+
 def managed_defuddle_package_root() -> Path:
-    return managed_defuddle_root() / "node_modules" / DEFUDDLE_PACKAGE
+    return managed_defuddle_modules() / DEFUDDLE_PACKAGE
 
 
 

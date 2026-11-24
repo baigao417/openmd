@@ -27,6 +27,12 @@ TOOLS_TIMEOUT_S = 2.0
 TOTAL_TIMEOUT_S = 10.0
 PAGE_READY_TIMEOUT_MS = 20_000
 READ_TIMEOUT_MS = 15_000
+# Single-page apps paint their navigation shell before the content request
+# returns. Capture only after visible text and finished requests stop changing
+# for SETTLE_STABLE_MS, bounded by SETTLE_MAX_MS.
+SETTLE_STABLE_MS = 1_600
+SETTLE_POLL_MS = 400
+SETTLE_MAX_MS = 10_000
 MAX_HTML_BYTES = 50 * 1024 * 1024
 REQUIRED_TOOLS = {
     "tabs_list": {"scope", "limit"},
@@ -337,11 +343,20 @@ class KazeSnapshotProvider:
             ready_js = (
                 "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
                 "await t.expect({target:{selector:'body'},visible:true},{timeoutMs:" + str(PAGE_READY_TIMEOUT_MS) + "}); "
-                "({ready: await t.evaluate(() => document.readyState)})"
+                "const settled = await t.evaluate(async () => { "
+                "const deadline = Date.now() + " + str(SETTLE_MAX_MS) + "; let last = '', stable = 0; "
+                "while (Date.now() < deadline) { "
+                "const sig = document.readyState + ':' + ((document.body && document.body.innerText) || '').length + ':' + performance.getEntriesByType('resource').length; "
+                "stable = sig === last && document.readyState === 'complete' ? stable + " + str(SETTLE_POLL_MS) + " : 0; "
+                "if (stable >= " + str(SETTLE_STABLE_MS) + ") break; "
+                "last = sig; await new Promise((resolve) => setTimeout(resolve, " + str(SETTLE_POLL_MS) + ")); } "
+                "return document.readyState; }, {timeoutMs: " + str(SETTLE_MAX_MS + 2_000) + "}); "
+                "({ready: settled})"
             )
             try:
-                session.call("js", {"code": ready_js, "timeoutMs": PAGE_READY_TIMEOUT_MS,
-                                    "maxChars": 1024}, timeout=PAGE_READY_TIMEOUT_MS / 1000 + 1)
+                ready_budget_ms = PAGE_READY_TIMEOUT_MS + SETTLE_MAX_MS + 2_000
+                session.call("js", {"code": ready_js, "timeoutMs": ready_budget_ms,
+                                    "maxChars": 1024}, timeout=ready_budget_ms / 1000 + 1)
             except Exception as exc:
                 if not isinstance(exc, TimeoutError) and "timeout" not in str(exc).lower():
                     raise
@@ -392,7 +407,7 @@ class KazeSnapshotProvider:
                                           source_notes=["Kaze did not provide a validated page snapshot."], metadata=metadata)
             else:
                 result = TranscriptResult(text=result.text, status=result.status, source_level=result.source_level,
-                                          backend=self.name, title=title or result.title, author=result.author,
+                                          backend=self.name, title=result.title or title, author=result.author,
                                           published_at=result.published_at, error_code=result.error_code,
                                           error_summary=result.error_summary, source_notes=result.source_notes, metadata=metadata)
         except KazeError as exc:

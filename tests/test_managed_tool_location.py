@@ -88,3 +88,51 @@ def test_doctor_reports_invalid_managed_location(tmp_path, monkeypatch, capsys):
     assert result["ok"] is False
     assert result["profile_diagnostics"]["error_code"] == "local_configuration_invalid"
     assert "Traceback" not in output.err
+
+
+def _install_fake_managed_defuddle(tmp_path, monkeypatch):
+    """Lay out the real npm prefix shape: <root>/node_modules/defuddle/dist."""
+    import os
+
+    data = tmp_path / "data"
+    package = data / "tools" / "defuddle" / "node_modules" / "defuddle"
+    (package / "dist").mkdir(parents=True)
+    (package / "dist" / "cli.js").touch()
+    (package / "dist" / "node.js").touch()
+    (package / "package.json").write_text(json.dumps({"version": managed_tools.DEFUDDLE_VERSION}), encoding="utf-8")
+    folder = tmp_path / "node" if os.name == "nt" else tmp_path / "node" / "bin"
+    folder.mkdir(parents=True)
+    (folder / ("node.exe" if os.name == "nt" else "node")).touch()
+    monkeypatch.setattr(managed_tools, "data_directory", lambda: data)
+    monkeypatch.setattr(managed_tools, "node_dir", lambda: folder)
+    monkeypatch.delenv("OPENMD_TOOL_DEFUDDLE_ROOT", raising=False)
+    monkeypatch.delenv("OPENMD_TOOL_DEFUDDLE_NODE", raising=False)
+    return package.parent
+
+
+def test_snapshot_uses_managed_defuddle_without_local_config(tmp_path, monkeypatch):
+    """Browser-host and fresh installs have no local config; snapshots must still use Defuddle."""
+    import openmd.backends.snapshot as snapshot_backend
+
+    modules = _install_fake_managed_defuddle(tmp_path, monkeypatch)
+    monkeypatch.setattr(snapshot_backend, "load_local_config", lambda: {})
+
+    spec = snapshot_backend._managed_defuddle_spec()
+
+    assert spec is not None
+    _node, root, module, _options = spec
+    assert Path(root) == modules
+    assert (Path(root) / module).is_file()
+
+
+def test_url_route_uses_managed_defuddle_without_local_config(tmp_path, monkeypatch):
+    import openmd.routing.runner as runner
+
+    modules = _install_fake_managed_defuddle(tmp_path, monkeypatch)
+    monkeypatch.setattr(runner, "load_local_config", lambda: {})
+    card = json.loads((Path(runner.__file__).parent / "cards" / "defuddle.json").read_text(encoding="utf-8"))
+
+    launcher = runner.resolve_launcher(card)
+
+    assert launcher.origin == "managed"
+    assert launcher.entry_path == (modules / "defuddle" / "dist" / "cli.js").resolve()

@@ -229,3 +229,39 @@ def test_kaze_provider_is_registered_only_behind_browser_gate(monkeypatch):
 
     register_x(x_registry, BackendRuntimeOptions(enable_browser_backends=True))
     assert x_registry.provider_for(KAZE_BACKEND) is not None
+
+
+def test_kaze_keeps_article_heading_when_page_title_is_generic(monkeypatch):
+    session = FakeSession(html=(
+        "<html><head><title>Public page</title></head><body>"
+        "<main><article><h1>Founder Mode</h1><p>Visible article text with enough content to extract.</p></article></main>"
+        "</body></html>"
+    ))
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    result = KazeSnapshotProvider().extract(request)
+
+    assert result.status in {"verified", "partial"}
+    assert result.title == "Founder Mode"
+
+
+def test_kaze_waits_for_rendered_text_to_settle_before_capture(monkeypatch):
+    """SPAs paint their shell before the article request returns; capture after text stops changing."""
+    session = FakeSession(rows=[])
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+
+    KazeSnapshotProvider().extract(request)
+
+    scripts = [args["code"] for name, args in session.calls if name == "js"]
+    settle = next(index for index, code in enumerate(scripts) if "innerText" in code)
+    capture = next(index for index, code in enumerate(scripts) if "outerHTML" in code)
+    assert settle < capture
+    assert "stable" in scripts[settle] and "setTimeout" in scripts[settle]

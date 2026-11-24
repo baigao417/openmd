@@ -244,16 +244,16 @@ def test_gui_copy_helpers_build_title_progress_and_failure_summary():
         {"path": "/tmp/b.pdf", "error": "PermissionError: denied"},
     ]) == ["a.pdf：文档中没有可转换的文本（document_empty_text）", "b.pdf：没有读取或写入该文件的权限（PermissionError）"]
     assert shell_menu._gui_failure_lines([
-        {"path": r"C:\Users\private\meeting.mp4", "error": "asr_runtime_unavailable",
+        {"path": "/tmp/private/meeting.mp4", "error": "asr_runtime_unavailable",
          "next_action": "openmd doctor --profile media"},
-        {"path": r"C:\Users\private\missing.mp3", "error": "asr_model_missing",
+        {"path": "/tmp/private/missing.mp3", "error": "asr_model_missing",
          "next_action": "openmd models install asr:baseline"},
     ]) == [
         "meeting.mp4：本地语音运行环境未就绪（asr_runtime_unavailable）；下一步：openmd doctor --profile media",
         "missing.mp3：缺少本地语音模型（asr_model_missing）；下一步：openmd models install asr:baseline",
     ]
     assert shell_menu._gui_failure_lines([
-        {"path": r"C:\Users\private\meeting.mp4", "error": "asr_runtime_unavailable",
+        {"path": "/tmp/private/meeting.mp4", "error": "asr_runtime_unavailable",
          "next_action": r"openmd doctor --profile media C:\Users\private\secret"},
     ]) == ["meeting.mp4：本地语音运行环境未就绪（asr_runtime_unavailable）"]
 

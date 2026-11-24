@@ -58,7 +58,7 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 
 - `bilibili/subtitle`: `src/openmd/backends/bilibili.py:407`
 - `bilibili/user-videos`: `src/openmd/backends/bilibili.py:863`
-- `browser/chrome`: `src/openmd/backends/x_browser.py:66`
+- `browser/chrome`: `src/openmd/backends/x_browser.py:67`
 - `browser/close`: `src/openmd/backends/discourse.py:157`, `src/openmd/backends/douyin.py:525`
 - `browser/eval`: `src/openmd/backends/discourse.py:144`, `src/openmd/backends/douyin.py:514`
 - `browser/open`: `src/openmd/backends/discourse.py:116`, `src/openmd/backends/douyin.py:511`
@@ -79,9 +79,9 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `openmd-xiaohongshu/note-assets`: `src/openmd/backends/xiaohongshu_providers.py:98`
 - `qwen/detail`: `src/openmd/backends/ai_chat.py:103`
 - `qwen/status`: `src/openmd/backends/ai_chat.py:255`
-- `twitter/article`: `src/openmd/backends/x.py:130`
-- `twitter/thread`: `src/openmd/backends/x.py:102`
-- `twitter/tweets`: `src/openmd/backends/x.py:116`
+- `twitter/article`: `src/openmd/backends/x.py:132`
+- `twitter/thread`: `src/openmd/backends/x.py:104`
+- `twitter/tweets`: `src/openmd/backends/x.py:118`
 - `web/read`: `src/openmd/backends/web_article.py:660`, `src/openmd/backends/xiaoyuzhou.py:163`
 - `weixin/download`: `src/openmd/backends/weixin.py:269`
 - `xiaoe/catalog`: `src/openmd/backends/xiaoe.py:134`

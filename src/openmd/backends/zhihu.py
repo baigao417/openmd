@@ -18,6 +18,7 @@ from openmd.core.secrets import sanitize_error_summary
 from openmd.runtime.managed_tools import managed_package_root
 from openmd.runtime.interpreters import run_interruptibly
 from openmd.runtime.managed_tools import command_environment, managed_command
+from openmd.runtime.opencli_patches import PATCHES, loader_environment
 
 ZHIHU_BACKEND = "opencli.zhihu.read"
 MAX_ANSWERS = 1000
@@ -178,7 +179,7 @@ class ZhihuOpenCliProvider:
     def _args(kind, parts, url, workdir):
         flags = ["-f", "json", "--window", "background", "--site-session", "ephemeral", "--keep-tab", "false"]
         if kind == "question" and len(parts) >= 2: return ["opencli", "zhihu", "question", parts[1], "--limit", str(MAX_ANSWERS), *flags]
-        if kind == "answer" and len(parts) >= 4: return ["opencli", "zhihu", "download", "--url", url, "--output", str(workdir), "--download-images", "false", *flags]
+        if kind == "answer" and len(parts) >= 4: return ["opencli", "zhihu", "answer-detail", parts[3], *flags]
         if kind in {"p", "article"} and len(parts) >= 2: return ["opencli", "zhihu", "download", "--url", url, "--output", str(workdir), "--download-images", "false", *flags]
         if kind == "collection" and len(parts) >= 2: return ["opencli", "zhihu", "collection", parts[1], "--offset", "0", "--limit", str(MAX_ANSWERS), *flags]
         return None
@@ -202,7 +203,19 @@ class ZhihuOpenCliProvider:
                 blocks.append(f"## 回答 {answer_rank}\n\n作者：{row.get('author') or '匿名用户'}\n\n赞同：{row.get('votes', 0)}{timing}\n\n来源：{row.get('url') or ''}\n\n{body}")
             answer_count = sum(1 for block in blocks if block.startswith("## 回答 "))
             return "\n\n---\n\n".join(blocks), title, None, f"取得 {answer_count} 条回答；问题页 answers command 返回条数作为覆盖观察值"
-        if kind in {"answer", "p", "article"}:
+        if kind == "answer":
+            row = _first(payload)
+            body = html_to_markdown(str(row.get("content") or ""))
+            if not body: raise ValueError("OpenCLI answer-detail returned no answer body.")
+            title = str(row.get("question_title") or "知乎回答")
+            author = str(row.get("author") or "匿名用户")
+            published = row.get("created_at") or row.get("created_time")
+            updated = row.get("updated_at") or row.get("updated_time")
+            timing = f"\n\n发布：{published}" if published else ""
+            if updated and updated != published: timing += f"\n\n编辑：{updated}"
+            text = f"# {title}\n\n## 回答\n\n作者：{author}\n\n赞同：{row.get('votes', 0)}{timing}\n\n来源：{row.get('url') or source_url}\n\n{body}"
+            return text, title, author, "由 OpenCLI answer-detail 返回完整回答"
+        if kind in {"p", "article"}:
             rows = _first(payload); candidates = list(workdir.glob("**/*.md"))
             if candidates:
                 text = candidates[0].read_text(encoding="utf-8")
@@ -246,7 +259,7 @@ class ZhihuOpenCliProvider:
             except (OSError, ValueError, TypeError, KeyError):
                 partial = True; continue
             blocks.append(f"## {item_title or row.get('title') or '收藏内容'}\n\n作者：{author or row.get('author') or '匿名用户'}\n\n赞同：{row.get('votes', 0)}\n\n{body}\n\n来源：{row['url']}")
-        if len(payload) >= MAX_ANSWERS or (declared_total is not None and len(payload) < declared_total): partial = True
+        if len(payload) >= MAX_ANSWERS or (declared_total is not None and len(payload) != declared_total): partial = True
         total_note = f"，页面声明约 {declared_total} 条" if declared_total is not None else "，总数未知"
         note = f"收藏夹条目 {len(payload)} 条{total_note}；已展开全文 {len(blocks)} 条" + ("；部分条目因内容类型或时间预算保留为摘要/未能展开" if partial else "")
         return "\n\n---\n\n".join(blocks), title, None, note, partial, declared_total
@@ -267,6 +280,8 @@ def _run_zhihu(args, *, timeout=TIME_LIMIT_SECONDS):
     if len(args) < 3 or args[:2] != ["opencli", "zhihu"] or args[2] not in allowed:
         return 2, "", "unsupported_zhihu_command"
     env = command_environment()
+    if any(patch.kind == "loader" and patch.target == f"clis/zhihu/{args[2]}.js" for patch in PATCHES):
+        env = loader_environment("zhihu", args[2], base=env)
     try:
         done = run_interruptibly(managed_command(args[1:]), capture_output=True, text=True,
             encoding="utf-8", errors="replace", timeout=timeout, env=env, check=False)

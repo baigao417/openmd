@@ -1425,6 +1425,26 @@
     },
     {
       "site": "zhihu",
+      "command": "answer-detail",
+      "args": [],
+      "positionals": 2,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:182"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "answer-detail",
+          "{parts[3]}",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
       "command": "collection",
       "args": [
         "--limit",
@@ -1433,7 +1453,7 @@
       "positionals": 1,
       "columns": [],
       "sources": [
-        "src/openmd/backends/zhihu.py:183"
+        "src/openmd/backends/zhihu.py:184"
       ],
       "argv": [
         [
@@ -1461,8 +1481,7 @@
       "positionals": 0,
       "columns": [],
       "sources": [
-        "src/openmd/backends/zhihu.py:181",
-        "src/openmd/backends/zhihu.py:182"
+        "src/openmd/backends/zhihu.py:183"
       ],
       "argv": [
         [
@@ -1489,7 +1508,7 @@
       "positionals": 1,
       "columns": [],
       "sources": [
-        "src/openmd/backends/zhihu.py:180"
+        "src/openmd/backends/zhihu.py:181"
       ],
       "argv": [
         [

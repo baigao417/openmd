@@ -1422,6 +1422,87 @@
         ]
       ],
       "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "collection",
+      "args": [
+        "--limit",
+        "--offset"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:182"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "collection",
+          "{parts[1]}",
+          "--offset",
+          "0",
+          "--limit",
+          "{str(MAX_ANSWERS)}",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "download",
+      "args": [
+        "--download-images",
+        "--output",
+        "--url"
+      ],
+      "positionals": 0,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:180",
+        "src/openmd/backends/zhihu.py:181"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "download",
+          "--url",
+          "{url}",
+          "--output",
+          "{str(workdir)}",
+          "--download-images",
+          "false",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
+    },
+    {
+      "site": "zhihu",
+      "command": "question",
+      "args": [
+        "--limit"
+      ],
+      "positionals": 1,
+      "columns": [],
+      "sources": [
+        "src/openmd/backends/zhihu.py:179"
+      ],
+      "argv": [
+        [
+          "opencli",
+          "zhihu",
+          "question",
+          "{parts[1]}",
+          "--limit",
+          "{str(MAX_ANSWERS)}",
+          "{flags}"
+        ]
+      ],
+      "kind": "upstream"
     }
   ]
 }

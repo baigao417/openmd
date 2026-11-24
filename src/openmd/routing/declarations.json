@@ -1,23 +1,87 @@
 {
   "schema": "openmd.declarations/v1",
   "opencli_contracts": {
-    "bilibili/subtitle": ["content", "from", "to", "language", "track_type"],
-    "bilibili/user-videos": ["title", "url", "bvid"],
-    "chatgpt/detail": ["Role", "Text"],
-    "deepseek/detail": ["Role", "Text"],
-    "grok/detail": ["Role", "Text"],
-    "douyin/detail": ["aweme_id", "desc", "author", "duration_s", "play_url", "images"],
-    "douyin/user-videos": ["aweme_id", "title"],
-    "twitter/article": ["title", "author", "content", "url"],
-    "twitter/thread": ["id", "author", "text", "url"],
-    "twitter/tweets": ["id", "text", "url"],
-    "xiaohongshu/note": ["field", "value"],
-    "xiaohongshu/user": ["id", "title", "url"],
-    "xiaoyuzhou/episode": ["title"],
-    "xiaoyuzhou/podcast-episodes": ["eid", "title"],
-    "xiaoyuzhou/transcript": ["json_file", "text_file"],
-    "youtube/channel": ["field", "value"],
-    "youtube/playlist": ["title", "url"]
+    "bilibili/subtitle": [
+      "content",
+      "from",
+      "to",
+      "language",
+      "track_type"
+    ],
+    "bilibili/user-videos": [
+      "title",
+      "url",
+      "bvid"
+    ],
+    "chatgpt/detail": [
+      "Role",
+      "Text"
+    ],
+    "deepseek/detail": [
+      "Role",
+      "Text"
+    ],
+    "grok/detail": [
+      "Role",
+      "Text"
+    ],
+    "douyin/detail": [
+      "aweme_id",
+      "desc",
+      "author",
+      "duration_s",
+      "play_url",
+      "images"
+    ],
+    "douyin/user-videos": [
+      "aweme_id",
+      "title"
+    ],
+    "twitter/article": [
+      "title",
+      "author",
+      "content",
+      "url"
+    ],
+    "twitter/thread": [
+      "id",
+      "author",
+      "text",
+      "url"
+    ],
+    "twitter/tweets": [
+      "id",
+      "text",
+      "url"
+    ],
+    "xiaohongshu/note": [
+      "field",
+      "value"
+    ],
+    "xiaohongshu/user": [
+      "id",
+      "title",
+      "url"
+    ],
+    "xiaoyuzhou/episode": [
+      "title"
+    ],
+    "xiaoyuzhou/podcast-episodes": [
+      "eid",
+      "title"
+    ],
+    "xiaoyuzhou/transcript": [
+      "json_file",
+      "text_file"
+    ],
+    "youtube/channel": [
+      "field",
+      "value"
+    ],
+    "youtube/playlist": [
+      "title",
+      "url"
+    ]
   },
   "routes": {
     "schema": "openmd.routes/v1",
@@ -196,6 +260,15 @@
           "opencli.qwen.detail",
           "opencli.yuanbao.detail",
           "opencli.grok.detail"
+        ],
+        "last_verified": null
+      },
+      {
+        "source": "zhihu",
+        "capability": "content",
+        "chain": [
+          "opencli.zhihu.read",
+          "browser.kaze.snapshot"
         ],
         "last_verified": null
       }
@@ -614,6 +687,26 @@
             "login_url": "https://grok.com"
           }
         }
+      },
+      {
+        "source_id": "zhihu",
+        "tier": "B",
+        "state": "partial",
+        "input_kinds": [
+          "single",
+          "collection"
+        ],
+        "source_exhausted_kinds": [],
+        "profiles": [
+          "article"
+        ],
+        "route_source": "zhihu",
+        "runtime_binding": "route",
+        "display_name": "知乎",
+        "login_url": "https://www.zhihu.com/signin",
+        "login_hosts": [
+          "zhihu.com"
+        ]
       }
     ]
   },
@@ -830,21 +923,21 @@
           "cost_class": "none",
           "status_policy": "provider_defined"
         },
-          {
-            "id": "openmd.x.logged_in_browser",
-            "provider": "openmd.x.logged_in_browser",
-            "sources": [
-              "x"
-            ],
-            "capability": "content",
-            "gates": [
-              "browser"
-            ],
-            "source_level": "provider_defined",
-            "status_policy": "provider_defined"
-          },
-          {
-            "id": "opencli.twitter.thread",
+        {
+          "id": "openmd.x.logged_in_browser",
+          "provider": "openmd.x.logged_in_browser",
+          "sources": [
+            "x"
+          ],
+          "capability": "content",
+          "gates": [
+            "browser"
+          ],
+          "source_level": "provider_defined",
+          "status_policy": "provider_defined"
+        },
+        {
+          "id": "opencli.twitter.thread",
           "provider": "opencli.twitter.thread",
           "sources": [
             "x"
@@ -1288,7 +1381,8 @@
           "provider": "browser.kaze.snapshot",
           "sources": [
             "web_article",
-            "x"
+            "x",
+            "zhihu"
           ],
           "capability": "content",
           "gates": [
@@ -1421,6 +1515,21 @@
           "gates": [
             "browser",
             "account"
+          ],
+          "source_level": "provider_defined",
+          "requires_login": true,
+          "cost_class": "unknown",
+          "status_policy": "provider_defined"
+        },
+        {
+          "id": "opencli.zhihu.read",
+          "provider": "opencli.zhihu.read",
+          "sources": [
+            "zhihu"
+          ],
+          "capability": "content",
+          "gates": [
+            "browser"
           ],
           "source_level": "provider_defined",
           "requires_login": true,

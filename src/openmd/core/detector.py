@@ -153,6 +153,8 @@ def detect_platform(input_value: str, *, explicit_media: bool = False) -> str:
         return "x"
     if _host_endswith(host, ("feishu.cn", "larksuite.com")):
         return "feishu"
+    if _host_endswith(host, ("zhihu.com",)):
+        return "zhihu"
     if path.endswith(MEDIA_EXTENSIONS):
         return "generic_media"
     return "web_article"

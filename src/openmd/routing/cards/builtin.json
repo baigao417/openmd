@@ -668,7 +668,8 @@
       "provider": "browser.kaze.snapshot",
       "sources": [
         "web_article",
-        "x"
+        "x",
+        "zhihu"
       ],
       "capability": "content",
       "gates": [
@@ -801,6 +802,21 @@
       "gates": [
         "browser",
         "account"
+      ],
+      "source_level": "provider_defined",
+      "requires_login": true,
+      "cost_class": "unknown",
+      "status_policy": "provider_defined"
+    },
+    {
+      "id": "opencli.zhihu.read",
+      "provider": "opencli.zhihu.read",
+      "sources": [
+        "zhihu"
+      ],
+      "capability": "content",
+      "gates": [
+        "browser"
       ],
       "source_level": "provider_defined",
       "requires_login": true,

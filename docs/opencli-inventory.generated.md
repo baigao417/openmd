@@ -96,6 +96,6 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `youtube/transcript`: `src/openmd/backends/youtube.py:45`
 - `yuanbao/detail`: `src/openmd/backends/ai_chat.py:103`
 - `yuanbao/status`: `src/openmd/backends/ai_chat.py:255`
-- `zhihu/collection`: `src/openmd/backends/zhihu.py:182`
-- `zhihu/download`: `src/openmd/backends/zhihu.py:180`, `src/openmd/backends/zhihu.py:181`
-- `zhihu/question`: `src/openmd/backends/zhihu.py:179`
+- `zhihu/collection`: `src/openmd/backends/zhihu.py:183`
+- `zhihu/download`: `src/openmd/backends/zhihu.py:181`, `src/openmd/backends/zhihu.py:182`
+- `zhihu/question`: `src/openmd/backends/zhihu.py:180`

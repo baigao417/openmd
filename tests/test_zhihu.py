@@ -88,5 +88,6 @@ def test_zhihu_question_is_partial_without_declared_total_or_when_truncated():
 
     assert _question_coverage_partial(20, None)
     assert _question_coverage_partial(20, 21)
+    assert _question_coverage_partial(21, 20)
     assert not _question_coverage_partial(20, 20)
     assert _question_coverage_partial(1000, 1000)

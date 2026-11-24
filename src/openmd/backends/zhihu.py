@@ -26,7 +26,7 @@ TIME_LIMIT_SECONDS = 300
 
 def _question_coverage_partial(answer_count: int, declared_total: int | None) -> bool:
     """Never claim a question is complete without a reliable total receipt."""
-    return declared_total is None or answer_count >= MAX_ANSWERS or answer_count < declared_total
+    return declared_total is None or answer_count >= MAX_ANSWERS or answer_count != declared_total
 
 
 class _Markdown(HTMLParser):
@@ -164,7 +164,8 @@ class ZhihuOpenCliProvider:
         if partial and kind == "question":
             observed = f"取得 {len(payload)} 条回答"
             expected = f"，页面声明约 {declared_total} 条" if declared_total is not None else "，总数未知"
-            note = note + f"；覆盖为 partial：{observed}{expected}，受数量上限 {MAX_ANSWERS} 或分页结果限制"
+            reason = "回答数量与页面声明不一致" if declared_total is not None and len(payload) != declared_total else f"受数量上限 {MAX_ANSWERS} 或分页结果限制"
+            note = note + f"；覆盖为 partial：{observed}{expected}；{reason}"
         return TranscriptResult(text=text.rstrip() + "\n", status=status,
             source_level="partial_extraction" if status == "partial" else "third_party_extractor", backend=self.name,
             title=title or item.title, author=author, source_notes=[note, "Original source content; no LLM rewriting."],

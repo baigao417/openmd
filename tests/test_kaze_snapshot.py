@@ -265,3 +265,33 @@ def test_kaze_waits_for_rendered_text_to_settle_before_capture(monkeypatch):
     capture = next(index for index, code in enumerate(scripts) if "outerHTML" in code)
     assert settle < capture
     assert "stable" in scripts[settle] and "setTimeout" in scripts[settle]
+    assert "performance.getEntriesByType('resource').length" not in scripts[settle]
+    assert "querySelectorAll('*').length" in scripts[settle]
+
+
+def test_kaze_capture_meta_is_forwarded_to_result(monkeypatch):
+    session = FakeSession(rows=[])
+    original_call = session.call
+
+    def call(name, arguments, timeout):
+        value = original_call(name, arguments, timeout)
+        if name == "js" and any(token in arguments["code"] for token in ("fs.writeFile", "capture_meta")):
+            # Fake BrowserMCP returns the structured capture receipt alongside the HTML.
+            payload = value if isinstance(value, dict) else None
+            if isinstance(payload, dict) and "bytes" in payload:
+                payload["capture_meta"] = {
+                    "coverage": "scrolled_full", "virtual_detected": True,
+                    "stop_reason": "end_reached", "steps": 2, "elapsed_ms": 300,
+                    "seen_count": 3, "new_count": 3, "duplicate_count": 0,
+                    "collected_count": 3, "max_index": 2, "index_gaps": [], "declared_total": 3,
+                }
+        return value
+
+    session.call = call
+    monkeypatch.setattr("openmd.backends.kaze_snapshot._open_session", lambda: session)
+    request = BackendExtractRequest(
+        ContentItem("web_article", "single", "https://example.org/article", source_type="article"),
+        (KAZE_BACKEND,),
+    )
+    result = KazeSnapshotProvider().extract(request)
+    assert result.metadata["capture"]["coverage"] == "scrolled_full"

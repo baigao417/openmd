@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 import re
+from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup, Tag
@@ -74,10 +75,19 @@ def loaded_snapshot_site(url: str) -> str | None:
     return None
 
 
-def snapshot_item(path: Path, url: str) -> ContentItem:
+def snapshot_item(
+    path: Path,
+    url: str,
+    *,
+    capture_meta: dict[str, Any] | None = None,
+) -> ContentItem:
     """Use detail's exact identity, with a local-only snapshot extraction route."""
     site = loaded_chat_site(url)
     metadata = {"snapshot_path": str(path), "captured_from": "browser_snapshot", "coverage": "visible_only"}
+    if isinstance(capture_meta, dict):
+        metadata["capture"] = dict(capture_meta)
+        if capture_meta.get("coverage") in {"full_page", "scrolled_full", "visible_only"}:
+            metadata["coverage"] = capture_meta["coverage"]
     if site:
         from openmd.adapters.ai_chat import AiChatAdapter
         from openmd.backends.ai_chat import ai_chat_backend_for_site
@@ -399,7 +409,9 @@ def extract_loaded_chat(html: str, item: ContentItem, *, backend: str) -> Transc
         title=conversation_title(site, item.title or title, turns, session_title=_session_title(soup, item.url)),
         error_code="ai_chat_not_stable" if generating else ("ai_chat_user_turn_unavailable" if user_unavailable else None),
         error_summary="当前页仍在生成，请等待完成后重新读取。" if generating else ("当前 ChatGPT 页面未发现可读取的用户轮，无法确认问答完整性。" if user_unavailable else None),
-        metadata={"chat_site": site, "captured_from": "browser_snapshot", "coverage": "visible_branch",
+        metadata={"chat_site": site, "captured_from": "browser_snapshot",
+                  "coverage": (item.raw_meta.get("capture") or {}).get("coverage") or "visible_branch",
+                  **({"capture": item.raw_meta["capture"]} if isinstance(item.raw_meta.get("capture"), dict) else {}),
                   "turn_count": len(turns), "independent_turn_count": independent_count, "independent_user_turn_count": user_count, "generating": generating,
                   "conversation_user_evidence_unavailable": user_unavailable,
                   "selector_source": f"OpenCLI 2.0.3 clis/{site}/detail.js",

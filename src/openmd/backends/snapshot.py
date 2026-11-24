@@ -110,6 +110,8 @@ class SnapshotProvider:
         hint = snapshot_acceleration_hint(item.url)
         if hint:
             notes.append(hint)
+        capture = item.raw_meta.get("capture") if isinstance(item.raw_meta, dict) else None
+        capture = dict(capture) if isinstance(capture, dict) else None
         result = TranscriptResult(
             text=text.rstrip() + "\n",
             status="verified",
@@ -117,7 +119,12 @@ class SnapshotProvider:
             backend=self.name,
             title=title,
             source_notes=notes,
-            metadata={"captured_from": "browser_snapshot", "coverage": "visible_only", "snapshot_path": str(path)},
+            metadata={
+                "captured_from": "browser_snapshot",
+                "coverage": (capture or {}).get("coverage") or "visible_only",
+                "snapshot_path": str(path),
+                **({"capture": capture} if capture else {}),
+            },
         )
         if item.platform == "page_snapshot":
             body_chars = estimate_html_body_chars(html)

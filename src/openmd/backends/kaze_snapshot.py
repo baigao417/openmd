@@ -346,7 +346,7 @@ class KazeSnapshotProvider:
                 "const settled = await t.evaluate(async () => { "
                 "const deadline = Date.now() + " + str(SETTLE_MAX_MS) + "; let last = '', stable = 0; "
                 "while (Date.now() < deadline) { "
-                "const sig = document.readyState + ':' + ((document.body && document.body.innerText) || '').length + ':' + performance.getEntriesByType('resource').length; "
+                "const sig = document.readyState + ':' + ((document.body && document.body.innerText) || '').length + ':' + document.querySelectorAll('*').length; "
                 "stable = sig === last && document.readyState === 'complete' ? stable + " + str(SETTLE_POLL_MS) + " : 0; "
                 "if (stable >= " + str(SETTLE_STABLE_MS) + ") break; "
                 "last = sig; await new Promise((resolve) => setTimeout(resolve, " + str(SETTLE_POLL_MS) + ")); } "
@@ -367,18 +367,21 @@ class KazeSnapshotProvider:
 
             with owned_temporary_directory(prefix="openmd-kaze-snapshot-") as directory:
                 path = Path(directory) / "snapshot.html"
+                capture_source = (Path(__file__).resolve().parents[1] / "browser_extension" / "page_capture.js").read_text(encoding="utf-8")
                 js = (
                     "const t = await browser.tabs.get(" + json.dumps(tab_id) + "); "
-                    "const html = await t.evaluate(() => document.documentElement.outerHTML); "
-                    "const url = await t.url(); const title = await t.evaluate(() => document.title); "
+                    "const captureSource = " + json.dumps(capture_source) + "; "
+                    "const captured = await t.evaluate(async (source) => { (0, eval)(source); return await globalThis.__OPENMD_PAGE_CAPTURE__(); }, captureSource); "
+                    "const html = captured.html; const url = await t.url(); const title = captured.title; "
                     "if (Buffer.byteLength(html, 'utf8') > " + str(MAX_HTML_BYTES) + ") throw new Error('snapshot_too_large'); "
                     "const fs = await import('node:fs/promises'); "
                     "await fs.writeFile(" + json.dumps(str(path)) + ", html, 'utf8'); "
-                    "({url, title, bytes: Buffer.byteLength(html, 'utf8')})"
+                    "({url, title, bytes: Buffer.byteLength(html, 'utf8'), capture_meta: captured.capture_meta})"
                 )
                 page = session.call("js", {"code": js, "timeoutMs": READ_TIMEOUT_MS, "maxChars": 4096}, timeout=READ_TIMEOUT_MS / 1000 + 1)
                 final_url = page.get("url")
                 title = page.get("title")
+                capture_meta = page.get("capture_meta")
                 try:
                     html = path.read_text(encoding="utf-8")
                 except OSError as exc:
@@ -395,10 +398,15 @@ class KazeSnapshotProvider:
                     raise KazeError("kaze_page_url_mismatch", "Kaze ended on a different page than requested.", "Open the requested URL in Kaze and retry; login and error pages are not saved as success.")
                 if _is_login_redirect(final_url):
                     raise KazeError("kaze_login_required", "Kaze was redirected to a login page.", "Sign in to the requested site in Kaze, then retry.")
-                item = snapshot_item(path, url)
+                item = snapshot_item(path, url, capture_meta=capture_meta if isinstance(capture_meta, dict) else None)
                 result = SnapshotProvider().extract(BackendExtractRequest(item, request.backend_chain))
             metadata = {key: value for key, value in result.metadata.items() if key != "snapshot_path"}
-            metadata.update({"captured_from": "browser_snapshot", "browser_backend": self.name, "coverage": "visible_only"})
+            metadata.update({"captured_from": "browser_snapshot", "browser_backend": self.name})
+            if isinstance(capture_meta, dict):
+                metadata["capture"] = dict(capture_meta)
+                metadata["coverage"] = capture_meta.get("coverage") or "visible_only"
+            else:
+                metadata["coverage"] = "visible_only"
             if result.status == "failed":
                 code = "kaze_login_required" if result.error_code in {"login_wall", "login_required"} else result.error_code or "kaze_snapshot_failed"
                 action = "Sign in to the requested site in Kaze, then retry." if code == "kaze_login_required" else "Inspect the source page in Kaze and retry."

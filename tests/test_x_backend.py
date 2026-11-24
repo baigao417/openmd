@@ -16,7 +16,7 @@ from openmd.backends.x import (
     XPublicLayeredProvider,
     classify_twitter_failure,
 )
-from openmd.core.models import ContentItem
+from openmd.core.models import ContentItem, TranscriptResult
 
 
 def test_table_thread_title_uses_requested_post_and_preserves_body(tmp_path):
@@ -66,6 +66,124 @@ def test_thread_without_title_has_stable_post_fallback():
 
 
 class XOpenCliTextProviderTests(unittest.TestCase):
+    def test_fxembed_preserves_research_metadata_thread_and_quote(self) -> None:
+        payload = {
+            "status": {
+                "url": "https://x.com/writer/status/123",
+                "id": "123",
+                "text": "Root post",
+                "author": {"name": "Writer", "screen_name": "writer"},
+                "created_at": "Mon Jun 01 04:40:25 +0000 2026",
+                "views": 1200,
+                "likes": 34,
+                "reposts": 12,
+                "replies": 5,
+                "bookmarks": 7,
+                "quote": {
+                    "url": "https://x.com/quoted/status/456",
+                    "raw_text": {"text": "Quoted body"},
+                    "author": {"name": "Quoted", "screen_name": "quoted"},
+                    "created_at": "Sun May 31 03:00:00 +0000 2026",
+                },
+            },
+            "thread": [
+                {
+                    "url": "https://x.com/writer/status/123",
+                    "id": "123",
+                    "text": "Root post",
+                    "author": {"name": "Writer", "screen_name": "writer"},
+                    "created_at": "Mon Jun 01 04:40:25 +0000 2026",
+                },
+                {
+                    "url": "https://x.com/writer/status/124",
+                    "id": "124",
+                    "text": "Continuation",
+                    "author": {"name": "Writer", "screen_name": "writer"},
+                    "created_at": "Mon Jun 01 04:41:25 +0000 2026",
+                },
+            ],
+        }
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (200, payload))
+        item = ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article")
+        result = provider.extract(BackendExtractRequest(item=item, backend_chain=(FXTWITTER_BACKEND,)))
+
+        assert result.status == "verified"
+        assert result.metadata["author_handle"] == "@writer"
+        assert result.published_at == "2026-06-01T04:40:25+00:00"
+        assert result.metadata["views"] == 1200
+        assert result.metadata["likes"] == 34
+        assert result.metadata["reposts"] == 12
+        assert result.metadata["replies"] == 5
+        assert result.metadata["bookmarks"] == 7
+        assert result.metadata["thread_count"] == 2
+        assert result.metadata["thread_coverage"] == "author_thread"
+        assert result.metadata["thread"][1] == {
+            "url": "https://x.com/writer/status/124",
+            "author": "Writer",
+            "author_handle": "@writer",
+            "published_at": "2026-06-01T04:41:25+00:00",
+            "text": "Continuation",
+        }
+        assert result.metadata["quote"] == {
+            "url": "https://x.com/quoted/status/456",
+            "author": "Quoted",
+            "author_handle": "@quoted",
+            "published_at": "2026-05-31T03:00:00+00:00",
+            "text": "Quoted body",
+        }
+        assert "## Thread" in result.text
+        assert "> 引用推文：" in result.text
+
+    def test_fxembed_omits_missing_counts_and_marks_partial_thread(self) -> None:
+        payload = {
+            "tweet": {
+                "url": "https://x.com/writer/status/123",
+                "text": "One post",
+                "author": {"name": "Writer", "screen_name": "writer"},
+                "created_at": "2026-06-01T04:40:25Z",
+                "likes": 0,
+            }
+        }
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (200, payload))
+        result = provider.extract(BackendExtractRequest(
+            item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            backend_chain=(FXTWITTER_BACKEND,),
+        ))
+        assert result.status == "verified"
+        assert result.metadata["thread_count"] == 1
+        assert result.metadata["thread_coverage"] == "partial"
+        assert result.metadata["likes"] == 0
+        assert "views" not in result.metadata
+        assert "reposts" not in result.metadata
+
+    def test_x_metadata_is_rendered_as_parseable_frontmatter(self) -> None:
+        from openmd.core.renderer import render_document, render_markdown_document
+
+        result = TranscriptResult(
+            text="Root post\n",
+            status="verified",
+            source_level="native_text",
+            backend=FXTWITTER_BACKEND,
+            title="Root post",
+            author="Writer",
+            published_at="2026-06-01T04:40:25+00:00",
+            metadata={
+                "author_handle": "@writer",
+                "views": 1200,
+                "thread_count": 2,
+                "thread_coverage": "author_thread",
+                "thread": [{"url": "https://x.com/writer/status/123", "text": "Root post"}],
+                "quote": {"url": "https://x.com/quoted/status/456", "text": "Quoted body"},
+            },
+        )
+        item = ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article")
+        rendered = render_document(render_markdown_document(item, result))
+        assert 'published_at: "2026-06-01T04:40:25+00:00"' in rendered
+        assert 'author_handle: "@writer"' in rendered
+        assert 'thread_count: 2' in rendered
+        assert 'thread: [{"url": "https://x.com/writer/status/123", "text": "Root post"}]' in rendered
+        assert 'quote: {"url": "https://x.com/quoted/status/456", "text": "Quoted body"}' in rendered
+
     def test_disable_fxembed_keeps_syndication_and_skips_hosted_apis(self) -> None:
         import os
         calls = []
@@ -85,6 +203,23 @@ class XOpenCliTextProviderTests(unittest.TestCase):
         self.assertEqual(result.status, "failed")
         self.assertEqual(len(calls), 1)
         self.assertIn("syndication", result.metadata["x_public_attempts"][0])
+
+    def test_rich_fxembed_v2_is_attempted_before_lighter_public_layers(self) -> None:
+        calls = []
+        provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: (calls.append(kw["layer"]) or (200, {
+            "status": {
+                "text": "Short body",
+                "author": {"name": "Writer", "screen_name": "writer"},
+                "created_at": "2026-11-20T12:00:00Z",
+            },
+            "thread": [],
+        })))
+        result = provider.extract(BackendExtractRequest(
+            item=ContentItem(platform="x", input_type="single", url="https://x.com/writer/status/123", source_type="article"),
+            backend_chain=(FXTWITTER_BACKEND,),
+        ))
+        assert result.status == "verified"
+        assert calls == ["fxembed_v2"]
 
     def test_opencli_title_does_not_use_author_plus_body_summary(self) -> None:
         provider = OpenCliTwitterTextProvider(runner=lambda *a, **k: (0, "# 作者：正文前 56 字…\n\n正文实际首句。完整文本继续。", ""))
@@ -116,10 +251,10 @@ class XOpenCliTextProviderTests(unittest.TestCase):
         ))
         self.assertEqual(result.error_code, "x_auth_required")
 
-    def test_syndication_truncated_result_falls_through_to_full_api(self) -> None:
+    def test_fxembed_truncated_result_falls_through_to_syndication(self) -> None:
         responses = iter([
-            (200, {"id_str": "123", "text": "x" * 194, "user": {"screen_name": "writer", "name": "Writer"}}),
-            (200, {"tweet": {"text": "Complete long article body", "author": {"name": "Writer", "screen_name": "writer"}, "created_at": "2026-11-20T12:00:00Z", "media": {"photos": [{"url": "https://pbs.twimg.com/media/a.jpg"}]}}}),
+            (200, {"tweet": {"text": "x" * 194, "truncated": True, "author": {"name": "Writer", "screen_name": "writer"}}}),
+            (200, {"id_str": "123", "text": "Complete long article body", "user": {"screen_name": "writer", "name": "Writer"}, "created_at": "2026-11-20T12:00:00Z", "media": {"photos": [{"url": "https://pbs.twimg.com/media/a.jpg"}]}}),
         ])
         provider = XPublicLayeredProvider(fetch_json=lambda url, **kw: next(responses))
         result = provider.extract(BackendExtractRequest(

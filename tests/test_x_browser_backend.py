@@ -30,6 +30,7 @@ def test_logged_in_browser_provider_reads_one_x_tab_without_exporting_secrets():
             "author": "writer",
             "created_at": "2026-11-22T12:00:00Z",
             "images": [],
+            "quote_text": "Quoted body.",
         }}]}), ""
 
     result = XLoggedInBrowserProvider(runner=runner).extract(_request())
@@ -39,11 +40,35 @@ def test_logged_in_browser_provider_reads_one_x_tab_without_exporting_secrets():
     assert result.metadata["api_layer"] == "logged_in_browser_x_api"
     assert result.backend == X_BROWSER_BACKEND
     assert "A complete note body." in result.text
+    assert result.published_at == "2026-11-22T12:00:00+00:00"
+    assert result.metadata["quote"]["text"] == "Quoted body."
     assert "secret" not in json.dumps(result.metadata).lower()
     assert len(calls) == 1
     assert calls[0][0][:5] == ["opencli", "browser", "chrome", "call", "openmd.x.read"]
     assert json.loads(calls[0][0][5]) == ["1234567890"]
     assert all(timeout <= 8 for _, timeout in calls)
+
+
+def test_logged_in_browser_provider_keeps_created_at_quote_and_images_metadata():
+    def runner(args, *, timeout):
+        return 0, json.dumps({"ok": True, "data": {"result": {
+            "ok": True,
+            "text": "Body",
+            "title": "Body",
+            "author": "Writer",
+            "author_handle": "@writer",
+            "created_at": "2026-11-22T12:00:00Z",
+            "images": ["https://pbs.twimg.com/media/a.jpg"],
+            "quote_text": "Quoted body",
+        }}}), ""
+
+    result = XLoggedInBrowserProvider(runner=runner).extract(_request())
+
+    assert result.status == "verified"
+    assert result.published_at == "2026-11-22T12:00:00+00:00"
+    assert result.metadata["author_handle"] == "@writer"
+    assert result.metadata["image_urls"] == ["https://pbs.twimg.com/media/a.jpg"]
+    assert result.metadata["quote"]["text"] == "Quoted body"
 
 
 def test_logged_in_browser_provider_fails_fast_without_an_x_tab():

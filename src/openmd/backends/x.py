@@ -17,6 +17,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -508,7 +510,7 @@ def _twitter_next_action(code: str) -> str | None:
 
 
 class XPublicLayeredProvider:
-    """Anonymous public X extraction: syndication, FxEmbed v2, then legacy API."""
+    """Anonymous public X extraction: rich FxEmbed v2, then lighter fallbacks."""
 
     def __init__(self, *, fetch_json=None, opencli_runner: OpenCliRunner | None = None, timeout: float = 7.0) -> None:
         self.name = FXTWITTER_BACKEND
@@ -535,12 +537,13 @@ class XPublicLayeredProvider:
         if item.platform != "x" or not tweet_id:
             return _failed(self.name, "invalid_input", "A public X status URL is required.")
         attempts: list[str] = []
-        urls = [("syndication", _syndication_url(tweet_id))]
+        urls = []
         if os.environ.get("OPENMD_X_DISABLE_FXEMBED") != "1":
             urls.extend([
                 ("fxembed_v2", f"https://api.fxtwitter.com/2/conversation/{tweet_id}"),
                 ("fxembed_v1", f"https://api.fxtwitter.com/{urllib.parse.quote(username)}/status/{tweet_id}"),
             ])
+        urls.append(("syndication", _syndication_url(tweet_id)))
         for layer, url in urls:
             try:
                 status, payload = self._fetch_json(url, timeout=self.timeout, layer=layer)
@@ -637,6 +640,7 @@ def _parse_x_payload(payload: object, *, tweet_id: str, source: str) -> dict[str
         return None
     user = tweet.get("user") if isinstance(tweet.get("user"), dict) else legacy.get("user") if isinstance(legacy.get("user"), dict) else tweet.get("author") if isinstance(tweet.get("author"), dict) else {}
     author = user.get("name") or user.get("screen_name") or user.get("username")
+    author_handle = _x_handle(user)
     created = tweet.get("created_at") or legacy.get("created_at")
     title = article.get("title") or (text.splitlines()[0][:120])
     media = tweet.get("media") if isinstance(tweet.get("media"), dict) else legacy.get("extended_entities") if isinstance(legacy.get("extended_entities"), dict) else {}
@@ -654,11 +658,112 @@ def _parse_x_payload(payload: object, *, tweet_id: str, source: str) -> dict[str
             if url:
                 images.append(str(url))
     quote = tweet.get("quote") or tweet.get("quoted_tweet") or legacy.get("quoted_status")
+    quote_record = _x_post_record(quote) if isinstance(quote, dict) else None
     if isinstance(quote, dict):
-        quoted = quote.get("text") or (quote.get("legacy") or {}).get("full_text")
+        quoted = quote_record.get("text") if quote_record else None
         if quoted:
             text += "\n\n> 引用推文：\n> " + str(quoted).replace("\n", "\n> ")
-    return {"text": text, "title": str(title), "author": str(author or "") or None, "published_at": created, "images": images, "article": bool(article), "tweet": tweet, "quote": quote}
+    raw_thread = payload.get("thread") if isinstance(payload, dict) else None
+    if not isinstance(raw_thread, list):
+        raw_thread = tweet.get("thread") if isinstance(tweet.get("thread"), list) else []
+    thread = [_x_post_record(row) for row in raw_thread if isinstance(row, dict)]
+    thread = [row for row in thread if row]
+    if not thread:
+        root_record = _x_post_record(tweet, fallback_url=f"https://x.com/{author_handle.lstrip('@') if author_handle else 'i'}/status/{tweet_id}")
+        thread = [root_record] if root_record else []
+    thread_handles = [row.get("author_handle") for row in thread]
+    thread_coverage = "author_thread" if len(thread) > 1 and author_handle and all(handle == author_handle for handle in thread_handles) else "partial"
+    stats = tweet.get("stats") if isinstance(tweet.get("stats"), dict) else {}
+    counts = {
+        key: _first_count(tweet.get(source_key), legacy.get(source_key), stats.get(source_key))
+        for key, source_key in {
+            "views": "views",
+            "likes": "likes",
+            "reposts": "reposts",
+            "replies": "replies",
+            "bookmarks": "bookmarks",
+        }.items()
+    }
+    if counts["reposts"] is None:
+        counts["reposts"] = _first_count(tweet.get("retweets"), legacy.get("retweets"), stats.get("retweets"))
+    return {
+        "text": text,
+        "title": str(title),
+        "author": str(author or "") or None,
+        "author_handle": author_handle,
+        "published_at": _normalize_x_timestamp(created),
+        "images": images,
+        "article": bool(article),
+        "tweet": tweet,
+        "quote": quote_record,
+        "thread": thread,
+        "thread_count": len(thread),
+        "thread_coverage": thread_coverage,
+        **counts,
+    }
+
+
+def _first_count(*values: object) -> int | float | None:
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return value
+    return None
+
+
+def _x_handle(user: object) -> str | None:
+    if not isinstance(user, dict):
+        return None
+    value = user.get("screen_name") or user.get("username") or user.get("handle")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return "@" + value.strip().lstrip("@")
+
+
+def _normalize_x_timestamp(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(text)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return text
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def _x_post_record(value: object, *, fallback_url: str | None = None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    legacy = value.get("legacy") if isinstance(value.get("legacy"), dict) else {}
+    user = value.get("author") if isinstance(value.get("author"), dict) else value.get("user") if isinstance(value.get("user"), dict) else legacy.get("user")
+    user = user if isinstance(user, dict) else {}
+    text_value = value.get("text") or value.get("full_text") or legacy.get("full_text") or legacy.get("text")
+    if isinstance(value.get("raw_text"), dict):
+        text_value = text_value or value["raw_text"].get("text")
+    text = str(text_value).strip() if isinstance(text_value, str) else ""
+    handle = _x_handle(user)
+    author = user.get("name") or user.get("screen_name") or user.get("username")
+    post_id = value.get("id") or value.get("id_str") or legacy.get("id_str")
+    url = value.get("url") or value.get("tweet_url")
+    if not isinstance(url, str) or not url.strip():
+        if post_id and handle:
+            url = f"https://x.com/{handle.lstrip('@')}/status/{post_id}"
+        else:
+            url = fallback_url
+    record = {
+        "url": str(url) if isinstance(url, str) and url else None,
+        "author": str(author) if author else None,
+        "author_handle": handle,
+        "published_at": _normalize_x_timestamp(value.get("created_at") or value.get("published_at") or legacy.get("created_at")),
+        "text": text or None,
+    }
+    return {key: item for key, item in record.items() if item not in (None, "")}
 
 
 def _render_article_blocks(content: dict[str, Any]) -> str:
@@ -738,11 +843,36 @@ def _article_inline_links(text: str, block: dict[str, Any], entity_map: dict[str
 def _x_result(item: ContentItem, tweet_id: str, data: dict[str, Any], source: str, attempts: list[str]) -> TranscriptResult:
     canonical = f"https://x.com/{_x_username_candidate(item) or 'i'}/status/{tweet_id}"
     body = data["text"]
+    thread = data.get("thread") if isinstance(data.get("thread"), list) else []
+    if len(thread) > 1:
+        sections = []
+        for post in thread[1:]:
+            if not isinstance(post, dict) or not post.get("text"):
+                continue
+            label = post.get("author_handle") or post.get("author") or "帖文"
+            timestamp = f" · {post['published_at']}" if post.get("published_at") else ""
+            sections.append(f"### {label}{timestamp}\n\n{post['text']}")
+        if sections:
+            body += "\n\n## Thread\n\n" + "\n\n".join(sections)
     appendix = [f"\n\n原文链接：{canonical}"]
     appendix.extend(f"\n图片链接：{url}" for url in data["images"])
     text = body + "".join(appendix) + "\n"
     title = _clean_x_title(str(data["title"] or body.splitlines()[0][:120]), body) or body.splitlines()[0][:120].strip()
-    return TranscriptResult(text=text, status="verified", source_level="native_text" if source == "syndication" else "third_party_extractor", backend=FXTWITTER_BACKEND, title=title, author=data["author"], published_at=data["published_at"], metadata={"tweet_id": tweet_id, "api_layer": source, "fallback_attempts": list(attempts), "image_urls": data["images"], "quote_present": bool(data["quote"]), "completeness": "full"}, source_notes=["Only public X content is requested; private posts and account permissions are not bypassed.", f"Public extraction layer: {source}."])
+    metadata = {
+        "tweet_id": tweet_id,
+        "api_layer": source,
+        "fallback_attempts": list(attempts),
+        "image_urls": data["images"],
+        "quote_present": bool(data["quote"]),
+        "thread": data["thread"],
+        "thread_count": data["thread_count"],
+        "thread_coverage": data["thread_coverage"],
+        "completeness": "full",
+    }
+    for key in ("author_handle", "views", "likes", "reposts", "replies", "bookmarks", "quote"):
+        if data.get(key) is not None:
+            metadata[key] = data[key]
+    return TranscriptResult(text=text, status="verified", source_level="native_text" if source == "syndication" else "third_party_extractor", backend=FXTWITTER_BACKEND, title=title, author=data["author"], published_at=data["published_at"], metadata=metadata, source_notes=["Only public X content is requested; private posts and account permissions are not bypassed.", f"Public extraction layer: {source}."])
 
 
 def _x_http_error(status: int, payload: object) -> str | None:

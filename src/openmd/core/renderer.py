@@ -18,12 +18,27 @@ FRONTMATTER_FIELDS: tuple[str, ...] = (
     "author",
     "url",
     "published",
+    "published_at",
     "platform",
     "format",
     "completeness",
     "captured_from",
     "coverage",
+    "author_handle",
+    "views",
+    "likes",
+    "reposts",
+    "replies",
+    "bookmarks",
+    "quote",
+    "thread",
+    "thread_count",
+    "thread_coverage",
 )
+_X_FRONTMATTER_FIELDS = frozenset({
+    "published_at", "author_handle", "views", "likes", "reposts", "replies", "bookmarks",
+    "quote", "thread", "thread_count", "thread_coverage",
+})
 
 _SOURCE_LABELS = {
     "native_text": "原文",
@@ -121,6 +136,10 @@ def _frontmatter_value(value: Any) -> str:
         return ""
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, ensure_ascii=False, separators=(", ", ": "))
     text = str(value).replace("\r", " ").replace("\n", " ")
     # JSON strings are valid YAML scalars and avoid implicit YAML booleans,
     # numbers, dates and special punctuation in external titles/authors.
@@ -260,6 +279,10 @@ def render_markdown_document(
         "backend": result.backend,
         "format": document_source_format(item, result),
     }
+    if item.platform == "x":
+        for key in ("author_handle", "views", "likes", "reposts", "replies", "bookmarks", "quote", "thread", "thread_count", "thread_coverage"):
+            if key in result.metadata and result.metadata[key] is not None:
+                frontmatter[key] = result.metadata[key]
     completeness = _completeness_frontmatter(result)
     if completeness is not None:
         frontmatter["completeness"] = completeness
@@ -401,6 +424,8 @@ def render_document(document: MarkdownDocument, *, raw: bool = False) -> str:
     """
     lines = ["---"]
     for field in FRONTMATTER_FIELDS:
+        if field in _X_FRONTMATTER_FIELDS and document.frontmatter.get("platform") != "x":
+            continue
         value = document.frontmatter.get(field)
         if field == "title":
             value = document.title

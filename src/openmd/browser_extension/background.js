@@ -203,6 +203,18 @@ async function notifyFeedback(job, meta) {
   });
 }
 
+async function notifyPartial(job) {
+  const capture = job?.result?.capture || {};
+  const collected = Number.isInteger(capture.collected_count) ? capture.collected_count : null;
+  const declared = Number.isInteger(capture.declared_total) ? capture.declared_total : null;
+  const count = collected !== null && declared !== null ? `（约 ${collected}/${declared}）` : "";
+  await flash("!", "#b7791f");
+  notifyWithId(`openmd-partial:${job.id}`, {
+    type: "basic", iconUrl: "icons/icon-128.png", title: "只保存了屏幕上的部分",
+    message: `只保存了屏幕上的部分${count}，请检查保存结果。`,
+  });
+}
+
 function notifyWithId(id, notice) {
   const create = chrome.notifications?.create;
   if (typeof create !== "function") return;
@@ -439,11 +451,14 @@ async function poll() {
           const meta = state.jobs[id];
           delete state.jobs[id];
           const batch = state.batches[meta.batch];
+          const isPartial = job.state === "partial" || job.result?.status === "partial" || job.result?.completeness?.status === "downgrade";
+          if (batch && isPartial) batch.partial = true;
           if (job.error_code === "login_required" && job.login) {
             if (batch) batch.loginPaused = true;
             await notifyLogin(job, { ...meta, location: batch?.location });
           } else if (batch && job.state !== "done" && job.state !== "cancelled") batch.failed.push(`${meta.title}：${job.error || "状态未知"}`);
-          if (job.state === "failed" || job.state === "partial" || job.result?.status === "partial") await notifyFeedback(job, meta);
+          if (isPartial) await notifyPartial(job);
+          if (job.state === "failed" || isPartial) await notifyFeedback(job, meta);
           const remaining = Object.values(state.jobs).some((m) => m.batch === meta.batch);
           if (batch && !remaining) {
             delete state.batches[meta.batch];
@@ -451,7 +466,7 @@ async function poll() {
               const head = batch.total > 1 ? `${batch.total} 个里有 ${batch.failed.length} 个没保存成功` : "没能保存";
               fail(head, batch.failed.slice(0, 3).join("\n"));
             } else if (!batch.loginPaused) {
-              await flash("✓", "#2c8a5f");
+              if (!batch.partial) await flash("✓", "#2c8a5f");
             }
           }
         }

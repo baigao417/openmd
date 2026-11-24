@@ -205,3 +205,51 @@ def test_conversation_checks_combine_turn_and_count_evidence():
     assert gap.metadata['completeness']['status'] == 'downgrade'
     neither = check_completeness(item, result, signals={})
     assert neither.metadata['completeness']['status'] == 'unknown'
+
+
+def test_page_snapshot_without_capture_evidence_cannot_be_ok():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('page_snapshot', 'single', 'https://example.test/article', source_type='webpage')
+    result = transcript('visible body', metadata={'captured_from': 'browser_snapshot', 'coverage': 'visible_only'})
+    checked = check_completeness(item, result)
+    assert checked.metadata['completeness']['status'] == 'unknown'
+    assert checked.metadata['completeness']['checks'][0]['reason'] == 'capture_evidence_unavailable'
+
+
+def test_page_snapshot_visible_only_with_capture_gap_is_partial():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('page_snapshot', 'single', 'https://example.test/article', source_type='webpage')
+    result = transcript('visible body', metadata={'captured_from': 'browser_snapshot', 'capture': {
+        'coverage': 'visible_only', 'virtual_detected': True, 'stop_reason': 'step_limit',
+        'collected_count': 8, 'declared_total': 61, 'index_gaps': []
+    }})
+    checked = check_completeness(item, result)
+    assert checked.status == 'partial'
+    assert checked.metadata['completeness']['status'] == 'downgrade'
+    assert checked.metadata['completeness']['checks'][0]['reason'] == 'snapshot_coverage_gap'
+
+
+def test_page_snapshot_full_capture_without_gap_is_ok():
+    from openmd.core.completeness import check_completeness
+    item = ContentItem('page_snapshot', 'single', 'https://example.test/article', source_type='webpage')
+    result = transcript('full body', metadata={'captured_from': 'browser_snapshot', 'capture': {
+        'coverage': 'scrolled_full', 'virtual_detected': True, 'stop_reason': 'end_reached',
+        'collected_count': 61, 'declared_total': 61, 'index_gaps': []
+    }})
+    checked = check_completeness(item, result)
+    assert checked.metadata['completeness']['status'] == 'ok'
+
+
+def test_snapshot_markdown_reports_partial_counts_and_human_source_note():
+    from openmd.core.completeness import check_completeness
+    from openmd.core.renderer import render_markdown_document
+    item = ContentItem('page_snapshot', 'single', 'https://example.test/article', source_type='webpage')
+    result = transcript('visible body', metadata={'captured_from': 'browser_snapshot', 'capture': {
+        'coverage': 'visible_only', 'virtual_detected': True, 'stop_reason': 'step_limit',
+        'collected_count': 8, 'declared_total': 61, 'index_gaps': []
+    }})
+    checked = check_completeness(item, result)
+    document = render_markdown_document(item, checked)
+    assert document.frontmatter['coverage'] == 'visible_only'
+    assert '只保存了屏幕上的部分' in document.frontmatter['completeness']
+    assert any('只保存了屏幕上的部分（约 8/61）' in note for note in document.source_notes)

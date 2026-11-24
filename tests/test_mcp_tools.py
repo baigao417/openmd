@@ -31,11 +31,15 @@ def test_save_uses_separate_shared_queue_and_closed_cli_gates(tmp_path):
         assert browser_host.run_queue(runner=lambda cmd, **kw: subprocess.CompletedProcess(
             cmd, 0, json.dumps({"ok": True, "saved_to": str(tmp_path / "out" / "source.md"),
                                 "status": "partial", "source_level": "native_text",
-                                "completeness": {"status": "unknown"}, "sync": {"status": "created"}}), "")) == 1
+                                "completeness": {"status": "unknown"},
+                                "capture": {"coverage": "visible_only", "collected_count": 8, "declared_total": 61,
+                                            "index_gaps": [9]}, "sync": {"status": "created"}}), "")) == 1
     polled = mcp_jobs.job(job["id"])
     assert polled["state"] == "done" and polled["status"] == "partial"
     assert polled["source_level"] == "native_text"
     assert polled["completeness"] == {"status": "unknown"}
+    assert polled["capture"] == {"coverage": "visible_only", "collected_count": 8, "declared_total": 61,
+                                  "index_gaps": [9]}
     assert polled["sync"] == {"status": "created"}
 
 

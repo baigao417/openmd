@@ -94,6 +94,8 @@ _COVERAGE_LABELS = {
     "provider_declared_complete": "提供方声明完整",
     "visible_branch": "当前可见分支",
     "visible_only": "当前可见页面",
+    "full_page": "整页内容",
+    "scrolled_full": "滚动采集完整页面",
 }
 _LEGACY_COVERAGE_VALUES = {
     "当前可见分支": "visible_branch",
@@ -171,6 +173,11 @@ def _completeness_frontmatter(result: TranscriptResult) -> str | None:
                     output = gap.get("output_pages")
                     output = output if isinstance(output, int) and output >= 0 else max(0, total - len(numbers))
                     return f"partial — 输出 {output}/{total} 页{note}"
+        if check.get("signal") == "snapshot_coverage":
+            gap = gap if isinstance(gap, dict) else {}
+            collected, declared = gap.get("collected_count"), gap.get("declared_total")
+            count = f"（约 {collected}/{declared}）" if type(collected) is int and type(declared) is int else ""
+            return f"partial — 只保存了屏幕上的部分{count}"
         reason = str(check.get("reason") or "独立完整度核对发现缺口").strip()
         return f"partial — {reason}"
     return "partial — 独立完整度核对发现缺口"
@@ -198,6 +205,19 @@ def published_date(value: object) -> str:
 
 def build_source_notes(result: TranscriptResult) -> list[str]:
     notes = [f"backend: {result.backend}", f"source_level: {result.source_level}"]
+    if result.metadata.get("captured_from") == "browser_snapshot" or result.backend.startswith("page_snapshot."):
+        capture = result.metadata.get("capture")
+        if isinstance(capture, dict):
+            collected, declared = capture.get("collected_count"), capture.get("declared_total")
+            count = f"（约 {collected}/{declared}）" if type(collected) is int and type(declared) is int else ""
+        else:
+            count = ""
+        completeness = result.metadata.get("completeness")
+        state = completeness.get("status") if isinstance(completeness, dict) else None
+        if state == "downgrade":
+            notes.append(f"只保存了屏幕上的部分{count}。")
+        elif state == "unknown":
+            notes.append("页面覆盖范围无法确认；请检查是否还有未采集内容。")
     for note in result.source_notes:
         if note:
             notes.append(f"notes: {note}")
@@ -244,10 +264,19 @@ def render_markdown_document(
     if completeness is not None:
         frontmatter["completeness"] = completeness
     if item.platform == "page_snapshot" or result.metadata.get("captured_from") == "browser_snapshot":
+        capture = result.metadata.get("capture")
+        coverage = capture.get("coverage") if isinstance(capture, dict) else None
+        completeness_status = (result.metadata.get("completeness") or {}).get("status") if isinstance(result.metadata.get("completeness"), dict) else None
+        if coverage not in {"full_page", "scrolled_full", "visible_only"}:
+            coverage = "unknown"
         frontmatter.update({
             "captured_from": "browser_snapshot",
-            "coverage": "visible_only",
+            "coverage": coverage,
         })
+        if completeness_status == "unknown":
+            frontmatter["completeness"] = "unknown — 页面覆盖范围无法确认"
+        elif completeness_status == "downgrade" and "completeness" not in frontmatter:
+            frontmatter["completeness"] = "partial — 只保存了屏幕上的部分"
     if item.source_type == "conversation" or result.blocks:
         frontmatter.update({
             "coverage": coverage_machine_value(result.metadata.get("coverage")),

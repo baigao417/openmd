@@ -320,6 +320,10 @@ def apply_completeness_guard(
     """Choose the most complete candidate and make low coverage explicit."""
     if not candidates:
         return _failed("web_article.completeness", "no_candidate", "No extraction candidate was produced.")
+    snapshot_candidate = any(
+        result.backend.startswith("page_snapshot.") or result.metadata.get("captured_from") == "browser_snapshot"
+        for result in candidates
+    )
     estimate = body_chars if body_chars is not None else estimate_html_body_chars(html or "")
 
     def chars(result: TranscriptResult) -> int:
@@ -436,7 +440,7 @@ def apply_completeness_guard(
         "extraction_candidates": records,
         "coverage_estimate": coverage,
         "completeness": {
-            "status": "ok",
+            "status": "unknown" if snapshot_candidate else "ok",
             "coverage_estimate": coverage,
             "extraction_candidates": records,
         },

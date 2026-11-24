@@ -47,9 +47,9 @@ class FakeSession:
             if "captureSource" in code:
                 # Match Kaze's Tab.evaluate(script, opts) contract: callback
                 # arguments are supplied via opts.arg.
-                if "{ arg: captureSource, timeoutMs: 60000 }" not in code:
+                if "{ arg: captureSource, timeoutMs: 105000 }" not in code:
                     raise RuntimeError("invalid_args: Tab.evaluate options expected object; dispatched:false")
-                assert arguments["timeoutMs"] == 60_000
+                assert arguments["timeoutMs"] == 105_000
             match = re.search(r"fs\.writeFile\((\"(?:\\\\.|[^\"])*\")", code)
             if match:
                 Path(json.loads(match.group(1))).write_text(self.html, encoding="utf-8")
@@ -323,9 +323,9 @@ def test_kaze_evaluate_uses_options_arg_and_full_capture_timeout(monkeypatch):
 
     assert result.status in {"verified", "partial"}
     capture_call = next(args for name, args in session.calls if name == "js" and "captureSource" in args["code"])
-    assert "{ arg: captureSource, timeoutMs: 60000 }" in capture_call["code"]
-    assert capture_call["timeoutMs"] == 60_000
-    assert capture_call["timeoutMs"] > 45_000
+    assert "{ arg: captureSource, timeoutMs: 105000 }" in capture_call["code"]
+    assert capture_call["timeoutMs"] == 105_000
+    assert capture_call["timeoutMs"] > 90_000
     assert "const html = captured.html; const url = captured.url;" in capture_call["code"]
     assert "await t.url()" not in capture_call["code"]
 

@@ -27,8 +27,8 @@ TOOLS_TIMEOUT_S = 2.0
 TOTAL_TIMEOUT_S = 10.0
 PAGE_READY_TIMEOUT_MS = 20_000
 READ_TIMEOUT_MS = 15_000
-CAPTURE_TIMEOUT_MS = 60_000
-CAPTURE_CALL_TIMEOUT_S = 61.0
+CAPTURE_TIMEOUT_MS = 105_000
+CAPTURE_CALL_TIMEOUT_S = 106.0
 # Single-page apps paint their navigation shell before the content request
 # returns. Capture only after visible text and finished requests stop changing
 # for SETTLE_STABLE_MS, bounded by SETTLE_MAX_MS.

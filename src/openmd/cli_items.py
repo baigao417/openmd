@@ -134,7 +134,13 @@ def _process_items(
             from openmd.runtime.recommendations import cmd_models_install
             import sys
             install_command = "openmd models install asr:baseline"
-            if sys.stdin.isatty() and item.url and input("未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？[y/N] ").strip().lower() in {"y", "yes"}:
+            question = "未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？"
+            first_use_confirm = getattr(args, "first_use_confirm", None)
+            confirmed = bool(first_use_confirm(question)) if callable(first_use_confirm) else (
+                sys.stdin.isatty() and item.url
+                and input(question + "[y/N] ").strip().lower() in {"y", "yes"}
+            )
+            if confirmed:
                 install_args = argparse.Namespace(tier="asr:baseline", root=None, dry_run=False, _confirmed=True)
                 if cmd_models_install(install_args) == 0:
                     result = extract_with_login(executor, item, item_selection.chain, args)

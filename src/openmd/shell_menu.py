@@ -15,6 +15,7 @@ import shlex
 import shutil
 import stat
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -104,36 +105,7 @@ def _convert_file(
         text = path.read_text(encoding="utf-8-sig")
         status, error = ("verified", None) if text.strip() else ("failed", "document_empty_text")
     elif is_media:
-        from openmd.adapters.local_audio.adapter import LocalAudioAdapter
-
-        try:
-            adapter = LocalAudioAdapter("generic_media", "asr.auto")
-        except TypeError:  # small test doubles may expose a no-argument adapter
-            adapter = LocalAudioAdapter()
-        items = adapter.resolve_items(path.as_uri())
-        if not items:
-            return {"status": "failed", "error": "local_audio_path_unresolved"}
-        result = adapter.extract_text(items[0], backend="asr.auto")
-        if result.error_code == "asr_model_missing" and asr_confirm is not None:
-            question = "未发现可用语音模型。需要下载 Whisper turbo（约 1.5 GB）以继续本机转录吗？"
-            if asr_confirm(question):
-                from openmd.runtime.recommendations import cmd_models_install
-                from types import SimpleNamespace
-
-                install_args = SimpleNamespace(tier="asr:baseline", root=None, dry_run=False, _confirmed=True)
-                if cmd_models_install(install_args) == 0:
-                    result = adapter.extract_text(items[0], backend="asr.auto")
-        if result.error_code == "asr_model_missing":
-            return {"status": "failed", "error": "asr_install_required",
-                    "next_action": "openmd models install asr:baseline"}
-        if result.error_code in {"asr_runtime_unavailable", "asr_backend_missing"}:
-            return {"status": "failed", "error": result.error_code,
-                    "next_action": "openmd doctor --profile media"}
-        text, status, error = result.text, result.status, result.error_code
-        if status in {"verified", "partial"} and text.strip():
-            from openmd.core.readable import format_transcript
-
-            text = format_transcript(text, source_type="audio", platform="generic_media")
+        return _convert_media_via_go(path, output, asr_confirm=asr_confirm)
     elif is_image:
         from types import SimpleNamespace
         from openmd.backends.ocr import OCRRouterProvider
@@ -164,6 +136,52 @@ def _convert_file(
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(_materialize_images(text, output), encoding="utf-8", newline="\n")
     return {"status": status, "error": None}
+
+
+def _convert_media_via_go(
+    path: Path,
+    output: Path,
+    *,
+    asr_confirm: Callable[[str], bool] | None = None,
+) -> dict[str, Any]:
+    """Run local media through the same extraction/executor path as ``openmd go``."""
+    from openmd.cli import _process_input
+    from openmd.cli_parser import build_parser
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".openmd-shell-media-", dir=output.parent) as temporary:
+        args = build_parser().parse_args([
+            "go", str(path), "--out", temporary, "--enable-asr", "--json",
+        ])
+        args.runlog = str(Path(temporary) / "runlog.jsonl")
+        args.first_use_confirm = asr_confirm
+        result = _process_input(path.as_uri(), args, command="go")
+        error = result.error_code
+        if not result.ok or not result.outputs:
+            if not error:
+                runlog = Path(args.runlog)
+                if runlog.is_file():
+                    try:
+                        rows = [json.loads(line) for line in runlog.read_text(encoding="utf-8").splitlines() if line.strip()]
+                    except (OSError, ValueError):
+                        rows = []
+                    error = next((str(row["error_code"]) for row in reversed(rows) if row.get("error_code")), None)
+            error = error or "media_conversion_failed"
+            if error == "asr_model_missing":
+                return {"status": "failed", "error": "asr_install_required",
+                        "next_action": "openmd models install asr:baseline"}
+            if error in {"asr_runtime_unavailable", "asr_backend_missing"}:
+                return {"status": "failed", "error": error,
+                        "next_action": "openmd doctor --profile media"}
+            return {"status": "failed", "error": error}
+        converted = Path(result.outputs[-1])
+        if not converted.is_file():
+            return {"status": "failed", "error": "media_output_missing"}
+        text = converted.read_text(encoding="utf-8")
+        if not text.strip():
+            return {"status": "failed", "error": "document_empty_text"}
+        output.write_text(text, encoding="utf-8", newline="\n")
+        return {"status": result.status or "verified", "error": None}
 
 
 def _candidate_files(root: Path) -> list[Path]:
@@ -341,6 +359,7 @@ def _failure_message(error: str) -> str:
         "asr_model_missing": "缺少本地语音模型",
         "asr_runtime_unavailable": "本地语音运行环境未就绪",
         "asr_backend_missing": "本地语音后端未安装或未启用",
+        "asr_insufficient_memory": "可用内存不足，请关闭其他程序后重试",
         "local_audio_path_unresolved": "无法解析本地音视频文件",
         "engine_unavailable": "缺少此格式所需的转换工具",
         "file_too_large": "文件超过可处理大小",

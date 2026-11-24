@@ -485,98 +485,65 @@ def test_right_click_noninteractive_scan_returns_shared_install_command(monkeypa
     assert result["next_action"] == "openmd models install ocr:chain"
 
 
-def test_right_click_supports_local_audio_and_formats_transcript(monkeypatch, tmp_path):
+def test_right_click_media_uses_the_shared_go_processing_entrypoint(monkeypatch, tmp_path):
     from openmd import shell_menu
-    from openmd.core.models import TranscriptResult
+    from openmd.cli import CliResult
 
     source = tmp_path / "meeting.mp4"
     source.write_bytes(b"fixture media")
+    output = tmp_path / "meeting.md"
+    prompt = lambda question: True
     seen = []
 
-    class Adapter:
-        def __init__(self, *args, **kwargs):
-            pass
+    def process_input(url, args, *, command):
+        seen.append((url, args, command))
+        assert args.enable_asr is True
+        assert args.first_use_confirm is prompt
+        rendered = Path(args.out) / "generic_media" / "meeting.md"
+        rendered.parent.mkdir(parents=True)
+        rendered.write_text("**00:00:00**\n\n第一行 第二行", encoding="utf-8")
+        return CliResult(ok=True, command="go", status="verified", outputs=[str(rendered)])
 
-        def resolve_items(self, value):
-            seen.append(("resolve", value))
-            return [type("Item", (), {"source_type": "audio"})()]
-
-        def extract_text(self, item, *, backend=None):
-            seen.append(("extract", backend))
-            return TranscriptResult(
-                text="[00:00:00] 第一行\n[00:00:03] 第二行\n",
-                status="verified", source_level="asr", backend="asr.auto",
-            )
-
-    monkeypatch.setattr("openmd.adapters.local_audio.adapter.LocalAudioAdapter", Adapter)
-    result = shell_menu._convert_file(source, tmp_path / "meeting.md")
+    monkeypatch.setattr("openmd.cli._process_input", process_input)
+    monkeypatch.setattr("openmd.adapters.local_audio.adapter.LocalAudioAdapter",
+                        lambda *a, **k: pytest.fail("shell menu must use the go processing path"))
+    result = shell_menu._convert_file(source, output, asr_confirm=prompt)
 
     assert {".mp3", ".mp4", ".ogg", ".opus", ".aac"}.issubset(shell_menu.SUPPORTED_SUFFIXES)
-    assert result["status"] == "verified"
-    assert (tmp_path / "meeting.md").read_text(encoding="utf-8") == "**00:00:00**\n\n第一行 第二行"
-    assert seen == [("resolve", source.as_uri()), ("extract", "asr.auto")]
+    assert result == {"status": "verified", "error": None}
+    assert output.read_text(encoding="utf-8") == "**00:00:00**\n\n第一行 第二行"
+    assert len(seen) == 1
+    assert seen[0][0] == source.as_uri()
+    assert seen[0][2] == "go"
 
 
-def test_right_click_audio_missing_model_exposes_install_next_action(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("error_code", "expected"),
+    [
+        ("asr_model_missing", {"status": "failed", "error": "asr_install_required",
+                                "next_action": "openmd models install asr:baseline"}),
+        ("asr_runtime_unavailable", {"status": "failed", "error": "asr_runtime_unavailable",
+                                      "next_action": "openmd doctor --profile media"}),
+        ("asr_insufficient_memory", {"status": "failed", "error": "asr_insufficient_memory"}),
+    ],
+)
+def test_right_click_media_maps_shared_go_failures(monkeypatch, tmp_path, error_code, expected):
     from openmd import shell_menu
-    from openmd.core.models import TranscriptResult
+    from openmd.cli import CliResult
 
     source = tmp_path / "meeting.mp3"
     source.write_bytes(b"fixture media")
+    monkeypatch.setattr("openmd.cli._process_input", lambda *a, **k: CliResult(
+        ok=False, command="go", status="failed", error_code=error_code,
+    ))
 
-    class Adapter:
-        def resolve_items(self, value):
-            return [type("Item", (), {"source_type": "audio"})()]
-
-        def extract_text(self, item, *, backend=None):
-            return TranscriptResult(text="", status="failed", source_level="partial_extraction",
-                                    backend="asr.auto", error_code="asr_model_missing")
-
-    monkeypatch.setattr("openmd.adapters.local_audio.adapter.LocalAudioAdapter", Adapter)
     result = shell_menu._convert_file(source, tmp_path / "meeting.md")
-    assert result == {"status": "failed", "error": "asr_install_required",
-                      "next_action": "openmd models install asr:baseline"}
+    assert result == expected
 
 
-def test_right_click_audio_runtime_unavailable_exposes_doctor_next_action(monkeypatch, tmp_path):
+def test_gui_failure_line_explains_asr_memory_shortage():
     from openmd import shell_menu
-    from openmd.core.models import TranscriptResult
 
-    source = tmp_path / "meeting.mp4"
-    source.write_bytes(b"fixture media")
-
-    class Adapter:
-        def resolve_items(self, value):
-            return [type("Item", (), {"source_type": "audio"})()]
-
-        def extract_text(self, item, *, backend=None):
-            return TranscriptResult(text="", status="failed", source_level="partial_extraction",
-                                    backend="asr.auto", error_code="asr_runtime_unavailable")
-
-    monkeypatch.setattr("openmd.adapters.local_audio.adapter.LocalAudioAdapter", Adapter)
-    result = shell_menu._convert_file(source, tmp_path / "meeting.md")
-    assert result == {"status": "failed", "error": "asr_runtime_unavailable",
-                      "next_action": "openmd doctor --profile media"}
-
-
-def test_right_click_audio_runtime_failure_does_not_prompt_model_install(monkeypatch, tmp_path):
-    from openmd import shell_menu
-    from openmd.core.models import TranscriptResult
-
-    source = tmp_path / "meeting.mp4"
-    source.write_bytes(b"fixture media")
-    prompts = []
-
-    class Adapter:
-        def resolve_items(self, value):
-            return [type("Item", (), {"source_type": "audio"})()]
-
-        def extract_text(self, item, *, backend=None):
-            return TranscriptResult(text="", status="failed", source_level="partial_extraction",
-                                    backend="asr.auto", error_code="asr_backend_missing")
-
-    monkeypatch.setattr("openmd.adapters.local_audio.adapter.LocalAudioAdapter", Adapter)
-    result = shell_menu._convert_file(source, tmp_path / "meeting.md", asr_confirm=prompts.append)
-    assert result == {"status": "failed", "error": "asr_backend_missing",
-                      "next_action": "openmd doctor --profile media"}
-    assert prompts == []
+    assert shell_menu._gui_failure_lines([
+        {"path": "meeting.mp4", "error": "asr_insufficient_memory"},
+    ]) == ["meeting.mp4：可用内存不足，请关闭其他程序后重试（asr_insufficient_memory）"]

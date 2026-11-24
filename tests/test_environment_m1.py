@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from pathlib import Path
 
 from openmd.backends.base import BackendExtractRequest
 from openmd.backends.executor import BackendExecutor
@@ -71,6 +72,14 @@ def test_cli_marks_json_runs_non_interactive_for_the_whole_process(monkeypatch, 
 
 def test_gui_confirm_callback_still_asks_without_a_terminal():
     """The right-click GUI has no terminal but its own dialog; that dialog must keep working."""
-    from pathlib import Path
+
     source = (Path(__file__).resolve().parents[1] / "src" / "openmd" / "cli_items.py").read_text(encoding="utf-8")
     assert 'callable(first_use_confirm) and not getattr(args, "json", False)' in source
+
+
+def test_missing_ocr_backend_tells_agents_what_to_install():
+    from openmd.cli_login import source_next_action
+
+    assert "openmd models install ocr:chain" in source_next_action("ocr_backend_missing")
+    source = (Path(__file__).resolve().parents[1] / "src" / "openmd" / "cli_items.py").read_text(encoding="utf-8")
+    assert '"id": "ocr:chain"' in source

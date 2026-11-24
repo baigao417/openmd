@@ -50,6 +50,8 @@ def source_next_action(error_code: str | None) -> str | None:
         return "本机还没有语音模型：运行 openmd models install asr:baseline（约 1.6 GB，会先确认）后重试。"
     if error_code in {"media_download_backend_missing", "bilibili_media_asr_not_enabled", "asr_backend_missing", "bilibili_media_asr_dependency_missing"}:
         return '安装媒体依赖：pip install "openmd-cli[media]"；再准备本地语音模型 openmd models install asr:baseline 后重试。'
+    if error_code in {"ocr_backend_missing", "ollama_model_missing", "ollama_not_reachable"}:
+        return "本机还没有可用的 OCR：安装并启动 Ollama 后运行 openmd models install ocr:chain（会先确认），再重试。"
     if error_code == "headless_browser_unavailable":
         return "当前是无头环境，该来源需要浏览器或登录态；提供公开 HTTP/CLI 路线，或在有浏览器的环境重试。"
     if error_code == "document_invalid_container":

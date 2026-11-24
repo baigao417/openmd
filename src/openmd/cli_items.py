@@ -398,6 +398,10 @@ def _process_input(input_url: str, args: argparse.Namespace, *, command: str) ->
             else None
         )
     missing = list((last_result.metadata.get("missing") or [])) if last_result is not None else []
+    if not missing and last_result is not None and last_result.error_code in {"ocr_backend_missing", "ollama_model_missing", "ollama_not_reachable"}:
+        # Agents read `missing` to decide what to provision (round16 Muse headless check).
+        missing = [{"kind": "model", "id": "ocr:chain", "detail": "local OCR (Ollama + OCR models) is not available",
+                    "action": "openmd models install ocr:chain"}]
     return CliResult(
         ok=ok,
         command=command,

@@ -46,7 +46,10 @@ THINKING_SELECTORS = {
     "chatgpt": '[data-testid="reasoning-summary"], .reasoning-summary',
     "deepseek": '.ds-markdown--think, .ds-thinking-content',
     "gemini": 'model-thoughts, .thoughts-container, .thoughts-content',
-    "doubao": '[data-testid="thinking_content"], [data-testid="think_content"]',
+    # Current Doubao renders completed reasoning in a hashed class root rather
+    # than the older data-testid hooks. Match the stable semantic fragment of
+    # that class while leaving ordinary prose untouched.
+    "doubao": '[data-testid="thinking_content"], [data-testid="think_content"], [class*="thinking-box-root"]',
     "qwen": '[data-chat-thinking-wrap], .qwen-thinking',
     "yuanbao": '.hyc-component-reasoner, .hyc-content-think, .agent-chat__thinking, .hyc-component-deepsearch-cot__think',
 }

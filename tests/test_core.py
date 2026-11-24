@@ -3618,6 +3618,9 @@ class ArticleProviderTests(unittest.TestCase):
             browser_weixin.provider_for(OPENCLI_WEB_READ_BACKEND),
             OpenCliWebReadProvider,
         )
+        from openmd.backends.kaze_snapshot import KAZE_BACKEND, KazeSnapshotProvider
+
+        self.assertIsInstance(browser_weixin.provider_for(KAZE_BACKEND), KazeSnapshotProvider)
 
         safe_web = create_runtime_backend_provider_registry("web_article", BackendRuntimeOptions())
         self.assertEqual(
@@ -3648,6 +3651,7 @@ class ArticleProviderTests(unittest.TestCase):
                 # challenge pages are rejected and fall back to the extension route.
                 WEIXIN_LOCAL_BACKEND,
                 "defuddle.web.content",
+                "browser.kaze.snapshot",
                 OPENCLI_WEIXIN_DOWNLOAD_BACKEND,
                 OPENCLI_WEB_READ_BACKEND,
             ),

@@ -123,6 +123,7 @@
         "chain": [
           "weixin.article.local",
           "defuddle.web.content",
+          "browser.kaze.snapshot",
           "opencli.weixin.download",
           "opencli.web.read"
         ],
@@ -164,7 +165,8 @@
         "source": "xiaohongshu",
         "capability": "content",
         "chain": [
-          "xiaohongshu.composite"
+          "xiaohongshu.composite",
+          "browser.kaze.snapshot"
         ],
         "last_verified": null
       },
@@ -1382,7 +1384,9 @@
           "sources": [
             "web_article",
             "x",
-            "zhihu"
+            "zhihu",
+            "weixin",
+            "xiaohongshu"
           ],
           "capability": "content",
           "gates": [

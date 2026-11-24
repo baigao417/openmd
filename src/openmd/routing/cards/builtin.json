@@ -669,7 +669,9 @@
       "sources": [
         "web_article",
         "x",
-        "zhihu"
+        "zhihu",
+        "weixin",
+        "xiaohongshu"
       ],
       "capability": "content",
       "gates": [

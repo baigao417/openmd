@@ -613,7 +613,7 @@
         "runtime_note_url"
       ],
       "sources": [
-        "src/openmd/backends/xiaohongshu.py:124"
+        "src/openmd/backends/xiaohongshu.py:127"
       ],
       "argv": [
         [
@@ -988,7 +988,7 @@
       "positionals": 0,
       "columns": [],
       "sources": [
-        "src/openmd/backends/weixin.py:269"
+        "src/openmd/backends/weixin.py:272"
       ],
       "argv": [
         [
@@ -1163,7 +1163,7 @@
         "value"
       ],
       "sources": [
-        "src/openmd/backends/xiaohongshu.py:95"
+        "src/openmd/backends/xiaohongshu.py:98"
       ],
       "argv": [
         [
@@ -1191,7 +1191,7 @@
         "url"
       ],
       "sources": [
-        "src/openmd/backends/xiaohongshu.py:100"
+        "src/openmd/backends/xiaohongshu.py:103"
       ],
       "argv": [
         [

@@ -158,7 +158,7 @@ def test_snapshot_url_is_normalized_before_snapshot_item(monkeypatch, tmp_path):
     class Observed(Exception):
         pass
 
-    def capture(_path, url):
+    def capture(_path, url, **_kwargs):
         assert url == "https://example.org/%E5%BF%AB%E7%85%A7"
         raise Observed
 

@@ -147,6 +147,8 @@ Claude Desktop: MCP 설정에 다음을 추가하세요. 필요한 경우 실행
 
 도구는 `openmd_save`, `openmd_save_page`, `openmd_job`, `openmd_doctor` 네 개입니다. `openmd_save`는 하나 또는 최대 20개의 `sources`를 받고, `openmd_job(action="cancel")`로 작업을 취소할 수 있습니다. `progressToken`을 보내는 클라이언트에는 진행률을 알리며 폴링도 사용할 수 있습니다. 완료된 Markdown은 `openmd://jobs` 및 `openmd://job/{job_id}` resources로 노출되고 읽기 크기는 제한됩니다. 출력 폴더는 절대 경로로 명시해야 합니다. HTML 스냅샷은 문자열 또는 절대 파일 경로를 받으며 UTF-8 기준 최대 2 MiB입니다. 다섯 권한은 기본적으로 꺼져 있습니다. `network`, `browser`, `media`, `asr`, `cloud`를 명시적으로 허용하세요. CLI의 권한 플래그를 재사용하지만 MCP는 출력 폴더에서 일상 CLI의 자동 권한을 추론하지 않고 저장 위치도 기억하지 않습니다. stdio는 로컬 프로세스를 시작할 수 있는 클라이언트용입니다. 원격 connector에는 별도의 전송 브리지가 필요합니다.
 
+헤드리스 Linux 서버(`DISPLAY` / `WAYLAND_DISPLAY` 없음)에서는 Openmd가 헤드리스 환경을 자동 감지하고(`openmd doctor`에 `headless` 표시), 브라우저가 필요한 경로를 건너뛰며 OpenCLI 백그라운드 프로세스를 설치하거나 실행하지 않습니다. `--json`, `--yes`, batch, MCP 또는 비대화형(non-TTY) 실행에서는 질문하거나 QR 스캔을 기다리지 않으며, 부족한 항목이 있으면 즉시 실패하고 JSON 영수증의 `missing`(`yt-dlp`, `asr:baseline`, `ocr:chain` 등)과 `next_action`에 누락 항목과 설치 방법을 기록합니다. X 게시물의 frontmatter에는 `author_handle`, `published_at`, `views`, `likes`, `reposts`, `replies`, `bookmarks`(가져올 수 없으면 생략), `quote`, `thread`, `thread_count`, `thread_coverage`도 포함됩니다.
+
 ---
 
 ## AI와 지식 베이스의 입구로 적합한 이유
@@ -170,16 +172,17 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 | :--- | :--- | :--- | :--- |
 | **웹과 커뮤니티** | 일반 웹 글 | 사용 가능 | 설치 후 바로 사용 |
 | | WeChat 공식 계정 글, X 게시물 | 사용 가능 | 공개 글과 게시물은 설치 직후 바로 사용 가능: WeChat 글은 먼저 로컬에서 읽고(보통 5–20초) X는 로그인 불필요. 읽지 못할 때만 브라우저 확장 프로그램과 기존 접근 권한 사용 |
+| | 즈후(Zhihu: 답변, 칼럼, 질문, 핀, 컬렉션) | 일부 지원 | 칼럼은 로그인 없이 읽을 수 있음. 질문 페이지는 기본적으로 질문과 전체 답변을 저장(시간·개수 상한에 걸리면 개수와 함께 partial 표시). 로그인이 필요하거나 백그라운드에서 읽지 못하는 내용은 로그인된 브라우저 사용 |
 | | 현재 페이지 저장, 로그인 알림 | 사용 가능 | 브라우저 확장 프로그램 필요 |
-| **음성·영상과 전사본** | YouTube(자막 있음), 샤오위저우(Xiaoyuzhou) | 사용 가능 | 샤오위저우는 처음 사용할 때 터미널에 QR 코드를 표시합니다. 샤오위저우 앱(발견 → 스캔)으로 한 번 스캔하면 로그인되고 이후 자동 갱신. 계정이 제한되거나 정지될 수 있으니 버려도 되는 계정을 권장 |
+| **음성·영상과 전사본** | YouTube(자막 있음), 샤오위저우(Xiaoyuzhou) | 사용 가능 | 샤오위저우는 토큰 로그인 기반 네트워크 경로를 사용해 브라우저 없이 헤드리스 서버에서도 쓸 수 있으며, 처음 사용할 때 터미널에 QR 코드를 표시합니다. 샤오위저우 앱(발견 → 스캔)으로 한 번 스캔하면 로그인되고 이후 자동 갱신. 계정이 제한되거나 정지될 수 있으니 버려도 되는 계정을 권장 |
 | | bilibili, 샤오어퉁(Xiaoe-tech) | 사용 가능 | 브라우저 확장 프로그램 필요. bilibili AI 자막은 로그인도 필요. 샤오어퉁은 브라우저에서 로그인하고 강좌를 열어야 하며, 로그인하지 않은 경우 로그인 페이지는 저장하지 않음 |
 | | 자막 없는 음성·영상, 로컬 미디어 | 추가 의존성 필요 | `[asr]` 의존성(`[all]`에 포함)과 로컬 음성 모델 필요: 처음 쓸 때 다운로드를 확인(HuggingFace 접속이 안 되면 ModelScope로 자동 전환)하고, 이미 있는 모델도 감지 |
 | **로컬 문서와 이미지** | PDF, DOCX, PPTX, XLSX, 이미지 | 추가 의존성 필요 | `[document]` 의존성 필요. 복잡한 레이아웃과 스캔 문서는 추가 OCR 경로를 거칠 수 있습니다 |
 | **업무 문서** | Feishu / Lark 문서 | 일부 지원 | 로컬에 `lark-cli`를 설치하고 로그인한 뒤, 명령에 `--enable-network-backends`를 붙여 네트워크 읽기를 명시적으로 허용해야 합니다 |
-| **AI 대화** | Doubao, Gemini, Qwen, Yuanbao, Grok, DeepSeek(열려 있는 대화 페이지) | 일부 지원 | 브라우저 확장 필요: 대화 페이지에서 클릭하면 이미 로드된 내용을 저장하고, 에이전트는 `--as-snapshot`으로 넘길 수 있습니다. 현재 보이는 분기만 포함하며 사고 과정은 기본 생략 |
+| **AI 대화** | Doubao, Gemini, Qwen, Yuanbao, Grok, DeepSeek(열려 있는 대화 페이지) | 일부 지원 | 브라우저 확장 필요: 대화 페이지에서 클릭하면 이미 로드된 내용을 저장하고, 에이전트는 `--as-snapshot`으로 넘길 수 있습니다. 현재 보이는 분기만 포함하며, 페이지 일부만 렌더링된 긴 대화는 보이는 부분만 저장됨으로 표시합니다. 사고 과정은 기본 생략 |
 | | ChatGPT 대화 페이지; ChatGPT / Claude 공식 내보내기 ZIP 또는 JSON | 실험적 | 사용자 질문이 표시되지 않는 ChatGPT 페이지는 partial로 저장; 공식 내보내기는 브라우저 없이 로컬에서 가져옵니다 |
 | **채팅 기록** | QQ 그룹 내보내기 파일(JSON / HTML / TXT) | 일시 중지 | 내보내기 파일 분석은 구현되어 있지만 아직 안정 기능으로 공개하지 않았습니다. Openmd는 채팅 데이터베이스를 읽거나 복호화하지 않습니다 |
-| **실험적 지원** | 더우인(Douyin), 샤오훙수(Xiaohongshu) | 실험적 | 브라우저 확장 프로그램과 로그인 필요. 이 사이트들은 자동 읽기를 자주 차단하므로 안정성과 전체 수집을 약속하지 않습니다. 샤오훙수 노트는 브라우저에서 연 뒤 확장 프로그램을 클릭하거나, 에이전트가 자체 브라우저로 연 페이지를 `--as-snapshot`에 넘기며(명령줄 백그라운드 읽기는 약 60초 후 중단),, 더우인은 미디어 다운로드와 로컬 ASR을 사용합니다 |
+| **실험적 지원** | 더우인(Douyin), 샤오훙수(Xiaohongshu) | 실험적 | 브라우저 확장 프로그램과 로그인 필요. 이 사이트들은 자동 읽기를 자주 차단하므로 안정성과 전체 수집을 약속하지 않습니다. 샤오훙수 노트는 브라우저에서 연 뒤 확장 프로그램을 클릭하거나, 에이전트가 자체 브라우저로 연 페이지를 `--as-snapshot`에 넘기며(명령줄 백그라운드 읽기는 약 20초 후 중단되며 이후 로그인된 Kaze 페이지로 폴백), 더우인은 미디어 다운로드와 로컬 ASR을 사용합니다 |
 
 ### 로컬 문서 형식
 
@@ -196,7 +199,7 @@ Openmd 자체는 지식 베이스나 RAG 검색 시스템이 아닙니다. "정�
 | ZIP | 항목별 상태로 일부 지원 | 혼합 미디어는 별도 ASR/OCR 필요; 아카이브 자원 제한 적용 |
 | MOBI, AZW3 | Calibre 필요 | 도구가 없으면 `engine_unavailable`; 암호화 전자책은 거부하고 복호화하지 않음 |
 
-우클릭 변환은 `openmd shell-menu install`로 현재 사용자에게 설치합니다. 지원 문서 옆에 `.md`를 만들고, 폴더는 하위 폴더 구조를 유지하는 `<folder>-md` 미러로 변환합니다. 다시 실행하면 변경되지 않은 입력은 건너뛰고 사용자가 편집한 Markdown을 보호합니다. 이름은 같고 형식이 다른 파일은 Markdown 파일명에 원래 확장자를 남깁니다. Windows에서는 메뉴를 설치하기 전에 `uv tool install openmd-cli` 또는 `pipx install openmd-cli`로 영구 설치해야 합니다. 임시 `uvx` 캐시 설치는 거부됩니다. 스캔 PDF에는 로컬 OCR이 필요합니다. 선택형 MinerU 경로는 사용자가 직접 설치하고 `OPENMD_MINERU` 또는 `tools.mineru.executable`을 설정한 뒤 `--ocr-engine mineru`를 지정합니다. AGPL 및 모델 라이선스 조건이 적용됩니다. Windows 11에서는 기존 HKCU 메뉴가 '더 많은 옵션 표시' 아래에 나타날 수 있습니다. 이 경량 설치 프로그램은 패키지 앱이 필요한 최상위 메뉴 확장을 등록하지 않습니다. `openmd shell-menu uninstall`로 제거합니다.
+우클릭 변환은 `openmd shell-menu install`로 현재 사용자에게 설치합니다. 지원되는 문서나 오디오·비디오 파일(MP3, MP4 등은 같은 이름의 `.md` 전사본 생성) 옆에 `.md`를 만들고, 폴더는 하위 폴더 구조를 유지하는 `<folder>-md` 미러로 변환합니다. 다시 실행하면 변경되지 않은 입력은 건너뛰고 사용자가 편집한 Markdown을 보호합니다. 이름은 같고 형식이 다른 파일은 Markdown 파일명에 원래 확장자를 남깁니다. Windows에서는 메뉴를 설치하기 전에 `uv tool install openmd-cli` 또는 `pipx install openmd-cli`로 영구 설치해야 합니다. 임시 `uvx` 캐시 설치는 거부됩니다. 스캔 PDF에는 로컬 OCR이 필요합니다. 선택형 MinerU 경로는 사용자가 직접 설치하고 `OPENMD_MINERU` 또는 `tools.mineru.executable`을 설정한 뒤 `--ocr-engine mineru`를 지정합니다. AGPL 및 모델 라이선스 조건이 적용됩니다. Windows 11에서는 기존 HKCU 메뉴가 '더 많은 옵션 표시' 아래에 나타날 수 있습니다. 이 경량 설치 프로그램은 패키지 앱이 필요한 최상위 메뉴 확장을 등록하지 않습니다. `openmd shell-menu uninstall`로 제거합니다.
 
 여러분의 컴퓨터에서 무엇이 준비되었는지는 `openmd doctor`로 확인할 수 있습니다. 링크 처리에 실패하면 Openmd가 원인과 함께, [버그 리포트](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml)에 그대로 붙여 넣을 수 있는 한 줄을 출력합니다.
 

@@ -203,7 +203,7 @@ class _McpSession:
         initialize = self.request("initialize", {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": {"name": "openmd", "version": "0.3.1"},
+            "clientInfo": {"name": "openmd", "version": __import__("openmd").__version__},
         }, INITIALIZE_TIMEOUT_S)
         result = initialize.get("result") or {}
         if result.get("protocolVersion") != PROTOCOL_VERSION:

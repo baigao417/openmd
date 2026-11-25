@@ -92,3 +92,22 @@ def test_non_interactive_mark_does_not_outlive_one_cli_call(monkeypatch, tmp_pat
     monkeypatch.delenv("OPENMD_NON_INTERACTIVE", raising=False)
     cli.main(["go", "https://example.org/a", "--backend", "mock", "-o", str(tmp_path), "--json"])
     assert "OPENMD_NON_INTERACTIVE" not in os.environ
+
+
+def test_xiaoyuzhou_transcript_is_a_network_route_usable_headless(monkeypatch):
+    """Round16: the OpenCLI Xiaoyuzhou command is token based (browser: false); headless agents
+    must not skip it as a browser route, and no OpenCLI daemon is pre-started without a display."""
+    from openmd.backends.executor import BackendProviderRegistry
+    from openmd.backends.registry import BackendRuntimeOptions
+    from openmd.backends.xiaoyuzhou import OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND, register_backend_providers
+    from openmd.routing.loader import load_catalog
+    from openmd.runtime import services
+
+    assert load_catalog().capabilities[OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND]["gates"] == ["network"]
+    registry = BackendProviderRegistry()
+    register_backend_providers(registry, BackendRuntimeOptions(enable_network_backends=True))
+    assert registry.provider_for(OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND) is not None
+
+    monkeypatch.setenv("OPENMD_BROWSER_MODE", "headless")
+    monkeypatch.setattr(services, "_opencli_launch", lambda *a, **k: (_ for _ in ()).throw(AssertionError("daemon pre-start in headless")))
+    services.ensure_opencli_daemon(["opencli", "xiaoyuzhou", "transcript", "x"])

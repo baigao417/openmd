@@ -212,6 +212,10 @@ def next_openmd_profile_for_retry(command, env, current_profile: str, *, explici
 
 
 def ensure_opencli_daemon(command, *, env=None, cwd=None) -> None:
+    from openmd.core.environment import is_headless
+
+    if is_headless():
+        return  # the daemon only serves the browser bridge; headless runs must not leave one behind
     launch = _opencli_launch(command, env)
     if launch is None:
         return

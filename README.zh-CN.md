@@ -147,6 +147,8 @@ Claude Desktop：在 MCP 配置中加入以下内容；必要时把可执行文�
 
 四个工具为 `openmd_save`、`openmd_save_page`、`openmd_job`、`openmd_doctor`。`openmd_save` 可接收一个 source 或最多 20 个 `sources`；`openmd_job(action="cancel")` 可取消排队或运行中的任务。客户端提供 `progressToken` 时会收到队列进度，也可以继续轮询。已完成 Markdown 产物通过 `openmd://jobs` 和 `openmd://job/{job_id}` resources 暴露，读取有上限。输出目录必须显式提供绝对路径。HTML 快照接收字符串或绝对文件路径，UTF-8 上限 2 MiB。五个能力参数默认关闭，需显式开启 `network`、`browser`、`media`、`asr` 或 `cloud`。复用 CLI 的能力开关；MCP 不因给出输出目录推断日常 CLI 的自动授权，也不记住该目录。stdio 配置需要客户端可启动本地进程；远程 connector 需要另接传输桥。
 
+在无头 Linux 服务器（无 `DISPLAY` / `WAYLAND_DISPLAY`）上，Openmd 会自动识别无头环境（`openmd doctor` 标出 `headless`），跳过需要浏览器的路线，不再安装或启动 OpenCLI 后台进程。在 `--json`、`--yes`、batch、MCP 或无终端环境下，整次调用不提问、不等扫码；缺少组件时立即失败，并在 JSON 回执中通过 `missing`（如 `yt-dlp`、`asr:baseline`、`ocr:chain`）写明缺失项、通过 `next_action` 写明安装方式。对于 X 帖子，frontmatter 额外提供 `author_handle`、`published_at`、`views`、`likes`、`reposts`、`replies`、`bookmarks`（取不到时省略）、`quote`、`thread`、`thread_count`、`thread_coverage`。
+
 ---
 
 ## 为什么适合作为 AI 与知识库的前置入口
@@ -170,16 +172,17 @@ Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信�
 | :--- | :--- | :--- | :--- |
 | **网页与社区** | 普通网页文章 | 可用 | 安装即用 |
 | | 微信公众号文章、X 帖子 | 可用 | 公开文章与帖子装完即用：公众号先在本地读取（通常 5–20 秒），X 不需要登录；读不到时再用浏览器扩展和你已有的访问权限 |
+| | 知乎（回答、专栏、问题、想法、收藏夹） | 部分可用 | 专栏可直接读取，无需登录；问题页默认保存问题与全部回答（触发时间/数量上限时标为 partial 并写明数量）；需要登录或后台读不到的内容改用已登录浏览器 |
 | | 保存当前页、登录提醒 | 可用 | 需浏览器扩展 |
-| **音视频与逐字稿** | YouTube（有字幕）、小宇宙 | 可用 | 小宇宙第一次使用时在终端显示二维码，用小宇宙 App“发现”页右上角“扫一扫”登录一次，之后自动续期；此方法有可能导致账号被风控或封号，建议用丢了也不心疼的小号 |
+| **音视频与逐字稿** | YouTube（有字幕）、小宇宙 | 可用 | 小宇宙走令牌登录的联网路线（无需浏览器，无头服务器也能用），第一次使用时在终端显示二维码，用小宇宙 App“发现”页右上角“扫一扫”登录一次，之后自动续期；此方法有可能导致账号被风控或封号，建议用丢了也不心疼的小号 |
 | | B 站、小鹅通 | 可用 | 需浏览器扩展；B 站 AI 字幕还需要登录；小鹅通需先在浏览器登录并打开课程，未登录时拒收登录页 |
 | | 无字幕音视频、本地音视频 | 需扩展依赖 | 需 `[asr]` 依赖（`[all]` 已包含）和本地语音模型：第一次用到时会询问并下载（HuggingFace 不通时自动换 ModelScope），也会识别你电脑上已有的模型 |
 | **本地文档与图片** | PDF、DOCX、PPTX、XLSX、图片 | 需扩展依赖 | 需 `[document]` 依赖；复杂版面与扫描件可能进入额外的 OCR 路线 |
 | **办公协作** | 飞书文档 | 部分可用 | 需本机已安装并登录 `lark-cli`，命令中加 `--enable-network-backends` 显式允许联网读取 |
-| **AI 对话** | 豆包、Gemini、千问、元宝、Grok、DeepSeek（已打开的对话页） | 部分可用 | 需浏览器扩展：在对话页点击即保存已加载的内容，也可由 Agent 用 `--as-snapshot` 交给 Openmd；只覆盖当前可见分支，默认省略思考过程 |
+| **AI 对话** | 豆包、Gemini、千问、元宝、Grok、DeepSeek（已打开的对话页） | 部分可用 | 需浏览器扩展：在对话页点击即保存已加载的内容，也可由 Agent 用 `--as-snapshot` 交给 Openmd；只覆盖当前可见分支，检测到只渲染了一部分的长对话会如实标为只保存了可见部分；默认省略思考过程 |
 | | ChatGPT 对话页；ChatGPT / Claude 官方导出 ZIP 或 JSON | 实验 | ChatGPT 页面未显示用户提问时保存为 partial；官方导出在本地导入，无需浏览器 |
 | **聊天记录** | QQ 群导出文件（JSON / HTML / TXT） | 暂停 | 导出文件解析已实现，暂未作为稳定能力开放；Openmd 不读取或解密聊天数据库 |
-| **实验性支持** | 抖音、小红书 | 实验 | 需浏览器扩展与登录；这些网站经常拦截自动读取，暂不承诺稳定或全量可用。小红书笔记请在浏览器打开后点扩展，或让 Agent 用自己的浏览器打开后交给 `--as-snapshot`；命令行后台读取最多等约 60 秒；抖音走媒体下载加本地转写 |
+| **实验性支持** | 抖音、小红书 | 实验 | 需浏览器扩展与登录；这些网站经常拦截自动读取，暂不承诺稳定或全量可用。小红书笔记请在浏览器打开后点扩展，或让 Agent 用自己的浏览器打开后交给 `--as-snapshot`；命令行后台读取最多等约 20 秒，读不到时改用已登录的 Kaze 页面；抖音走媒体下载加本地转写 |
 
 ### 本地文档格式
 
@@ -196,7 +199,7 @@ Openmd 本身不是知识库或 RAG 检索系统，它专注于做好“把信�
 | ZIP | 部分可用，逐条报告状态 | 音视频 / 图片另需 ASR / OCR；受容器资源上限约束 |
 | MOBI、AZW3 | 需安装 Calibre | 缺工具返回 `engine_unavailable`；拒收加密电子书，不解密 |
 
-右键转换可通过 `openmd shell-menu install` 按当前用户安装到资源管理器、访达或文件管理器。右键支持的文档会在旁边生成 `.md`；右键文件夹会生成保留子目录结构的 `<文件夹名>-md` 镜像目录。重跑会跳过未变化的源文件，并保护用户编辑过的 Markdown。同名不同格式的文件会在 Markdown 文件名中保留原扩展名。Windows 安装菜单前，请用 `uv tool install openmd-cli` 或 `pipx install openmd-cli` 持久安装；临时 `uvx` 缓存中的安装会被拒绝。扫描版 PDF 仍需本机 OCR。可选 MinerU 路线需用户自行安装并设置 `OPENMD_MINERU` 或 `tools.mineru.executable`，再使用 `--ocr-engine mineru`；配置 `tools.mineru.default` 可将其设为默认，需遵守 AGPL 与模型许可。Windows 11 可能把传统 HKCU 菜单放在“显示更多选项”中；本轻量安装器不注册需要打包应用的一级菜单扩展。运行 `openmd shell-menu uninstall` 可卸载。
+右键转换可通过 `openmd shell-menu install` 按当前用户安装到资源管理器、访达或文件管理器。右键支持的文档、音频或视频文件会在旁边生成同名 `.md`（MP3、MP4 等音视频生成原话逐字稿）；右键文件夹会生成保留子目录结构的 `<文件夹名>-md` 镜像目录。重跑会跳过未变化的源文件，并保护用户编辑过的 Markdown。同名不同格式的文件会在 Markdown 文件名中保留原扩展名。Windows 安装菜单前，请用 `uv tool install openmd-cli` 或 `pipx install openmd-cli` 持久安装；临时 `uvx` 缓存中的安装会被拒绝。扫描版 PDF 仍需本机 OCR。可选 MinerU 路线需用户自行安装并设置 `OPENMD_MINERU` 或 `tools.mineru.executable`，再使用 `--ocr-engine mineru`；配置 `tools.mineru.default` 可将其设为默认，需遵守 AGPL 与模型许可。Windows 11 可能把传统 HKCU 菜单放在“显示更多选项”中；本轻量安装器不注册需要打包应用的一级菜单扩展。运行 `openmd shell-menu uninstall` 可卸载。
 
 在你的电脑上运行 `openmd doctor` 可以看到哪些已经就绪。链接处理失败时，Openmd 会打印原因，以及一行可以直接贴进 [问题反馈](https://github.com/baigao417/openmd/blob/main/.github/ISSUE_TEMPLATE/link-failure.yml) 的信息。
 

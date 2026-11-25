@@ -51,6 +51,9 @@ def _isolate_machine(monkeypatch, root):
         monkeypatch.setenv(key, str(value))
     monkeypatch.setenv("OPENMD_AUTO_INSTALL_TOOLS", "0")
     monkeypatch.setenv("OPENMD_DISABLE_PLUGINS", "1")
+    # CI runners have no DISPLAY and would otherwise be treated as headless; tests describe the
+    # desktop behaviour unless they opt into headless explicitly (round16 0.3.2 CI).
+    monkeypatch.setenv("OPENMD_BROWSER_MODE", "desktop")
 
 
 def pytest_configure(config):

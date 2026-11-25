@@ -69,7 +69,9 @@ def test_zhihu_opencli_runner_uses_automatically_selected_bridge_profile(monkeyp
     from openmd.backends import zhihu
     from openmd.runtime import services
 
-    monkeypatch.setattr(zhihu, "command_environment", lambda: {})
+    import os
+
+    monkeypatch.setattr(zhihu, "command_environment", lambda: dict(os.environ))
     monkeypatch.setattr(zhihu, "managed_command", lambda args: [
         sys.executable, "-c", "import os; print(os.environ.get('OPENCLI_PROFILE', ''))",
     ])
@@ -89,7 +91,9 @@ def test_zhihu_question_runner_installs_loader_overlay_and_keeps_process_contrac
     from openmd.runtime import services
 
     captured = {}
-    monkeypatch.setattr(zhihu, "command_environment", lambda: {"BASE": "yes"})
+    import os
+
+    monkeypatch.setattr(zhihu, "command_environment", lambda: {**os.environ, "BASE": "yes"})
     monkeypatch.setattr(zhihu, "managed_command", lambda args: [sys.executable, "-c", "pass"])
     monkeypatch.setattr(zhihu, "loader_environment", lambda site, operation, *, base: {**base, "LOADER": f"{site}:{operation}"})
     monkeypatch.setattr(services, "_opencli_launch", lambda command, env=None: ("managed", []))

@@ -95,14 +95,15 @@ def register_backend_providers(
 ) -> None:
     """Register Xiaoyuzhou extraction providers behind explicit runtime gates."""
     requested = options.backend_override
-    if not options.enable_browser_backends:
-        return
-
-    if requested in {None, OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND}:
+    # The OpenCLI Xiaoyuzhou transcript command is token based (browser: false); it only needs the
+    # network and ~/.opencli/xiaoyuzhou.json, so headless agents can use it (round16 Muse).
+    if (options.enable_browser_backends or options.enable_network_backends) and requested in {None, OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND}:
         registry.register(
             OPENCLI_XIAOYUZHOU_TRANSCRIPT_BACKEND,
             OpenCliXiaoyuzhouTranscriptProvider(),
         )
+    if not options.enable_browser_backends:
+        return
     if requested in {None, PODWISE_TRANSCRIPT_BACKEND}:
         registry.register(PODWISE_TRANSCRIPT_BACKEND, PodwiseTranscriptProvider())
 

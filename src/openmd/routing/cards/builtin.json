@@ -311,7 +311,7 @@
       ],
       "capability": "content",
       "gates": [
-        "browser"
+        "network"
       ],
       "source_level": "provider_defined",
       "requires_login": false,

@@ -82,16 +82,16 @@ Source: `src/openmd/runtime/managed_tools.py:managed_command`; API-only commands
 - `twitter/article`: `src/openmd/backends/x.py:132`
 - `twitter/thread`: `src/openmd/backends/x.py:104`
 - `twitter/tweets`: `src/openmd/backends/x.py:118`
-- `web/read`: `src/openmd/backends/web_article.py:660`, `src/openmd/backends/xiaoyuzhou.py:163`
+- `web/read`: `src/openmd/backends/web_article.py:660`, `src/openmd/backends/xiaoyuzhou.py:164`
 - `weixin/download`: `src/openmd/backends/weixin.py:272`
 - `xiaoe/catalog`: `src/openmd/backends/xiaoe.py:134`
 - `xiaoe/content`: `src/openmd/backends/xiaoe.py:152`
 - `xiaoe/play-url`: `src/openmd/backends/xiaoe.py:129`
 - `xiaohongshu/note`: `src/openmd/backends/xiaohongshu.py:98`
 - `xiaohongshu/user`: `src/openmd/backends/xiaohongshu.py:103`
-- `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:324`
-- `xiaoyuzhou/podcast-episodes`: `src/openmd/backends/xiaoyuzhou.py:149`
-- `xiaoyuzhou/transcript`: `src/openmd/backends/xiaoyuzhou.py:128`
+- `xiaoyuzhou/episode`: `src/openmd/backends/xiaoyuzhou.py:325`
+- `xiaoyuzhou/podcast-episodes`: `src/openmd/backends/xiaoyuzhou.py:150`
+- `xiaoyuzhou/transcript`: `src/openmd/backends/xiaoyuzhou.py:129`
 - `youtube/channel`: `src/openmd/backends/youtube_discovery.py:178`
 - `youtube/playlist`: `src/openmd/backends/youtube_discovery.py:286`
 - `youtube/transcript`: `src/openmd/backends/youtube.py:45`
